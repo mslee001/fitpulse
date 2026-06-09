@@ -1,6 +1,21 @@
 {% load workout_filters %}
-{% if insights %}
+{% if error %}
+<div class="insights-error">{{ error }}</div>
+{% elif pending %}
+<div class="insights-pending"
+  hx-get="{% url 'pattern_insights_check' %}"
+  hx-trigger="load, every 15s"
+  hx-target="#insights-area"
+  hx-swap="innerHTML">
+  <span class="insights-pending-dot"></span>
+  Batch submitted — Claude Sonnet is analyzing 60 days of data. This usually takes a few minutes.
+  <span class="insights-pending-check">Checking automatically every 15s...</span>
+</div>
+{% elif insights %}
 {{ insights|format_nutrition_insights }}
+{% if generated_at %}
+<div class="insights-meta">Generated {{ generated_at|timesince }} ago &middot; powered by Claude Sonnet (batch)</div>
+{% endif %}
 {% else %}
 <p style="color:var(--text-dim);font-size:0.85rem">Click <strong>↺ Generate</strong> to run a deep pattern analysis across your last 60 days of data.</p>
 {% endif %}

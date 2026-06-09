@@ -18,7 +18,7 @@ from datetime import date, timedelta
 import requests
 from django.db.models import Avg, Count
 from django.db.models.functions import TruncWeek
-from django.http import HttpResponseNotAllowed
+from django.http import HttpResponse, HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.utils import timezone as tz
 
@@ -992,17 +992,26 @@ def _get_or_generate_day_analysis(day, workouts, stats):
 RECOVERY & READINESS
 {chr(10).join(wellness_parts) if wellness_parts else 'No Garmin wellness data available.'}{nutrition_section}{intervention_section}
 
-WORKOUTS
-{chr(10).join(workout_lines)}{persona_section}
+WORKOUTS PERFORMED TODAY ({day.strftime('%B %-d, %Y')})
+{chr(10).join(workout_lines)}
+Note: workout titles may contain dates (e.g. "6/5/26") indicating when a routine was created — these are NOT the workout date. All workouts above were performed today.{persona_section}
 
 Analyze how this person performed given their recovery state. {HEADLINE_BULLETS_FORMAT}
 Metrics to cite: pace, HR, effort score, body battery, HRV, nutrition. If nutrition data is present, note connections like "pre-workout protein was strong" or "low carb day may have affected energy". If intervention data is present, note relevant context — e.g. if a supplement was just started, acknowledge it's day 1 and effects won't be immediate; if a medication dose changed recently, note that.{today_note}"""
 
         return llm.call(prompt, model=llm.HAIKU, max_tokens=300)
 
+    # If a workout was synced after the last analysis, force a refresh
+    force_regen = False
+    if workouts and stats.ai_day_generated_at:
+        latest_synced = max(w.created_at for w in workouts)
+        if latest_synced > stats.ai_day_generated_at:
+            force_regen = True
+
     return cached_daily_stats_field(
         stats, "ai_day_analysis", cache_hours, _gen,
         stamp_field="ai_day_generated_at",
+        force=force_regen,
     )
 
 
@@ -1770,7 +1779,7 @@ Rules:
         message_content = prompt
 
     try:
-        result = llm.call_json(prompt, model=llm.SONNET, max_tokens=600,
+        result = llm.call_json(prompt, model=llm.HAIKU, max_tokens=600,
                                message_content=message_content, timeout=30)
         result["ok"] = True
         return result
@@ -1888,88 +1897,81 @@ Respond with ONLY valid JSON, no markdown:
 # Nutrition analytics insights — synchronous (Claude Sonnet, weekly cache)
 # ---------------------------------------------------------------------------
 
-def _get_or_generate_nutrition_insights(range_days: int = 30, force: bool = False) -> str:
-    """Sonnet analysis of nutrition patterns. Cached 7 days in UserSettings."""
-    def _gen():
-        from datetime import date as date_cls
-        from .nutrition import compute_macro_targets, get_top_foods
-        from .models import NutritionProfile
+def _build_nutrition_insights_prompt(range_days: int = 30) -> str | None:
+    """Build the nutrition insights prompt. Returns None if no data logged."""
+    from datetime import date as date_cls
+    from .nutrition import compute_macro_targets, get_top_foods
+    from .models import NutritionProfile
 
-        today = date_cls.today()
-        start = today - timedelta(days=range_days - 1)
+    today = date_cls.today()
+    start = today - timedelta(days=range_days - 1)
 
-        profile = NutritionProfile.objects.filter(pk=1).first()
-        targets = compute_macro_targets(profile) if profile else None
+    profile = NutritionProfile.objects.filter(pk=1).first()
+    targets = compute_macro_targets(profile) if profile else None
 
-        # Pull logged DailyStats
-        stats_qs = list(
-            DailyStats.objects.filter(date__gte=start, date__lte=today, cal_total__isnull=False)
-            .order_by("date")
-        )
-        total_days = range_days
-        logged = len(stats_qs)
+    stats_qs = list(
+        DailyStats.objects.filter(date__gte=start, date__lte=today, cal_total__isnull=False)
+        .order_by("date")
+    )
+    total_days = range_days
+    logged = len(stats_qs)
 
-        if not logged:
-            return ""
+    if not logged:
+        return None
 
-        def _avg(field):
-            vals = [getattr(s, field) or 0 for s in stats_qs]
-            return round(sum(vals) / len(vals)) if vals else None
+    def _avg(field):
+        vals = [getattr(s, field) or 0 for s in stats_qs]
+        return round(sum(vals) / len(vals)) if vals else None
 
-        avg_cal = _avg("cal_total")
-        avg_prot = _avg("protein_g_total")
-        avg_fiber = _avg("fiber_g_total")
+    avg_cal = _avg("cal_total")
+    avg_prot = _avg("protein_g_total")
+    avg_fiber = _avg("fiber_g_total")
 
-        cal_t = targets.get("calories") if targets else None
-        prot_t = targets.get("protein_g") if targets else None
-        fiber_t = targets.get("fiber_g") if targets else None
-        carbs_t = targets.get("carbs_g") if targets else None
-        fat_t = targets.get("fat_g") if targets else None
+    cal_t = targets.get("calories") if targets else None
+    prot_t = targets.get("protein_g") if targets else None
+    fiber_t = targets.get("fiber_g") if targets else None
+    carbs_t = targets.get("carbs_g") if targets else None
+    fat_t = targets.get("fat_g") if targets else None
 
-        def _days_hit(field, target, pct=0.9):
-            if not target:
-                return None
-            return sum(1 for s in stats_qs if (getattr(s, field) or 0) >= target * pct)
+    def _days_hit(field, target, pct=0.9):
+        if not target:
+            return None
+        return sum(1 for s in stats_qs if (getattr(s, field) or 0) >= target * pct)
 
-        days_hit_cal = _days_hit("cal_total", cal_t, pct=1.0)  # within target (≤110%)
-        # for calories, "hit" means ≤ 110%
-        if cal_t:
-            days_hit_cal = sum(1 for s in stats_qs if s.cal_total and s.cal_total <= cal_t * 1.1)
-        days_hit_prot = _days_hit("protein_g_total", prot_t)
-        days_hit_fiber = _days_hit("fiber_g_total", fiber_t, pct=0.85)
+    days_hit_cal = _days_hit("cal_total", cal_t, pct=1.0)
+    if cal_t:
+        days_hit_cal = sum(1 for s in stats_qs if s.cal_total and s.cal_total <= cal_t * 1.1)
+    days_hit_prot = _days_hit("protein_g_total", prot_t)
+    days_hit_fiber = _days_hit("fiber_g_total", fiber_t, pct=0.85)
 
-        # Weekday vs weekend
-        weekday_cals = [s.cal_total for s in stats_qs if s.date.weekday() < 5 and s.cal_total]
-        weekend_cals = [s.cal_total for s in stats_qs if s.date.weekday() >= 5 and s.cal_total]
-        wd_avg = round(sum(weekday_cals) / len(weekday_cals)) if weekday_cals else None
-        we_avg = round(sum(weekend_cals) / len(weekend_cals)) if weekend_cals else None
+    weekday_cals = [s.cal_total for s in stats_qs if s.date.weekday() < 5 and s.cal_total]
+    weekend_cals = [s.cal_total for s in stats_qs if s.date.weekday() >= 5 and s.cal_total]
+    wd_avg = round(sum(weekday_cals) / len(weekday_cals)) if weekday_cals else None
+    we_avg = round(sum(weekend_cals) / len(weekend_cals)) if weekend_cals else None
 
-        # Weight trend
-        weight_stats = list(
-            DailyStats.objects.filter(date__gte=start, date__lte=today, weight_lb__isnull=False)
-            .order_by("date")
-        )
-        weight_start = weight_stats[0].weight_lb if weight_stats else None
-        weight_end = weight_stats[-1].weight_lb if weight_stats else None
-        if weight_start and weight_end:
-            weight_delta = round(weight_end - weight_start, 1)
-            trend_desc = f"{weight_start:.1f}lb → {weight_end:.1f}lb ({weight_delta:+.1f}lb)"
-        else:
-            trend_desc = "No weight data"
+    weight_stats = list(
+        DailyStats.objects.filter(date__gte=start, date__lte=today, weight_lb__isnull=False)
+        .order_by("date")
+    )
+    weight_start = weight_stats[0].weight_lb if weight_stats else None
+    weight_end = weight_stats[-1].weight_lb if weight_stats else None
+    if weight_start and weight_end:
+        weight_delta = round(weight_end - weight_start, 1)
+        trend_desc = f"{weight_start:.1f}lb → {weight_end:.1f}lb ({weight_delta:+.1f}lb)"
+    else:
+        trend_desc = "No weight data"
 
-        # Top 5 foods
-        top_foods = get_top_foods(start, today, top_n=5)
-        top_food_lines = "\n".join(
-            f"  - {f['name']} (logged {f['count']}x, avg {f['avg_calories']:.0f} kcal, {f['avg_protein_g']:.0f}g P)"
-            for f in top_foods
-        ) if top_foods else "  No data"
+    top_foods = get_top_foods(start, today, top_n=5)
+    top_food_lines = "\n".join(
+        f"  - {f['name']} (logged {f['count']}x, avg {f['avg_calories']:.0f} kcal, {f['avg_protein_g']:.0f}g P)"
+        for f in top_foods
+    ) if top_foods else "  No data"
 
-        # Intervention context
-        iv_ctx = _interventions_context(start, today)
+    iv_ctx = _interventions_context(start, today)
 
-        targets_section = ""
-        if targets:
-            targets_section = f"""TARGETS:
+    targets_section = ""
+    if targets:
+        targets_section = f"""TARGETS:
 - Calories: {cal_t or 'not set'}
 - Protein: {f'{prot_t}g' if prot_t else 'not set'}
 - Carbs: {f'{carbs_t}g' if carbs_t else 'not set'}
@@ -1978,11 +1980,12 @@ def _get_or_generate_nutrition_insights(range_days: int = 30, force: bool = Fals
 
 """
 
-        persona = build_persona_block(date_range=(start, today))
-        tone = coaching_tone_instruction()
-        persona_section = f"\n{persona}" if persona else ""
-        tone_section = f"\n{tone}" if tone else ""
-        prompt = f"""You are analyzing nutrition tracking data.{persona_section}{tone_section}
+    persona = build_persona_block(date_range=(start, today))
+    tone = coaching_tone_instruction()
+    persona_section = f"\n{persona}" if persona else ""
+    tone_section = f"\n{tone}" if tone else ""
+
+    return f"""You are analyzing nutrition tracking data.{persona_section}{tone_section}
 
 {targets_section}LAST {range_days} DAYS (logged {logged}/{total_days} days):
 - Avg calories: {avg_cal or 'n/a'}{f' (hit target {days_hit_cal}/{logged} days)' if days_hit_cal is not None else ''}
@@ -2018,23 +2021,84 @@ Write the analysis in exactly this structure. Write each section as 2-3 sentence
 
 Avoid: generic wellness advice, recommending specific diets, being judgmental, ignoring that they're on medications, any commentary about meal timing or eating windows (food is logged retroactively, so log timestamps do not reflect actual eating times)."""
 
-        return llm.call(prompt, model=llm.SONNET, max_tokens=1400, timeout=60)
 
-    return cached_settings_field(
-        "ai_nutrition_insights", 168, _gen,
-        force=force, extra_save={"ai_nutrition_insights_range": range_days},
-    )
+def _submit_nutrition_insights_batch(range_days: int = 30) -> str:
+    """Submit nutrition insights to Batch API. Saves batch_id to UserSettings. Returns batch_id."""
+    prompt = _build_nutrition_insights_prompt(range_days)
+    if not prompt:
+        raise ValueError("No nutrition data logged for the selected period")
+    batch_id = llm.submit_batch("nutrition_insights", prompt, model=llm.SONNET, max_tokens=1400)
+    settings = UserSettings.get()
+    settings.ai_nutrition_insights_batch_id = batch_id
+    settings.ai_nutrition_insights_range = range_days
+    settings.save(update_fields=["ai_nutrition_insights_batch_id", "ai_nutrition_insights_range"])
+    return batch_id
+
+
+def render_nutrition_insights_partial(request, context):
+    from django.shortcuts import render
+    return render(request, "workouts/partials/nutrition_insights.html", context)
+
+
+def nutrition_insights_check(request):
+    """HTMX poll — check nutrition insights batch status, return rendered HTML partial."""
+    settings = UserSettings.get()
+    batch_id = settings.ai_nutrition_insights_batch_id
+
+    if not batch_id:
+        return render_nutrition_insights_partial(request, {
+            "insights": settings.ai_nutrition_insights,
+            "generated_at": settings.ai_nutrition_insights_generated_at,
+        })
+
+    try:
+        batch = llm.get_batch_status(batch_id)
+    except Exception:
+        return render_nutrition_insights_partial(request, {"pending": True})
+
+    if batch.get("processing_status") != "ended":
+        return render_nutrition_insights_partial(request, {"pending": True})
+
+    try:
+        insights_text = None
+        for row in llm.get_batch_results(batch_id):
+            if row.get("result", {}).get("type") == "succeeded":
+                insights_text = row["result"]["message"]["content"][0]["text"]
+                break
+    except Exception as e:
+        logger.warning("nutrition insights batch results failed for %s: %s", batch_id, e)
+        return render_nutrition_insights_partial(request, {"pending": True})
+
+    if not insights_text:
+        settings.ai_nutrition_insights_batch_id = None
+        settings.save(update_fields=["ai_nutrition_insights_batch_id"])
+        return render_nutrition_insights_partial(request, {
+            "error": "Batch completed but no successful result found."
+        })
+
+    settings.ai_nutrition_insights = insights_text
+    settings.ai_nutrition_insights_generated_at = tz.now()
+    settings.ai_nutrition_insights_batch_id = None
+    settings.save(update_fields=[
+        "ai_nutrition_insights", "ai_nutrition_insights_generated_at", "ai_nutrition_insights_batch_id",
+    ])
+    return render_nutrition_insights_partial(request, {
+        "insights": insights_text,
+        "generated_at": settings.ai_nutrition_insights_generated_at,
+    })
 
 
 def nutrition_insights_refresh(request):
-    """POST /api/nutrition/insights/refresh/ — force-regenerate nutrition insights, return HTML partial."""
+    """POST /api/nutrition/insights/refresh/ — submit new batch, return pending partial."""
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     range_param = request.GET.get("range", "30d")
     range_days = {"7d": 7, "30d": 30, "90d": 90, "1y": 365}.get(range_param, 30)
-    insights = _get_or_generate_nutrition_insights(range_days=range_days, force=True)
-    from django.shortcuts import render as _render
-    return _render(request, "workouts/partials/nutrition_insights.html", {"insights": insights})
+    try:
+        _submit_nutrition_insights_batch(range_days=range_days)
+    except Exception as e:
+        return render_nutrition_insights_partial(request, {"error": f"Failed to submit batch: {e}"})
+    return render_nutrition_insights_partial(request, {"pending": True})
 
 
 # ---------------------------------------------------------------------------
@@ -2161,146 +2225,133 @@ Be specific and data-driven. Avoid generic advice."""
 # Pattern insights — weekly Sonnet deep analysis (Phase 3)
 # ---------------------------------------------------------------------------
 
-def _get_or_generate_pattern_insights(force=False) -> str:
-    """
-    Weekly Sonnet-powered deep pattern analysis across nutrition, weight,
-    recovery, workouts, and symptoms. Cached 7 days in UserSettings.
-    """
-    def _gen():
-        from datetime import date as date_cls, datetime as datetime_cls
-        today = date_cls.today()
-        cutoff_60 = today - timedelta(days=60)
+def _build_pattern_insights_prompt() -> str:
+    """Build the pattern insights prompt from the last 60 days of data."""
+    from datetime import date as date_cls, datetime as datetime_cls
+    today = date_cls.today()
+    cutoff_60 = today - timedelta(days=60)
 
-        def _as_date(v):
-            """Normalize TruncWeek result — DateField→date, DateTimeField→datetime on SQLite."""
-            return v.date() if isinstance(v, datetime_cls) else v
+    def _as_date(v):
+        return v.date() if isinstance(v, datetime_cls) else v
 
-        # ── Weight trend ────────────────────────────────────────────────────
-        weight_rows = list(
-            DailyStats.objects.filter(date__gte=cutoff_60, date__lte=today, weight_lb__isnull=False)
-            .order_by("date").values_list("date", "weight_lb", "fat_ratio_pct", "muscle_mass_lb")
+    weight_rows = list(
+        DailyStats.objects.filter(date__gte=cutoff_60, date__lte=today, weight_lb__isnull=False)
+        .order_by("date").values_list("date", "weight_lb", "fat_ratio_pct", "muscle_mass_lb")
+    )
+    weight_lines = [
+        f"  {d}: {w:.1f} lb"
+        + (f", {f:.1f}% fat" if f else "")
+        + (f", {m:.1f} lb muscle" if m else "")
+        for d, w, f, m in weight_rows
+    ]
+
+    recovery_rows = list(
+        DailyStats.objects.filter(date__gte=cutoff_60, date__lte=today)
+        .annotate(week=TruncWeek("date"))
+        .values("week")
+        .annotate(
+            avg_hrv=Avg("hrv_last_night"),
+            avg_rhr=Avg("resting_hr"),
+            avg_sleep=Avg("sleep_score"),
+            avg_bb=Avg("body_battery_high"),
+            avg_stress=Avg("stress_avg"),
+            avg_readiness=Avg("training_readiness_score"),
         )
-        weight_lines = [
-            f"  {d}: {w:.1f} lb"
-            + (f", {f:.1f}% fat" if f else "")
-            + (f", {m:.1f} lb muscle" if m else "")
-            for d, w, f, m in weight_rows
-        ]
+        .order_by("week")
+    )
+    recovery_full = []
+    for r in recovery_rows:
+        parts = [f"  Week of {_as_date(r['week'])}:"]
+        if r['avg_hrv']: parts.append(f"HRV {r['avg_hrv']:.0f}ms")
+        if r['avg_rhr']: parts.append(f"RHR {r['avg_rhr']:.0f}")
+        if r['avg_sleep']: parts.append(f"sleep score {r['avg_sleep']:.0f}")
+        if r['avg_bb']: parts.append(f"body battery peak {r['avg_bb']:.0f}")
+        if r['avg_stress']: parts.append(f"stress {r['avg_stress']:.0f}")
+        if r['avg_readiness']: parts.append(f"readiness {r['avg_readiness']:.0f}")
+        recovery_full.append(" ".join(parts))
 
-        # ── Recovery metrics (weekly averages) ──────────────────────────────
-        recovery_rows = list(
-            DailyStats.objects.filter(date__gte=cutoff_60, date__lte=today)
-            .annotate(week=TruncWeek("date"))
-            .values("week")
-            .annotate(
-                avg_hrv=Avg("hrv_last_night"),
-                avg_rhr=Avg("resting_hr"),
-                avg_sleep=Avg("sleep_score"),
-                avg_bb=Avg("body_battery_high"),
-                avg_stress=Avg("stress_avg"),
-                avg_readiness=Avg("training_readiness_score"),
+    nutr_rows = list(
+        DailyStats.objects.filter(
+            date__gte=cutoff_60, date__lte=today, cal_total__isnull=False
+        ).order_by("date").values_list("date", "cal_total", "protein_g_total", "fiber_g_total")
+    )
+    nutr_lines = [
+        f"  {d}: {cal:.0f} kcal, {prot:.0f}g protein, {fib:.1f}g fiber"
+        for d, cal, prot, fib in nutr_rows
+        if cal
+    ]
+
+    from .models import HungerCheck
+    hunger_lines = []
+    hunger_rows = list(
+        HungerCheck.objects.filter(date__gte=cutoff_60, context="morning")
+        .annotate(week=TruncWeek("date"))
+        .values("week")
+        .annotate(avg_hunger=Avg("hunger_level"))
+        .order_by("week")
+    )
+    for r in hunger_rows:
+        hunger_lines.append(f"  Week of {_as_date(r['week'])}: avg morning hunger {r['avg_hunger']:.1f}/10")
+
+    from .models import SideEffectLog
+    symptom_lines = []
+    symptom_rows = list(
+        SideEffectLog.objects.filter(date__gte=cutoff_60)
+        .annotate(week=TruncWeek("date"))
+        .values("week", "symptom")
+        .annotate(count=Count("id"), avg_severity=Avg("severity"))
+        .order_by("week", "symptom")
+    )
+    if symptom_rows:
+        by_week: dict = {}
+        for r in symptom_rows:
+            w = str(_as_date(r["week"]))
+            by_week.setdefault(w, []).append(
+                f"{r['symptom']} ×{r['count']} (avg severity {r['avg_severity']:.1f})"
             )
-            .order_by("week")
+        for week, symptoms in sorted(by_week.items()):
+            symptom_lines.append(f"  Week of {week}: {', '.join(symptoms)}")
+
+    from .models import CachedWorkout
+    workout_rows = list(
+        CachedWorkout.objects.filter(
+            created_at__date__gte=cutoff_60,
+            created_at__date__lte=today,
         )
-        recovery_full = []
-        for r in recovery_rows:
-            parts = [f"  Week of {_as_date(r['week'])}:"]
-            if r['avg_hrv']: parts.append(f"HRV {r['avg_hrv']:.0f}ms")
-            if r['avg_rhr']: parts.append(f"RHR {r['avg_rhr']:.0f}")
-            if r['avg_sleep']: parts.append(f"sleep score {r['avg_sleep']:.0f}")
-            if r['avg_bb']: parts.append(f"body battery peak {r['avg_bb']:.0f}")
-            if r['avg_stress']: parts.append(f"stress {r['avg_stress']:.0f}")
-            if r['avg_readiness']: parts.append(f"readiness {r['avg_readiness']:.0f}")
-            recovery_full.append(" ".join(parts))
+        .annotate(week=TruncWeek("created_at"))
+        .values("week")
+        .annotate(count=Count("id"))
+        .order_by("week")
+    )
+    workout_lines = [f"  Week of {_as_date(r['week'])}: {r['count']} workouts" for r in workout_rows]
 
-        # ── Nutrition (daily, last 60 days) ──────────────────────────────────
-        nutr_rows = list(
-            DailyStats.objects.filter(
-                date__gte=cutoff_60, date__lte=today, cal_total__isnull=False
-            ).order_by("date").values_list("date", "cal_total", "protein_g_total", "fiber_g_total")
-        )
-        nutr_lines = [
-            f"  {d}: {cal:.0f} kcal, {prot:.0f}g protein, {fib:.1f}g fiber"
-            for d, cal, prot, fib in nutr_rows
-            if cal
-        ]
+    iv_context = _interventions_context(today - timedelta(days=60), today)
 
-        # ── Hunger patterns (weekly avg morning hunger) ────────────────────
-        from .models import HungerCheck
-        hunger_lines = []
-        hunger_rows = list(
-            HungerCheck.objects.filter(date__gte=cutoff_60, context="morning")
-            .annotate(week=TruncWeek("date"))
-            .values("week")
-            .annotate(avg_hunger=Avg("hunger_level"))
-            .order_by("week")
-        )
-        for r in hunger_rows:
-            hunger_lines.append(f"  Week of {_as_date(r['week'])}: avg morning hunger {r['avg_hunger']:.1f}/10")
+    sections = [
+        "WEIGHT & BODY COMPOSITION (last 60 days — daily)",
+        "\n".join(weight_lines) if weight_lines else "  No weight data",
+        "",
+        "RECOVERY METRICS (weekly averages)",
+        "\n".join(recovery_full) if recovery_full else "  No recovery data",
+        "",
+        "NUTRITION (daily logged days)",
+        "\n".join(nutr_lines[-30:]) if nutr_lines else "  No nutrition data logged",
+        "",
+    ]
+    if hunger_lines:
+        sections += ["HUNGER PATTERNS (weekly avg morning hunger)", "\n".join(hunger_lines), ""]
+    if symptom_lines:
+        sections += ["SIDE EFFECTS (weekly counts)", "\n".join(symptom_lines), ""]
+    if workout_lines:
+        sections += ["WORKOUT VOLUME (weekly)", "\n".join(workout_lines), ""]
+    if iv_context:
+        sections += ["INTERVENTIONS & MEDICATIONS", iv_context, ""]
 
-        # ── Side effects (weekly counts) ─────────────────────────────────────
-        from .models import SideEffectLog
-        symptom_lines = []
-        symptom_rows = list(
-            SideEffectLog.objects.filter(date__gte=cutoff_60)
-            .annotate(week=TruncWeek("date"))
-            .values("week", "symptom")
-            .annotate(count=Count("id"), avg_severity=Avg("severity"))
-            .order_by("week", "symptom")
-        )
-        if symptom_rows:
-            by_week: dict = {}
-            for r in symptom_rows:
-                w = str(_as_date(r["week"]))
-                by_week.setdefault(w, []).append(
-                    f"{r['symptom']} ×{r['count']} (avg severity {r['avg_severity']:.1f})"
-                )
-            for week, symptoms in sorted(by_week.items()):
-                symptom_lines.append(f"  Week of {week}: {', '.join(symptoms)}")
+    data_block = "\n".join(sections)
+    persona = build_persona_block(date_range=(today - timedelta(days=60), today))
+    persona_section = f"\n{persona}" if persona else ""
 
-        # ── Workouts (weekly volume) ─────────────────────────────────────────
-        from .models import CachedWorkout
-        workout_rows = list(
-            CachedWorkout.objects.filter(
-                created_at__date__gte=cutoff_60,
-                created_at__date__lte=today,
-            )
-            .annotate(week=TruncWeek("created_at"))
-            .values("week")
-            .annotate(count=Count("id"))
-            .order_by("week")
-        )
-        workout_lines = [f"  Week of {_as_date(r['week'])}: {r['count']} workouts" for r in workout_rows]
-
-        # ── Interventions ────────────────────────────────────────────────────
-        iv_context = _interventions_context(today - timedelta(days=60), today)
-
-        # ── Build prompt ──────────────────────────────────────────────────────
-        sections = [
-            "WEIGHT & BODY COMPOSITION (last 60 days — daily)",
-            "\n".join(weight_lines) if weight_lines else "  No weight data",
-            "",
-            "RECOVERY METRICS (weekly averages)",
-            "\n".join(recovery_full) if recovery_full else "  No recovery data",
-            "",
-            "NUTRITION (daily logged days)",
-            "\n".join(nutr_lines[-30:]) if nutr_lines else "  No nutrition data logged",
-            "",
-        ]
-        if hunger_lines:
-            sections += ["HUNGER PATTERNS (weekly avg morning hunger)", "\n".join(hunger_lines), ""]
-        if symptom_lines:
-            sections += ["SIDE EFFECTS (weekly counts)", "\n".join(symptom_lines), ""]
-        if workout_lines:
-            sections += ["WORKOUT VOLUME (weekly)", "\n".join(workout_lines), ""]
-        if iv_context:
-            sections += ["INTERVENTIONS & MEDICATIONS", iv_context, ""]
-
-        data_block = "\n".join(sections)
-        persona = build_persona_block(date_range=(today - timedelta(days=60), today))
-        persona_section = f"\n{persona}" if persona else ""
-
-        prompt = f"""You are analyzing up to 60 days of integrated health data. Find non-obvious patterns the user might miss.{persona_section}
+    return f"""You are analyzing up to 60 days of integrated health data. Find non-obvious patterns the user might miss.{persona_section}
 
 {data_block}
 
@@ -2329,46 +2380,96 @@ One hypothesis they could actively test in the next 2 weeks.
 
 Be specific and data-driven. Avoid generic advice. Do not recommend medical decisions. 3–5 patterns only — quality over quantity."""
 
-        return llm.call(prompt, model=llm.SONNET, max_tokens=1800, timeout=90)
 
-    return cached_settings_field("ai_pattern_insights", 168, _gen, force=force)
+def _submit_pattern_insights_batch() -> str:
+    """Submit pattern insights to Batch API. Saves batch_id to UserSettings. Returns batch_id."""
+    prompt = _build_pattern_insights_prompt()
+    batch_id = llm.submit_batch("pattern_insights", prompt, model=llm.SONNET, max_tokens=1800)
+    settings = UserSettings.get()
+    settings.ai_pattern_insights_batch_id = batch_id
+    settings.save(update_fields=["ai_pattern_insights_batch_id"])
+    return batch_id
+
+
+def render_pattern_insights_partial(request, context):
+    from django.shortcuts import render
+    return render(request, "workouts/partials/pattern_insights.html", context)
+
+
+def pattern_insights_check(request):
+    """HTMX poll — check pattern insights batch status, return rendered HTML partial."""
+    settings = UserSettings.get()
+    batch_id = settings.ai_pattern_insights_batch_id
+
+    if not batch_id:
+        return render_pattern_insights_partial(request, {
+            "insights": settings.ai_pattern_insights,
+            "generated_at": settings.ai_pattern_insights_generated_at,
+        })
+
+    try:
+        batch = llm.get_batch_status(batch_id)
+    except Exception:
+        return render_pattern_insights_partial(request, {"pending": True})
+
+    if batch.get("processing_status") != "ended":
+        return render_pattern_insights_partial(request, {"pending": True})
+
+    try:
+        insights_text = None
+        for row in llm.get_batch_results(batch_id):
+            if row.get("result", {}).get("type") == "succeeded":
+                insights_text = row["result"]["message"]["content"][0]["text"]
+                break
+    except Exception as e:
+        logger.warning("pattern insights batch results failed for %s: %s", batch_id, e)
+        return render_pattern_insights_partial(request, {"pending": True})
+
+    if not insights_text:
+        settings.ai_pattern_insights_batch_id = None
+        settings.save(update_fields=["ai_pattern_insights_batch_id"])
+        return render_pattern_insights_partial(request, {
+            "error": "Batch completed but no successful result found."
+        })
+
+    settings.ai_pattern_insights = insights_text
+    settings.ai_pattern_insights_generated_at = tz.now()
+    settings.ai_pattern_insights_batch_id = None
+    settings.save(update_fields=[
+        "ai_pattern_insights", "ai_pattern_insights_generated_at", "ai_pattern_insights_batch_id",
+    ])
+    return render_pattern_insights_partial(request, {
+        "insights": insights_text,
+        "generated_at": settings.ai_pattern_insights_generated_at,
+    })
 
 
 def pattern_insights_refresh(request):
-    """POST — force-refresh pattern insights; returns rendered HTML fragment."""
+    """POST — submit new pattern insights batch; returns pending HTML fragment."""
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    insights = _get_or_generate_pattern_insights(force=True)
-    from django.shortcuts import render as _render
-    return _render(request, "workouts/partials/pattern_insights.html", {"insights": insights})
+    try:
+        _submit_pattern_insights_batch()
+    except Exception as e:
+        return render_pattern_insights_partial(request, {"error": f"Failed to submit batch: {e}"})
+    return render_pattern_insights_partial(request, {"pending": True})
 
 
 # ---------------------------------------------------------------------------
 # Weekly review — Claude Sonnet, cached per calendar week
 # ---------------------------------------------------------------------------
 
-def _get_or_generate_weekly_review(week_start, force: bool = False):
-    """
-    Generate (or return cached) a WeeklyReview for the given Monday week_start.
-    Returns the WeeklyReview instance, or None on failure.
-    """
+def _build_weekly_review_prompt(week_start) -> str:
+    """Build the weekly review prompt for the given Monday week_start."""
     from datetime import timedelta
     from .models import WeeklyReview, CachedWorkout, DailyStats, HungerCheck, SideEffectLog
 
-    if not force:
-        try:
-            return WeeklyReview.objects.get(week_start=week_start)
-        except WeeklyReview.DoesNotExist:
-            pass
-
     week_end = week_start + timedelta(days=6)
 
-    # --- Weight & body comp ---
     daily_qs = DailyStats.objects.filter(date__gte=week_start, date__lte=week_end)
     weights = [(d.date.isoformat(), round(d.weight_lb, 1)) for d in daily_qs if d.weight_lb]
     weight_lines = "\n".join(f"  {d}: {w} lb" for d, w in weights) if weights else "  (no data)"
 
-    # Prior week weight for comparison
     prior_end = week_start - timedelta(days=1)
     prior_start = week_start - timedelta(days=7)
     prior_weights = list(DailyStats.objects.filter(
@@ -2381,7 +2482,6 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
         diff = current_avg - prior_avg
         weight_change_str = f"  Week avg: {current_avg:.1f} lb vs prior week avg {prior_avg:.1f} lb ({diff:+.1f} lb)"
 
-    # --- Nutrition ---
     nutrition_rows = []
     for d in daily_qs:
         if d.cal_total:
@@ -2392,7 +2492,6 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
             )
     nutrition_str = "\n".join(nutrition_rows) if nutrition_rows else "  (no nutrition data logged)"
 
-    # Targets for context
     try:
         from .models import NutritionProfile
         from .nutrition import compute_macro_targets
@@ -2408,7 +2507,6 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
     except Exception:
         target_str = "  (targets unavailable)"
 
-    # --- Workouts ---
     workouts = list(CachedWorkout.objects.filter(
         created_at__date__gte=week_start, created_at__date__lte=week_end
     ).order_by("created_at"))
@@ -2424,7 +2522,6 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
         workout_lines.append("  " + " · ".join(parts_w))
     workouts_str = "\n".join(workout_lines) if workout_lines else "  (no workouts)"
 
-    # --- Recovery averages ---
     hrv_vals = [d.hrv_last_night for d in daily_qs if d.hrv_last_night]
     sleep_vals = [d.sleep_seconds / 3600 for d in daily_qs if d.sleep_seconds]
     rhr_vals = [d.resting_hr for d in daily_qs if d.resting_hr]
@@ -2432,10 +2529,12 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
     hrv_str = f", avg HRV: {sum(hrv_vals)/len(hrv_vals):.0f} ms" if hrv_vals else ""
     rhr_str = f", avg RHR: {sum(rhr_vals)/len(rhr_vals):.0f} bpm" if rhr_vals else ""
 
-    # --- Hunger & symptoms ---
     hunger_qs = HungerCheck.objects.filter(date__gte=week_start, date__lte=week_end)
     morning_hunger = [h.hunger_level for h in hunger_qs if h.context == "morning"]
-    hunger_str = f"  Morning hunger avg: {sum(morning_hunger)/len(morning_hunger):.1f}/10" if morning_hunger else "  Morning hunger: (not tracked)"
+    hunger_str = (
+        f"  Morning hunger avg: {sum(morning_hunger)/len(morning_hunger):.1f}/10"
+        if morning_hunger else "  Morning hunger: (not tracked)"
+    )
 
     symptoms_qs = SideEffectLog.objects.filter(date__gte=week_start, date__lte=week_end)
     symptom_counts: dict = {}
@@ -2446,12 +2545,12 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
         if symptom_counts else "  (none logged)"
     )
 
-    # --- Active interventions ---
     interventions_ctx = _interventions_context(week_start, week_end)
 
     persona = build_persona_block(date_range=(week_start, week_end))
     persona_section = f"\n{persona}" if persona else ""
-    prompt = f"""You are reviewing someone's health and fitness week ({week_start} to {week_end}).{persona_section}
+
+    return f"""You are reviewing someone's health and fitness week ({week_start} to {week_end}).{persona_section}
 
 WEIGHT THIS WEEK:
 {weight_lines}
@@ -2497,16 +2596,89 @@ One specific, actionable thing to improve next week.
 
 Use **bold** for emphasis. Be direct, specific, and data-driven. Skip sections where there's no data. Keep the whole review under 500 words."""
 
-    try:
-        content = llm.call(prompt, model=llm.SONNET, max_tokens=1200, timeout=60)
 
-        review, _ = WeeklyReview.objects.update_or_create(
-            week_start=week_start,
-            defaults={"content": content, "ai_model": llm.SONNET},
-        )
-        return review
+def _submit_weekly_review_batch(week_start):
+    """Submit weekly review to Batch API. Creates/updates WeeklyReview with batch_id. Returns instance."""
+    from .models import WeeklyReview
+    prompt = _build_weekly_review_prompt(week_start)
+    batch_id = llm.submit_batch("weekly_review", prompt, model=llm.SONNET, max_tokens=1200)
+    review, _ = WeeklyReview.objects.update_or_create(
+        week_start=week_start,
+        defaults={"content": "", "ai_model": llm.SONNET, "batch_id": batch_id},
+    )
+    return review
+
+
+def weekly_review_check(request):
+    """HTMX poll — check weekly review batch status, return rendered HTML."""
+    import datetime as _dt
+    from django.shortcuts import render as _render
+    from .models import WeeklyReview
+
+    week_str = request.GET.get("week", "")
+    try:
+        week_start = _dt.date.fromisoformat(week_str)
+        review = WeeklyReview.objects.get(week_start=week_start)
+    except (ValueError, WeeklyReview.DoesNotExist):
+        return HttpResponse("Week not found.", status=404)
+
+    def _pending():
+        return _render(request, "workouts/partials/weekly_review_content.html", {
+            "pending": True, "week_start": week_start,
+        })
+
+    if not review.batch_id:
+        return _render(request, "workouts/partials/weekly_review_content.html", {"review": review})
+
+    try:
+        batch = llm.get_batch_status(review.batch_id)
+    except Exception:
+        return _pending()
+
+    if batch.get("processing_status") != "ended":
+        return _pending()
+
+    try:
+        content = None
+        for row in llm.get_batch_results(review.batch_id):
+            if row.get("result", {}).get("type") == "succeeded":
+                content = row["result"]["message"]["content"][0]["text"]
+                break
     except Exception as e:
-        logger.warning("Weekly review generation failed: %s", e)
+        logger.warning("weekly review batch results failed for %s: %s", review.batch_id, e)
+        return _pending()
+
+    if not content:
+        WeeklyReview.objects.filter(week_start=week_start).update(batch_id=None)
+        return _render(request, "workouts/partials/weekly_review_content.html", {
+            "error": "Batch completed but no result found.", "week_start": week_start,
+        })
+
+    WeeklyReview.objects.filter(week_start=week_start).update(content=content, batch_id=None)
+    review.refresh_from_db()
+    return _render(request, "workouts/partials/weekly_review_content.html", {"review": review})
+
+
+def _get_or_generate_weekly_review(week_start, force: bool = False):
+    """
+    Return a WeeklyReview for the given Monday week_start.
+    If missing (or force), submits a batch and returns a pending WeeklyReview.
+    Returns the WeeklyReview instance, or None on failure.
+    """
+    from .models import WeeklyReview
+
+    if not force:
+        try:
+            existing = WeeklyReview.objects.get(week_start=week_start)
+            if existing.content or existing.batch_id:
+                return existing
+        except WeeklyReview.DoesNotExist:
+            pass
+
+    try:
+        return _submit_weekly_review_batch(week_start)
+    except Exception as e:
+        logger.warning("Weekly review batch submit failed: %s", e)
         try:
             return WeeklyReview.objects.get(week_start=week_start)
         except WeeklyReview.DoesNotExist:

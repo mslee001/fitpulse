@@ -158,8 +158,10 @@ class UserSettings(models.Model):
     ai_nutrition_insights = models.TextField(null=True, blank=True)
     ai_nutrition_insights_generated_at = models.DateTimeField(null=True, blank=True)
     ai_nutrition_insights_range = models.IntegerField(null=True, blank=True)
+    ai_nutrition_insights_batch_id = models.CharField(max_length=128, null=True, blank=True)
     ai_pattern_insights = models.TextField(null=True, blank=True)
     ai_pattern_insights_generated_at = models.DateTimeField(null=True, blank=True)
+    ai_pattern_insights_batch_id = models.CharField(max_length=128, null=True, blank=True)
 
     @classmethod
     def get(cls):
@@ -831,9 +833,10 @@ class TargetAdjustment(models.Model):
 class WeeklyReview(models.Model):
     """AI-generated weekly review covering weight, nutrition, workouts, and habits."""
     week_start    = models.DateField(unique=True)
-    content       = models.TextField()
+    content       = models.TextField(blank=True, default="")
     generated_at  = models.DateTimeField(auto_now_add=True)
     ai_model      = models.CharField(max_length=64, default="claude-sonnet-4-6")
+    batch_id      = models.CharField(max_length=128, null=True, blank=True)
 
     class Meta:
         ordering = ["-week_start"]

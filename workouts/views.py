@@ -20,7 +20,6 @@ from django.views.decorators.http import require_POST
 
 from .ai import (
     _get_or_generate_day_analysis, _slug_peloton_avg, _get_or_generate_body_commentary,
-    _get_or_generate_nutrition_insights,
 )
 from .models import (
     CachedWorkout, DailyStats, Intervention, SavedAnalysis, UserSettings,
@@ -2530,10 +2529,25 @@ def nutrition_analytics_page(request):
         .order_by("-count")
     )
 
-    # AI insights — generate on load if cache is missing or expired (>7 days)
-    insights = _get_or_generate_nutrition_insights(range_days=range_days)
-    from django.utils import timezone as _tz
+    # AI insights — auto-submit batch if cache is stale and no batch already pending
+    import os as _os
+    from .ai import _submit_nutrition_insights_batch
     _s = UserSettings.get()
+    _api_key = _os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if _api_key and not _s.ai_nutrition_insights_batch_id:
+        _stale = (
+            not _s.ai_nutrition_insights_generated_at
+            or (datetime.date.today() - _s.ai_nutrition_insights_generated_at.date()).days >= 7
+            or _s.ai_nutrition_insights_range != range_days
+        )
+        if _stale:
+            try:
+                _submit_nutrition_insights_batch(range_days=range_days)
+                _s.refresh_from_db()
+            except Exception as _e:
+                logger.warning("Auto nutrition insights batch submit failed: %s", _e)
+    insights_pending = bool(_s.ai_nutrition_insights_batch_id)
+    insights = _s.ai_nutrition_insights
     insights_generated_at = _s.ai_nutrition_insights_generated_at if insights else None
 
     return render(request, "workouts/nutrition_analytics.html", {
@@ -2564,6 +2578,7 @@ def nutrition_analytics_page(request):
         "symptom_summary": symptom_summary,
         "insights": insights,
         "insights_generated_at": insights_generated_at,
+        "insights_pending": insights_pending,
     })
 
 
@@ -2681,22 +2696,28 @@ def symptoms_page(request):
 # ---------------------------------------------------------------------------
 
 def insights_page(request):
-    """GET — display Sonnet pattern insights. On load, generate if cache expired."""
-    from .ai import _get_or_generate_pattern_insights
+    """GET — display Sonnet pattern insights. On load, submit batch if cache expired."""
+    import os as _os
+    from .ai import _submit_pattern_insights_batch
     settings = UserSettings.get()
+    _api_key = _os.environ.get("ANTHROPIC_API_KEY", "").strip()
 
-    # Auto-generate on page load if missing or >7 days old
-    insights = None
-    generated_at = None
-    try:
-        insights = _get_or_generate_pattern_insights(force=False)
-        generated_at = settings.ai_pattern_insights_generated_at
-    except Exception as e:
-        logger.warning("insights_page: pattern generation failed: %s", e)
+    if _api_key and not settings.ai_pattern_insights_batch_id:
+        _stale = (
+            not settings.ai_pattern_insights_generated_at
+            or (datetime.date.today() - settings.ai_pattern_insights_generated_at.date()).days >= 7
+        )
+        if _stale:
+            try:
+                _submit_pattern_insights_batch()
+                settings.refresh_from_db()
+            except Exception as e:
+                logger.warning("insights_page: pattern batch submit failed: %s", e)
 
     return render(request, "workouts/insights.html", {
-        "insights": insights,
-        "generated_at": generated_at,
+        "insights": settings.ai_pattern_insights,
+        "generated_at": settings.ai_pattern_insights_generated_at,
+        "insights_pending": bool(settings.ai_pattern_insights_batch_id),
     })
 
 
@@ -2817,11 +2838,9 @@ def weekly_review_page(request):
     from .models import WeeklyReview
     from .ai import _get_or_generate_weekly_review
 
-    # Most recently completed Mon–Sun week
     today = datetime.date.today()
     days_since_monday = today.weekday()  # Mon=0
     if days_since_monday == 0:
-        # Today is Monday — show the week that just ended (last week)
         last_monday = today - datetime.timedelta(days=7)
     else:
         last_monday = today - datetime.timedelta(days=days_since_monday + 7)
@@ -2829,7 +2848,12 @@ def weekly_review_page(request):
     force = request.GET.get("refresh") == "1"
     current_review = _get_or_generate_weekly_review(last_monday, force=force)
 
-    archive = list(WeeklyReview.objects.exclude(week_start=last_monday).order_by("-week_start")[:12])
+    archive = list(
+        WeeklyReview.objects.exclude(week_start=last_monday)
+        .filter(batch_id__isnull=True)
+        .exclude(content="")
+        .order_by("-week_start")[:12]
+    )
 
     return render(request, "workouts/review.html", {
         "current_review": current_review,

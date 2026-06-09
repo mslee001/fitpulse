@@ -179,9 +179,9 @@ Requires `ANTHROPIC_API_KEY` in `.env`. All AI calls use the Anthropic API direc
 | Intervention interpretation | Trends page | claude-sonnet-4-6 | Saved with analysis |
 | Food parsing | Nutrition log | claude-haiku-4-5 | On-demand |
 | Meal suggestions | Nutrition log | claude-haiku-4-5 | On-demand |
-| Nutrition analytics insights | Nutrition analytics | claude-sonnet-4-6 | 7 days |
-| Pattern insights | Insights page | claude-sonnet-4-6 | 7 days |
-| Weekly review | Weekly Review page | claude-sonnet-4-6 | Per week |
+| Nutrition analytics insights | Nutrition analytics | claude-sonnet-4-6 (Batch API) | 7 days |
+| Pattern insights | Insights page | claude-sonnet-4-6 (Batch API) | 7 days |
+| Weekly review | Weekly Review page | claude-sonnet-4-6 (Batch API) | Per week |
 
 The next-workout recommendation only generates after Garmin wellness has synced for the day. Use the **Get Rec** / **Refresh** button in the calendar sidebar to generate or update it (useful before and after a workout to see how the recommendation changes).
 

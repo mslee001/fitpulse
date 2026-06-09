@@ -24,7 +24,9 @@ from .sync import (
 from .ai import (
     analytics_generate_insights, analytics_check_insights,
     next_workout_refresh, compare_analysis, body_commentary_refresh,
-    nutrition_insights_refresh, pattern_insights_refresh,
+    nutrition_insights_refresh, nutrition_insights_check,
+    pattern_insights_refresh, pattern_insights_check,
+    weekly_review_check,
 )
 
 urlpatterns = [
@@ -85,6 +87,7 @@ urlpatterns = [
     path("nutrition/api/edit/<int:pk>/", nutrition_edit_api, name="nutrition_edit"),
     path("nutrition/analytics/", nutrition_analytics_page, name="nutrition_analytics"),
     path("api/nutrition/insights/refresh/", nutrition_insights_refresh, name="nutrition_insights_refresh"),
+    path("api/nutrition/insights/check/", nutrition_insights_check, name="nutrition_insights_check"),
     path("nutrition/api/save-suggestion/", nutrition_save_suggestion_api, name="nutrition_save_suggestion"),
     # Phase 3
     path("nutrition/api/hunger/log/", hunger_log_api, name="hunger_log"),
@@ -92,6 +95,8 @@ urlpatterns = [
     path("insights/", insights_page, name="insights"),
     path("nutrition/targets/accept/", target_accept_api, name="target_accept"),
     path("api/insights/refresh/", pattern_insights_refresh, name="pattern_insights_refresh"),
+    path("api/insights/check/", pattern_insights_check, name="pattern_insights_check"),
     # Weekly review
     path("review/", weekly_review_page, name="weekly_review"),
+    path("api/weekly-review/check/", weekly_review_check, name="weekly_review_check"),
 ]

@@ -22,13 +22,19 @@
           <div class="section-title" style="margin-bottom:0.15rem">
             WEEK OF {{ current_review.week_start|date:"M j" }} – {{ current_review.week_end|date:"M j, Y" }}
           </div>
+          {% if not current_review.batch_id %}
           <div style="font-size:0.75rem;color:var(--text-dim)">Generated {{ current_review.generated_at|date:"M j, Y g:i A" }}</div>
+          {% endif %}
         </div>
+        {% if not current_review.batch_id %}
         <a href="{% url 'weekly_review' %}?refresh=1" class="btn btn-ghost btn-sm">↺ Regenerate</a>
+        {% endif %}
       </div>
-      <div class="insights-item" style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">
-        {{ current_review.content|format_nutrition_insights }}
-      </div>
+      {% if current_review.batch_id %}
+        {% include "workouts/partials/weekly_review_content.html" with pending=True week_start=current_review.week_start %}
+      {% else %}
+        {% include "workouts/partials/weekly_review_content.html" with review=current_review %}
+      {% endif %}
     </div>
     {% else %}
     <div class="card" style="margin-bottom:1.5rem">
