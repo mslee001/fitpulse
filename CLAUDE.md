@@ -1,4 +1,4 @@
-# CLAUDE.md — Cadence
+# CLAUDE.md — FitPulse
 
 A Django app (renamed from "Peloton Dashboard") that pulls workout data from Peloton, Garmin Connect, and Withings and displays it in a personal dashboard.
 
@@ -26,7 +26,7 @@ workouts/                # Main app
     withings_login.py       # One-time interactive Withings OAuth flow
     analyze_intervention.py # Before/after analysis across wellness + body composition
 templates/workouts/
-  base.html              # Shared layout — nav brand is "CADENCE"
+  base.html              # Shared layout — nav brand is "FITPULSE"
   dashboard.html         # Overview: total workouts, discipline breakdown
   history.html           # Filterable/sortable workout list
   detail_base.html       # Shared detail page layout — sidebar, PR banner, class info; all detail pages extend this
@@ -72,7 +72,7 @@ static/css/main.css      # All styles — single flat file, CSS variables
 ### Auth
 - **Peloton**: session cookie (`peloton_session_id`) from browser DevTools. `/auth/login` is dead (403).
 - **Garmin**: `garminconnect` lib from `zpython-garminconnect-master/`. First-time: `venv/bin/python3 manage.py garmin_login`. Tokens saved to `~/.garminconnect/` and auto-refresh. Never attempt password login from a web request.
-- **Withings**: OAuth 2.0. First-time: `venv/bin/python3 manage.py withings_login`. Tokens saved to `~/.cadence/withings_tokens.json` (0o600). Auto-refreshes 5 min before expiry. Credentials in `.env`: `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET`, `WITHINGS_REDIRECT_URI`.
+- **Withings**: OAuth 2.0. First-time: `venv/bin/python3 manage.py withings_login`. Tokens saved to `~/.fitpulse/withings_tokens.json` (0o600). Auto-refreshes 5 min before expiry. Credentials in `.env`: `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET`, `WITHINGS_REDIRECT_URI`.
 - **Python**: venv uses Python 3.14 (Homebrew). Always `venv/bin/python3 manage.py ...`.
 
 ### Local Cache (`CachedWorkout`)

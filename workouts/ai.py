@@ -1,5 +1,5 @@
 """
-AI integration for Cadence.
+AI integration for FitPulse.
 
 Contains all Anthropic API calls, prompt construction, and caching logic for:
   - Analytics insights (batch API, Claude Sonnet, cached 7 days)

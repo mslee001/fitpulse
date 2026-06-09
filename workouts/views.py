@@ -1,5 +1,5 @@
 """
-Page views for Cadence.
+Page views for FitPulse.
 
 Each function here corresponds to a URL and renders an HTML response.
 Sync endpoints live in sync.py; AI helpers live in ai.py.

@@ -1,4 +1,4 @@
-# Cadence — Console Command Reference
+# FitPulse — Console Command Reference
 
 All Python commands use the venv. Prefix every `manage.py` or `-c` invocation with:
 ```

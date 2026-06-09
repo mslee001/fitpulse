@@ -1,6 +1,6 @@
 """One-time interactive Withings OAuth2 authentication.
 
-Run this once from the terminal to save tokens to ~/.cadence/withings_tokens.json.
+Run this once from the terminal to save tokens to ~/.fitpulse/withings_tokens.json.
 After that, the sync views use the cached tokens automatically (auto-refresh on expiry).
 
 Usage:

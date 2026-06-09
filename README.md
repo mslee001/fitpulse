@@ -1,4 +1,4 @@
-# Cadence
+# FitPulse
 
 A personal fitness dashboard built with Django. Syncs workout data from Peloton and Garmin Connect to a local SQLite cache and surfaces detailed stats, charts, and AI-powered insights that the default apps don't provide.
 
@@ -98,7 +98,7 @@ If you have a Withings scale and want body composition data:
 venv/bin/python3 manage.py withings_login
 ```
 
-Tokens are saved to `~/.cadence/withings_tokens.json` and auto-refresh.
+Tokens are saved to `~/.fitpulse/withings_tokens.json` and auto-refresh.
 
 **7. Start the server**
 

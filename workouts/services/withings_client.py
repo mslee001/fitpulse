@@ -9,7 +9,7 @@ Credentials come from environment variables:
     WITHINGS_CLIENT_SECRET
     WITHINGS_REDIRECT_URI
 
-Token file: ~/.cadence/withings_tokens.json
+Token file: ~/.fitpulse/withings_tokens.json
 """
 
 import json
@@ -43,7 +43,7 @@ AUTH_URL = "https://account.withings.com/oauth2_user/authorize2"
 TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2"
 MEASURE_URL = "https://wbsapi.withings.net/measure"
 
-DEFAULT_TOKEN_PATH = os.path.expanduser("~/.cadence/withings_tokens.json")
+DEFAULT_TOKEN_PATH = os.path.expanduser("~/.fitpulse/withings_tokens.json")
 
 
 class WithingsClient:

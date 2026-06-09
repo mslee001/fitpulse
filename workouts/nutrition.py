@@ -1,5 +1,5 @@
 """
-Macro target calculator, daily nutrition rollup, and analytics helpers for Cadence.
+Macro target calculator, daily nutrition rollup, and analytics helpers for FitPulse.
 """
 
 import statistics
