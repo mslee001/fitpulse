@@ -1,0 +1,749 @@
+{% extends "workouts/detail_base.html" %}
+{% load workout_filters %}
+
+{% block discipline_tag %}🚶 Walk{% endblock %}
+{% block page_title %}{{ workout.title|default:"Walking Workout" }}{% endblock %}
+{% block pr_sub %}{% if workout_detail.total_work %}<div class="pr-banner-sub">Total work: {{ workout_detail.total_work|floatformat:0 }} kJ</div>{% endif %}{% endblock %}
+
+{% block detail_main %}
+    <!-- Key metrics -->
+    <div class="metrics-grid">
+      {% if workout_detail.leaderboard_rank and workout_detail.total_leaderboard_users %}
+      <div class="metric-card">
+        <div class="metric-label">Leaderboard</div>
+        <div class="metric-value" style="color:var(--accent-alt)">#{{ workout_detail.leaderboard_rank }}</div>
+        <div class="metric-sub">of {{ workout_detail.total_leaderboard_users }}</div>
+      </div>
+      {% endif %}
+      {% if pace_level %}
+      <div class="metric-card">
+        <div class="metric-label">Pace Level</div>
+        <div class="metric-value">{{ pace_level }}</div>
+      </div>
+      {% endif %}
+      {% if workout.avg_pace_seconds %}
+      <div class="metric-card metric-card--hero">
+        <div class="metric-label">Avg Pace</div>
+        <div class="metric-value">{{ workout.avg_pace_display }}</div>
+        {% if type_stats.best_pace and type_stats.best_pace != workout.avg_pace_seconds %}
+        <div class="metric-sub">Best: {{ type_stats.best_pace|format_pace }}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% with dist=perf_summaries.distance %}
+      <div class="metric-card">
+        <div class="metric-label">Distance</div>
+        <div class="metric-value">
+          {% if dist %}{{ dist.value|floatformat:2 }}{% elif workout.distance_miles %}{{ workout.distance_miles|floatformat:2 }}{% else %}—{% endif %}<span class="metric-unit">mi</span>
+        </div>
+        {% if type_stats.max_distance %}<div class="metric-sub">Best: {{ type_stats.max_distance|floatformat:2 }} mi</div>{% endif %}
+      </div>
+      {% endwith %}
+      {% if effort_zones.total_effort_points %}
+      <div class="metric-card metric-card--hero effort-pts-card">
+        <div class="metric-label">Effort Points</div>
+        <div class="metric-value effort-pts-value">{{ effort_zones.total_effort_points|floatformat:1 }}</div>
+      </div>
+      {% endif %}
+      {% with elev=perf_summaries.elevation %}
+      {% if elev or workout.elevation_gain %}
+      <div class="metric-card">
+        <div class="metric-label">Elevation</div>
+        <div class="metric-value">
+          {% if elev %}{{ elev.value|floatformat:0 }}{% else %}{{ workout.elevation_gain|floatformat:0 }}{% endif %}<span class="metric-unit">ft</span>
+        </div>
+      </div>
+      {% endif %}
+      {% endwith %}
+      {% if workout.heart_rate_avg %}
+      <div class="metric-card">
+        <div class="metric-label">Avg HR</div>
+        <div class="metric-value">{{ workout.heart_rate_avg|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      </div>
+      {% endif %}
+      {% if workout.heart_rate_max %}
+      <div class="metric-card">
+        <div class="metric-label">Max HR</div>
+        <div class="metric-value">{{ workout.heart_rate_max|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      </div>
+      {% endif %}
+      {% if workout.calories %}
+      <div class="metric-card">
+        <div class="metric-label">Calories</div>
+        <div class="metric-value">{{ workout.calories|floatformat:0 }}</div>
+      </div>
+      {% endif %}
+      {% if workout.avg_incline %}
+      <div class="metric-card">
+        <div class="metric-label">Avg Incline</div>
+        <div class="metric-value">{{ workout.avg_incline|floatformat:1 }}<span class="metric-unit">%</span></div>
+        {% if workout.max_incline %}<div class="metric-sub">Max: {{ workout.max_incline|floatformat:1 }}%</div>{% endif %}
+      </div>
+      {% endif %}
+      {% with out=perf_summaries.total_output %}
+      {% if out %}
+      <div class="metric-card">
+        <div class="metric-label">Total Output</div>
+        <div class="metric-value">{{ out.value|floatformat:0 }}<span class="metric-unit">kj</span></div>
+      </div>
+      {% endif %}
+      {% endwith %}
+    </div>
+
+    <!-- Performance chart -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">PERFORMANCE OVER TIME</h3>
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <div class="chart-toggles" id="chartToggles"></div>
+          <button id="resetZoomBtn" class="btn btn-sm btn-ghost" style="display:none">Reset zoom</button>
+        </div>
+      </div>
+      <canvas id="perfChart" height="110"></canvas>
+      <div id="metricSummary" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;" id="metricSummaryInner"></div>
+      </div>
+    </div>
+
+    <!-- HR zone breakdown -->
+    <div class="chart-card" id="hrZoneCard" style="display:none">
+      <div class="chart-header">
+        <h3 class="chart-title">HEART RATE ZONES</h3>
+      </div>
+      <div class="hr-zones" id="hrZoneBreakdown"></div>
+      <div id="hrZoneRanges"></div>
+    </div>
+
+    <!-- Mile splits -->
+    {% if splits %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">MILE SPLITS</h3>
+      </div>
+      <div class="splits-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mile</th>
+              {% for key in split_keys %}
+              <th>{{ split_col_labels|get_item:key }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for split in splits %}
+            <tr{% if split.is_best %} class="split-best"{% endif %}>
+              <td class="mono">
+                <strong>{{ split.mile }}</strong>
+                {% if split.mile_distance and split.mile_distance != 1.0 %}
+                <span style="color:var(--text-dim);font-size:0.7rem">({{ split.mile_distance|floatformat:1 }}mi)</span>
+                {% endif %}
+                <span class="split-star">{% if split.is_best %}★{% endif %}</span>
+              </td>
+              {% for key in split_keys %}
+              <td class="mono{% if key == 'pace' %} pace-cell{% endif %}">
+                {% if key == "pace" %}{{ split.pace|format_pace }}
+                {% elif key == "speed" %}{{ split.speed|format_speed }} mph
+                {% elif key == "heart_rate" %}{{ split.heart_rate|floatformat:0 }} bpm
+                {% elif key == "cadence" %}{{ split.cadence|floatformat:0 }} spm
+                {% elif key == "incline" %}{{ split.incline|floatformat:1 }}%
+                {% elif key == "elevation" %}{{ split.elevation|floatformat:0 }} ft
+                {% else %}{{ split|get_item:key|default:"—" }}
+                {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Muscle groups worked -->
+    {% if muscle_groups %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">MUSCLES WORKED</h3>
+        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">
+          ● light &nbsp; ●● moderate &nbsp; ●●● high
+        </span>
+      </div>
+      <div class="muscle-group-list">
+        {% for mg in muscle_groups %}
+        <div class="muscle-group-row">
+          <div class="muscle-group-name">{{ mg.display_name }}</div>
+          <div class="muscle-group-bar-wrap">
+            <div class="muscle-group-bar mg-{{ mg.bucket }}" style="width:{{ mg.percentage }}%"></div>
+          </div>
+          <div class="muscle-group-pct">{{ mg.percentage }}%</div>
+          <div class="muscle-group-bucket">
+            {% for i in "123" %}{% if forloop.counter <= mg.bucket %}●{% else %}<span style="opacity:0.2">●</span>{% endif %}{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- vs. your averages -->
+    {% if type_stats.count %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">VS. YOUR AVERAGES</h3>
+        <span class="chart-sub">{{ type_stats.count }} other {{ workout.fitness_discipline_display|default:"walk" }} workout{{ type_stats.count|pluralize }}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table comparison-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>This Workout</th>
+              <th>Your Average</th>
+              <th>Your Best</th>
+            </tr>
+          </thead>
+          <tbody id="vsAveragesBody"></tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Achievements -->
+    {% if workout_detail.achievements %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">ACHIEVEMENTS EARNED</h3>
+        <span class="chart-sub">{{ workout_detail.achievements|length }}</span>
+      </div>
+      <div class="achievements-row">
+        {% for a in workout_detail.achievements %}
+        <div class="achievement-badge">
+          {% if a.image_url %}<img src="{{ a.image_url }}" alt="{{ a.name }}">{% endif %}
+          <div class="achievement-badge-text">
+            <div class="achievement-badge-name">{{ a.name }}</div>
+            {% if a.description %}<div class="achievement-badge-desc">{{ a.description }}</div>{% endif %}
+            {% if a.count %}<div class="achievement-badge-count">x{{ a.count }} total</div>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+{% endblock %}
+
+{% block history_item_stats %}
+          {% if w.avg_pace_seconds %}<span>{{ w.avg_pace_display }}</span>{% endif %}
+          {% if w.distance_miles %}<span>{{ w.distance_miles|floatformat:2 }} mi</span>{% endif %}
+          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
+{% endblock %}
+
+{% block recent_section %}
+    <!-- Recent walks of same discipline, populated by JS -->
+    <div class="recent-section" id="recentWalksSidebar" style="display:none">
+      <div class="sidebar-title">RECENT WALKS</div>
+      <div id="recentWalksList" class="sidebar-scroll-list"></div>
+    </div>
+{% endblock %}
+
+{% block detail_scripts %}
+<script>
+const perf = {{ perf|safe }};
+const metrics = perf.metrics_by_slug || {};
+const everyN = perf.every_n || 5;
+
+const recentWalks = {{ recent_walks|safe }};
+const currentWorkoutId = "{{ workout.workout_id }}";
+const typeStats = perf._typeStats || {};
+
+// Pace time-series values come from the API as min/mi (e.g. 9.75 = 9:45/mi)
+const metricConfigs = [
+  { slug: "pace", group: "pace", label: "PACE", color: "#00D1FF", invert: true,
+    fmt: v => { if (v == null) return "—"; const s = Math.round(v * 60); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}/mi`; },
+    tickFmt: v => { const s = Math.round(v * 60); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; }
+  },
+  { slug: "cadence",    label: "CADENCE",    color: "#FFD54F", invert: false, fmt: v => v != null ? Math.round(v) + " spm" : "—", tickFmt: null },
+  { slug: "incline",    label: "INCLINE",    color: "#FF8A65", invert: false, fmt: v => v != null ? v.toFixed(1) + "%" : "—", tickFmt: null },
+  { slug: "heart_rate", label: "HR",         color: "#FF3B5C", invert: false, fmt: v => v != null ? Math.round(v) + " bpm" : "—", tickFmt: null },
+  { slug: "output",     label: "OUTPUT",     color: "#CE93D8", invert: false, fmt: v => v != null ? Math.round(v) + " W" : "—", tickFmt: null },
+  { slug: "resistance", label: "RESISTANCE", color: "#A5B4FC", invert: false, fmt: v => v != null ? Math.round(v) + "%" : "—", tickFmt: null },
+];
+
+// HR zone thresholds from API for line color-coding
+const ZONE_COLORS = ["#4FC3F7","#81C784","#FFD54F","#FF8A65","#E57373"];
+const hrMeta = metrics.heart_rate;
+const hrThresholds = (hrMeta?.zones || []).map((z, i) => {
+  const range = z.range || "";
+  let min = 0, max = Infinity;
+  if (range.startsWith(">=")) {
+    min = parseFloat(range.slice(2)) || 0;
+  } else if (range.startsWith("<")) {
+    max = parseFloat(range.slice(1)) || Infinity;
+  } else {
+    const parts = range.split("-").map(parseFloat);
+    min = isNaN(parts[0]) ? 0 : parts[0];
+    max = isNaN(parts[1]) ? Infinity : parts[1];
+  }
+  return { min, max, color: ZONE_COLORS[i] };
+});
+function getHrZoneColor(bpm) {
+  if (!bpm || !hrThresholds.length) return "#FF3B5C";
+  for (const t of hrThresholds) { if (bpm >= t.min && bpm <= t.max) return t.color; }
+  return ZONE_COLORS[ZONE_COLORS.length - 1];
+}
+function normalizeSeries(values, invert = false, sharedMin = null, sharedMax = null) {
+  const valid = values.filter(v => v != null);
+  if (!valid.length) return values;
+  const lo = sharedMin !== null ? sharedMin : Math.min(...valid);
+  const hi = sharedMax !== null ? sharedMax : Math.max(...valid);
+  const range = hi - lo;
+  if (range === 0) return values.map(v => v != null ? 50 : null);
+  return values.map(v => v == null ? null : invert ? ((hi - v) / range) * 100 : ((v - lo) / range) * 100);
+}
+
+function makeLabels(n) {
+  return Array.from({ length: n }, (_, i) => {
+    const m = Math.floor(i * everyN / 60);
+    const s = (i * everyN) % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const { gridColor, tickColor, legendColor, zoneLabelColor, refLineColor, mainLineWidth, refLineWidth } = window.chartTheme;
+
+  const available = metricConfigs.filter(c => {
+    const m = metrics[c.slug];
+    return m && m.values && m.values.some(v => v != null);
+  });
+
+  const togglesEl = document.getElementById("chartToggles");
+  const activeSet = new Set([available[0]?.slug].filter(Boolean));
+  let chart = null;
+
+  function fmtPaceSec(sec) {
+    if (!sec) return "—";
+    const s = Math.round(sec);
+    return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}/mi`;
+  }
+
+function buildChart() {
+    const activeCfgs = metricConfigs.filter(c => activeSet.has(c.slug));
+    if (!activeCfgs.length) return;
+
+    const uniqueGroups = new Set(activeCfgs.map(c => c.group || c.slug));
+    const multiScale = uniqueGroups.size > 1;
+
+    const groupExtremes = {};
+    for (const cfg of activeCfgs) {
+      const g = cfg.group || cfg.slug;
+      const m = metrics[cfg.slug];
+      if (!m || !m.values) continue;
+      const valid = m.values.filter(v => v != null);
+      if (valid.length) {
+        const min = Math.min(...valid);
+        const max = Math.max(...valid);
+        if (!groupExtremes[g]) {
+            groupExtremes[g] = { min, max };
+        } else {
+            groupExtremes[g].min = Math.min(groupExtremes[g].min, min);
+            groupExtremes[g].max = Math.max(groupExtremes[g].max, max);
+        }
+      }
+    }
+
+    const maxLen = Math.max(...activeCfgs.map(c => metrics[c.slug]?.values?.length || 0));
+
+    const datasets = activeCfgs.map(cfg => {
+      const m = metrics[cfg.slug];
+      if (!m) return null;
+      const rawVals = m.values;
+      const g = cfg.group || cfg.slug;
+      const extremes = groupExtremes[g];
+
+      const dispVals = multiScale
+        ? normalizeSeries(rawVals, cfg.invert, extremes.min, extremes.max)
+        : rawVals;
+
+      const isTarget = cfg.slug === "target_pace";
+
+      const ds = {
+        label: cfg.label,
+        data: dispVals,
+        borderColor: cfg.color,
+        borderWidth: multiScale ? refLineWidth : mainLineWidth,
+        pointRadius: 0,
+        fill: !multiScale,
+        tension: isTarget ? 0 : 0.3,
+        stepped: isTarget ? "after" : false,
+        spanGaps: false,
+        _raw: rawVals,
+        _cfg: cfg,
+      };
+      if (cfg.slug === "heart_rate" && hrThresholds.length && !multiScale) {
+        ds.fill = false;
+        ds.backgroundColor = "transparent";
+        ds.segment = {
+          borderColor: ctx => getHrZoneColor(ctx.p0.parsed.y),
+        };
+      }
+      return ds;
+    }).filter(Boolean);
+
+    const primaryCfg = activeCfgs[0];
+
+    const paceZones = perf.pace_zones || [];
+    const _o = 0.50;
+    const ZONE_BG_COLORS = [
+      `rgba(126, 87,194,${_o})`, // Recovery       — purple
+      `rgba( 30,136,229,${_o})`, // Easy           — blue
+      `rgba(  0,188,212,${_o})`, // Moderate/Brisk — cyan
+      `rgba( 67,160, 71,${_o})`, // Challenging    — green
+      `rgba(253,216, 53,${_o})`, // Hard           — yellow
+      `rgba(255,109,  0,${_o})`, // Very Hard      — orange
+      `rgba(229, 57, 53,${_o})`, // Max            — red
+    ];
+
+    const isPaceActive = activeSet.has("pace");
+
+    let annotations = {};
+    let yAxisMin = undefined;
+    let yAxisMax = undefined;
+    if (isPaceActive && paceZones.length > 0 && !multiScale) {
+      const paceVals = (metrics.pace?.values || []).filter(v => v != null);
+      const targetVals = (metrics.target_pace?.values || []).filter(v => v != null);
+      const dataPaceMin = paceVals.length ? Math.min(...paceVals) : null;
+      const dataPaceMax = paceVals.length ? Math.max(...paceVals) : null;
+      const targetPaceMin = targetVals.length ? Math.min(...targetVals) : null;
+      const fastestPace = Math.min(targetPaceMin ?? Infinity, dataPaceMin ?? Infinity);
+      yAxisMin = isFinite(fastestPace) ? fastestPace - 0.5 : undefined;
+      yAxisMax = dataPaceMax != null ? dataPaceMax + 2.0 : undefined;
+
+      const sorted = [...paceZones]
+        .map((zone, origIdx) => ({ ...zone, origIdx }))
+        .sort((a, b) => a.fast_pace - b.fast_pace);
+      sorted.forEach((zone, i) => {
+        const isMax = i === 0;
+        const isRecovery = i === sorted.length - 1;
+        const yMin = isMax ? (isFinite(fastestPace) ? fastestPace - 0.5 : zone.fast_pace) : zone.fast_pace;
+        const yMax = isRecovery
+          ? (dataPaceMax != null ? dataPaceMax + 2.0 : zone.slow_pace)
+          : sorted[i + 1].fast_pace;
+        annotations[`zone${i}`] = {
+          type: 'box',
+          yScaleID: 'y',
+          yMin,
+          yMax,
+          backgroundColor: ZONE_BG_COLORS[zone.origIdx % ZONE_BG_COLORS.length],
+          borderWidth: 0,
+          drawTime: 'beforeDatasetsDraw',
+          label: {
+            display: true,
+            content: zone.name,
+            color: zoneLabelColor,
+            font: { family: 'Barlow Condensed', size: 11, weight: '700' },
+            position: { x: 'start', y: 'center' },
+            padding: { left: 8 },
+          }
+        };
+      });
+    }
+
+    // Auto-inject target pace line when pace is active (no toggle needed)
+    let hasRefLines = false;
+    if (!multiScale && activeSet.has("pace") && metrics.target_pace?.values?.some(v => v != null)) {
+      hasRefLines = true;
+      const fmtTgt = v => { if (v == null) return "—"; const s = Math.round(v * 60); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}/mi`; };
+      datasets.push({
+        label: "Target",
+        data: metrics.target_pace.values,
+        borderColor: "#FFD700",
+        backgroundColor: "transparent",
+        borderWidth: mainLineWidth,
+        pointRadius: 0,
+        fill: false,
+        tension: 0,
+        stepped: "after",
+        spanGaps: false,
+        _raw: metrics.target_pace.values,
+        _cfg: { group: "pace", label: "Target", fmt: fmtTgt },
+      });
+    }
+
+    if (!multiScale && (primaryCfg.group === "pace" || primaryCfg.slug === "pace")) {
+      if (typeStats.avgPace) {
+        hasRefLines = true;
+        const avgMin = typeStats.avgPace / 60;
+        datasets.push({
+          label: `Your avg (${fmtPaceSec(typeStats.avgPace)})`,
+          data: Array(maxLen).fill(avgMin),
+          borderColor: refLineColor,
+          backgroundColor: "transparent",
+          borderWidth: refLineWidth,
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false,
+          _raw: Array(maxLen).fill(avgMin),
+          _cfg: { ...primaryCfg, label: "Your avg pace" },
+        });
+      }
+      if (typeStats.bestPace) {
+        hasRefLines = true;
+        const bestMin = typeStats.bestPace / 60;
+        datasets.push({
+          label: `Your best (${fmtPaceSec(typeStats.bestPace)})`,
+          data: Array(maxLen).fill(bestMin),
+          borderColor: "rgba(255,200,0,0.45)",
+          backgroundColor: "transparent",
+          borderWidth: refLineWidth,
+          borderDash: [4, 3],
+          pointRadius: 0,
+          fill: false,
+          _raw: Array(maxLen).fill(bestMin),
+          _cfg: { ...primaryCfg, label: "Your best pace" },
+        });
+      }
+    }
+
+    if (chart) chart.destroy();
+    document.getElementById("resetZoomBtn").style.display = "none";
+    chart = new Chart(document.getElementById("perfChart"), {
+      type: "line",
+      data: { labels: makeLabels(maxLen), datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: multiScale || hasRefLines, labels: { color: legendColor, font: { family: "Barlow Condensed", size: 11 }, padding: 12 } },
+          annotation: { annotations: annotations },
+          zoom: {
+            limits: {
+              x: { min: "original", max: "original", minRange: 12 },
+              y: { min: "original", max: "original", minRange: 10 },
+            },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "xy",
+                    onZoom: () => { document.getElementById("resetZoomBtn").style.display = ""; } },
+            pan:  { enabled: true, mode: "xy",
+                    onPan:  () => { document.getElementById("resetZoomBtn").style.display = ""; } },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const raw = ctx.dataset._raw?.[ctx.dataIndex];
+                const cfg = ctx.dataset._cfg;
+                const fmt = cfg?.fmt;
+                let line = ` ${ctx.dataset.label}: ${fmt ? fmt(raw) : (raw ?? "—")}`;
+                if (cfg?.slug === "pace" && metrics.speed?.values) {
+                  const spd = metrics.speed.values[ctx.dataIndex];
+                  if (spd != null) line += `  ·  ${spd.toFixed(1)} mph`;
+                }
+                return line;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
+          y: {
+            reverse: !multiScale && primaryCfg.invert,
+            min: yAxisMin,
+            max: yAxisMax,
+            grid: { color: gridColor },
+            ticks: {
+              color: multiScale ? "transparent" : tickColor,
+              font: { family: "JetBrains Mono", size: 10 },
+              callback: (!multiScale && primaryCfg.tickFmt) ? primaryCfg.tickFmt : undefined,
+            },
+          },
+        }
+      }
+    });
+    updateSummary(activeCfgs);
+  }
+
+  function updateSummary(activeCfgs) {
+    const inner = document.getElementById("metricSummaryInner");
+    const wrap = document.getElementById("metricSummary");
+    let html = "";
+    for (const cfg of activeCfgs) {
+      const m = metrics[cfg.slug];
+      if (!m || (m.average_value == null && m.max_value == null)) continue;
+      html += `<div style="min-width:90px">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.2rem">${cfg.label}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.25rem;font-weight:800;color:${cfg.color}">${cfg.fmt(m.average_value)}</div>
+        ${m.max_value != null ? `<div style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--text-dim)">max ${cfg.fmt(m.max_value)}</div>` : ""}
+      </div>`;
+    }
+    if (html) { inner.innerHTML = html; wrap.style.display = ""; }
+    else wrap.style.display = "none";
+  }
+
+  available.forEach(cfg => {
+    const btn = document.createElement("button");
+    btn.className = "chart-toggle" + (cfg.slug === available[0]?.slug ? " active" : "");
+    btn.dataset.metric = cfg.slug;
+    btn.textContent = cfg.label;
+    btn.style.setProperty("--toggle-color", cfg.color);
+    btn.addEventListener("click", () => {
+      if (activeSet.has(cfg.slug)) {
+        if (activeSet.size > 1) { activeSet.delete(cfg.slug); btn.classList.remove("active"); }
+      } else {
+        activeSet.add(cfg.slug); btn.classList.add("active");
+      }
+      buildChart();
+    });
+    togglesEl.appendChild(btn);
+  });
+
+  if (available.length) buildChart();
+
+  document.getElementById("resetZoomBtn").addEventListener('click', () => {
+    if (chart) chart.resetZoom();
+    document.getElementById("resetZoomBtn").style.display = "none";
+  });
+
+  document.addEventListener('cadence:themechange', () => {
+    if (available.length) buildChart();
+  });
+
+  function buildVsAverages() {
+    const body = document.getElementById("vsAveragesBody");
+    if (!body) return;
+    const avgSumm = perf.average_summaries || {};
+    const summ = perf.summaries || {};
+    const effortZones = perf.effort_zones || {};
+
+    const currPaceSec = avgSumm.avg_pace?.value ? Math.round(avgSumm.avg_pace.value * 60) : {{ workout.avg_pace_seconds|default:"null" }};
+    const currDist = summ.distance?.value ?? {{ workout.distance_miles|default:"null" }};
+    const currHR = {{ workout.heart_rate_avg|default:"null" }};
+    const currCal = summ.calories?.value ?? {{ workout.calories|default:"null" }};
+    const currEffort = effortZones.total_effort_points ?? null;
+
+    let rows = "";
+    if (currPaceSec || typeStats.avgPace) {
+      rows += `<tr>
+        <td>Avg Pace</td>
+        <td class="mono comp-this">${fmtPaceSec(currPaceSec)}</td>
+        <td class="mono comp-avg">${fmtPaceSec(typeStats.avgPace)}</td>
+        <td class="mono comp-best">${fmtPaceSec(typeStats.bestPace)}</td>
+      </tr>`;
+    }
+    if (currDist || typeStats.avgDistance) {
+      rows += `<tr>
+        <td>Distance</td>
+        <td class="mono comp-this">${currDist != null ? currDist.toFixed(2) + " mi" : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgDistance != null ? typeStats.avgDistance.toFixed(2) + " mi" : "—"}</td>
+        <td class="mono comp-best">${typeStats.maxDistance != null ? typeStats.maxDistance.toFixed(2) + " mi" : "—"}</td>
+      </tr>`;
+    }
+    if (currHR || typeStats.avgHR) {
+      rows += `<tr>
+        <td>Avg Heart Rate</td>
+        <td class="mono comp-this">${currHR != null ? Math.round(currHR) + " bpm" : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgHR != null ? Math.round(typeStats.avgHR) + " bpm" : "—"}</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    if (currCal || typeStats.avgCalories) {
+      rows += `<tr>
+        <td>Calories</td>
+        <td class="mono comp-this">${currCal != null ? Math.round(currCal) : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgCalories != null ? Math.round(typeStats.avgCalories) : "—"}</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    if (currEffort != null) {
+      rows += `<tr>
+        <td>Effort Points</td>
+        <td class="mono comp-this">${currEffort.toFixed(1)}</td>
+        <td class="mono comp-avg">—</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    body.innerHTML = rows;
+  }
+  buildVsAverages();
+
+  function updateCompareBar() {
+    const checked = [...document.querySelectorAll(".compare-check:checked")].map(cb => cb.value);
+    const bar = document.getElementById("compareBar");
+    const link = document.getElementById("compareBarLink");
+    const count = document.getElementById("compareBarCount");
+    if (checked.length > 0) {
+      bar.style.display = "";
+      link.href = `/compare/?ids=${[currentWorkoutId, ...checked].join(",")}`;
+      count.textContent = `${checked.length} workout${checked.length > 1 ? "s" : ""} selected`;
+    } else {
+      bar.style.display = "none";
+    }
+  }
+  document.addEventListener("change", e => {
+    if (e.target.classList.contains("compare-check")) updateCompareBar();
+  });
+
+  const hrZonesEl = document.getElementById("hrZoneRanges");
+  if (hrZonesEl && hrMeta?.zones?.length) {
+    let html = '<div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.5rem">';
+    hrMeta.zones.forEach((z, i) => {
+      const dur = z.duration ? `${Math.floor(z.duration/60)}m ${z.duration%60}s` : "";
+      const col = ZONE_COLORS[i];
+      html += `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:3px;padding:0.1rem 0.5rem">${z.display_name}: ${z.range}${dur ? " · " + dur : ""}</span>`;
+    });
+    html += "</div>";
+    hrZonesEl.innerHTML = html;
+  }
+
+  const zoneCard = document.getElementById("hrZoneCard");
+  const zoneBreakdown = document.getElementById("hrZoneBreakdown");
+  if (zoneCard && zoneBreakdown && hrMeta?.zones?.length) {
+    const zoneNames = ["Warm Up", "Easy", "Aerobic", "Threshold", "Max"];
+    const totalDur = hrMeta.zones.reduce((s, z) => s + (z.duration || 0), 0);
+    if (totalDur > 0) {
+      let html = "";
+      hrMeta.zones.forEach((z, i) => {
+        const dur = z.duration || 0;
+        const pct = Math.round((dur / totalDur) * 100);
+        const col = ZONE_COLORS[i];
+        const timeStr = dur ? `${Math.floor(dur/60)}m ${String(dur%60).padStart(2,"0")}s` : "—";
+        html += `<div class="hr-zone-row">
+          <div class="hr-zone-label" style="color:${col}">Z${i+1} ${zoneNames[i] || ""}</div>
+          <div class="hr-zone-bar-wrap"><div class="hr-zone-bar" style="width:${pct}%;background:${col}"></div></div>
+          <div class="hr-zone-time">${timeStr}</div>
+        </div>`;
+      });
+      zoneBreakdown.innerHTML = html;
+      zoneCard.style.display = "";
+    }
+  }
+
+  // Recent walks sidebar
+  if (recentWalks.length) {
+    const sidebar = document.getElementById("recentWalksSidebar");
+    const list = document.getElementById("recentWalksList");
+    let html = "";
+    for (const r of recentWalks) {
+      const date = r.created_at
+        ? new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "—";
+      const pace = r.avg_pace_seconds
+        ? (() => { const s = Math.round(r.avg_pace_seconds); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}/mi`; })()
+        : null;
+      const dist = r.distance_miles ? r.distance_miles.toFixed(2) + " mi" : null;
+      const hr = r.heart_rate_avg ? Math.round(r.heart_rate_avg) + " bpm" : null;
+      const stats = [pace, dist, hr].filter(Boolean);
+      html += `
+        <div class="recent-item">
+          <a href="/workout/${r.workout_id}/" class="recent-item-content">
+            <div class="recent-item-date">${date}</div>
+            ${r.title ? `<div class="recent-item-title">${r.title}</div>` : ""}
+            <div class="recent-item-stats">${stats.map(s => `<span>${s}</span>`).join("")}</div>
+          </a>
+          <input type="checkbox" class="compare-check" value="${r.workout_id}" style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0">
+        </div>`;
+    }
+    list.innerHTML = html;
+    sidebar.style.display = "";
+  }
+});
+</script>
+{% endblock %}

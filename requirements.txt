@@ -1,0 +1,6 @@
+Django==4.2.30
+requests==2.32.3
+python-dotenv==1.0.1
+django-htmx==1.19.0
+whitenoise==6.7.0
+garminconnect==0.3.3

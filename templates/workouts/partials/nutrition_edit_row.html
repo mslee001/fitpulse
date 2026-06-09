@@ -1,0 +1,51 @@
+<tr class="food-log-row food-log-row--editing" id="food-entry-{{ entry.pk }}">
+  <td colspan="9" class="edit-row-cell">
+    <form method="post" action="{% url 'nutrition_edit' entry.pk %}">
+      {% csrf_token %}
+      <div class="edit-row-top">
+        <select name="meal" class="edit-input edit-input--meal">
+          <option value="">— Meal —</option>
+          {% for val,label in meal_choices %}
+          <option value="{{ val }}"{% if entry.meal == val %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="raw_text" value="{{ entry.raw_text }}"
+               class="edit-input edit-input--desc" placeholder="Food description">
+      </div>
+      <div class="edit-row-bottom">
+        <label class="edit-macro">
+          <span class="edit-macro-lbl">Cal</span>
+          <input type="number" name="calories" value="{{ entry.calories|floatformat:0 }}"
+                 class="edit-input edit-input--num" step="1" min="0">
+        </label>
+        <label class="edit-macro">
+          <span class="edit-macro-lbl">Protein g</span>
+          <input type="number" name="protein_g" value="{{ entry.protein_g|floatformat:1 }}"
+                 class="edit-input edit-input--num" step="0.1" min="0">
+        </label>
+        <label class="edit-macro">
+          <span class="edit-macro-lbl">Carbs g</span>
+          <input type="number" name="carbs_g" value="{{ entry.carbs_g|floatformat:1 }}"
+                 class="edit-input edit-input--num" step="0.1" min="0">
+        </label>
+        <label class="edit-macro">
+          <span class="edit-macro-lbl">Fat g</span>
+          <input type="number" name="fat_g" value="{{ entry.fat_g|floatformat:1 }}"
+                 class="edit-input edit-input--num" step="0.1" min="0">
+        </label>
+        <label class="edit-macro">
+          <span class="edit-macro-lbl">Fiber g</span>
+          <input type="number" name="fiber_g" value="{{ entry.fiber_g|floatformat:1 }}"
+                 class="edit-input edit-input--num" step="0.1" min="0">
+        </label>
+        <div class="edit-row-btns">
+          <button type="submit" class="btn btn-accent btn-sm">Save</button>
+          <button type="button" class="btn btn-ghost btn-sm"
+                  hx-get="{% url 'nutrition_entry_row' entry.pk %}"
+                  hx-target="closest tr"
+                  hx-swap="outerHTML">Cancel</button>
+        </div>
+      </div>
+    </form>
+  </td>
+</tr>

@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+
+{% block title %}{{ day|date:"M j, Y" }} — Cadence{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="{% url 'calendar' %}" class="back-link">← Calendar</a>
+    <h1 class="page-title">{{ day|date:"l, F j" }}</h1>
+    <p class="page-sub">{{ day|date:"Y" }}</p>
+  </div>
+  <div style="display:flex;gap:0.5rem;align-items:center;">
+    <a href="{% url 'day_view' prev_day|date:'Y-m-d' %}" class="btn btn-ghost btn-sm">← {{ prev_day|date:"M j" }}</a>
+    {% if next_day %}
+    <a href="{% url 'day_view' next_day|date:'Y-m-d' %}" class="btn btn-ghost btn-sm">{{ next_day|date:"M j" }} →</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="day-layout">
+
+  <!-- Wellness panel -->
+  <div class="day-sidebar">
+
+    {% if stats and stats.synced_at %}
+    <!-- Readiness + key signals -->
+    {% if stats.training_readiness_score %}
+    <div class="stat-card stat-card--hero" style="text-align:center;padding:1.5rem 1rem;">
+      <div class="stat-label">Training Readiness</div>
+      <div class="readiness-ring {% if stats.training_readiness_score >= 70 %}readiness-ring--green{% elif stats.training_readiness_score >= 40 %}readiness-ring--yellow{% else %}readiness-ring--red{% endif %}">
+        {{ stats.training_readiness_score }}
+      </div>
+      {% if stats.training_readiness_label %}
+      <div style="color:var(--text-muted);font-size:0.8rem;margin-top:0.5rem;">{{ stats.training_readiness_label|title }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="stat-card" style="margin-top:1rem;">
+      <div class="stat-label">Recovery Signals</div>
+      <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.6rem;">
+        {% if stats.hrv_last_night %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">HRV Last Night</span>
+          <span class="cal-signal-value {% if stats.hrv_status == 'BALANCED' %}cal-sig-green{% elif stats.hrv_status == 'UNBALANCED' %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
+            {{ stats.hrv_last_night|floatformat:0 }} ms · {{ stats.hrv_status_display }}
+          </span>
+        </div>
+        {% endif %}
+        {% if stats.hrv_weekly_avg %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">HRV Weekly Avg</span>
+          <span class="cal-signal-value">{{ stats.hrv_weekly_avg|floatformat:0 }} ms</span>
+        </div>
+        {% endif %}
+        {% if stats.resting_hr %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Resting HR</span>
+          <span class="cal-signal-value">{{ stats.resting_hr }} bpm</span>
+        </div>
+        {% endif %}
+        {% if stats.sleep_score %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Sleep Score</span>
+          <span class="cal-signal-value {% if stats.sleep_score >= 75 %}cal-sig-green{% elif stats.sleep_score >= 50 %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
+            {{ stats.sleep_score }}
+          </span>
+        </div>
+        {% endif %}
+        {% if stats.sleep_minutes %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Sleep Duration</span>
+          <span class="cal-signal-value">{{ stats.sleep_minutes|div:60|floatformat:0 }}h {{ stats.sleep_minutes|mod:60 }}m</span>
+        </div>
+        {% endif %}
+        {% if stats.sleep_deep_seconds %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Deep Sleep</span>
+          <span class="cal-signal-value">{{ stats.sleep_deep_seconds|div:60|floatformat:0 }}m</span>
+        </div>
+        {% endif %}
+        {% if stats.sleep_rem_seconds %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">REM Sleep</span>
+          <span class="cal-signal-value">{{ stats.sleep_rem_seconds|div:60|floatformat:0 }}m</span>
+        </div>
+        {% endif %}
+        {% if stats.stress_avg %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Avg Stress</span>
+          <span class="cal-signal-value {% if stats.stress_avg < 26 %}cal-sig-green{% elif stats.stress_avg < 51 %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
+            {{ stats.stress_avg }}
+          </span>
+        </div>
+        {% endif %}
+        {% if stats.body_battery_start is not None %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Body Battery</span>
+          <span class="cal-signal-value">
+            {% if is_today %}
+              {{ stats.body_battery_start }} at wakeup
+            {% else %}
+              {{ stats.body_battery_start }} → {{ stats.body_battery_end|default:"?" }}
+            {% endif %}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if stats.training_status or stats.training_load %}
+    <div class="stat-card" style="margin-top:1rem;">
+      <div class="stat-label">Training Load</div>
+      <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.6rem;">
+        {% if stats.training_status %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Status</span>
+          <span class="cal-signal-value">{{ stats.training_status|title }}</span>
+        </div>
+        {% endif %}
+        {% if stats.training_load %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Acute Load</span>
+          <span class="cal-signal-value">{{ stats.training_load|floatformat:0 }}</span>
+        </div>
+        {% endif %}
+        {% if stats.load_focus_anaerobic or stats.load_focus_high_aerobic or stats.load_focus_low_aerobic %}
+        <div style="margin-top:0.25rem;">
+          <div class="cal-signal-label" style="margin-bottom:0.4rem;">Load Focus</div>
+          <div class="cal-load-focus">
+            <div class="cal-load-bar">
+              <span class="cal-load-label">Anaerobic</span>
+              <span class="cal-load-val">{{ stats.load_focus_anaerobic|floatformat:0|default:"—" }}</span>
+            </div>
+            <div class="cal-load-bar">
+              <span class="cal-load-label">High Aerobic</span>
+              <span class="cal-load-val">{{ stats.load_focus_high_aerobic|floatformat:0|default:"—" }}</span>
+            </div>
+            <div class="cal-load-bar">
+              <span class="cal-load-label">Low Aerobic</span>
+              <span class="cal-load-val">{{ stats.load_focus_low_aerobic|floatformat:0|default:"—" }}</span>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="stat-card">
+      <div class="stat-label">Wellness Data</div>
+      <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">
+        No Garmin wellness data for this day.
+        <a href="{% url 'sync_garmin_wellness' %}?date={{ day|date:'Y-m-d' }}" target="_blank" style="display:block;margin-top:0.5rem;">Sync this day →</a>
+      </p>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Main content: workouts + AI analysis -->
+  <div class="day-main">
+
+    {% if ai_analysis %}
+    <div class="stat-card" style="margin-bottom:1.5rem;border-left:3px solid var(--accent);">
+      <div class="stat-label">Day Analysis</div>
+      <div style="margin-top:0.75rem">{{ ai_analysis|format_day_analysis|safe }}</div>
+    </div>
+    {% endif %}
+
+    {# ── Nutrition ── #}
+    {% if nutrition_entries or nutrition_targets %}
+    <div class="stat-card" style="margin-bottom:1.5rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--text-dim)">NUTRITION</div>
+        <a href="{% url 'nutrition' %}?date={{ day|date:'Y-m-d' }}" style="font-size:0.75rem;color:var(--accent)">+ Log food ›</a>
+      </div>
+      {% if nutrition_totals %}
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:0.75rem">
+        <div>
+          <span style="color:var(--text-dim);font-size:0.78rem">Cal</span>
+          <span style="margin-left:0.35rem;font-weight:700;font-size:0.95rem;color:{% if nutrition_targets.calories and nutrition_totals.cal >= nutrition_targets.calories %}var(--accent-green){% else %}var(--text){% endif %}">{{ nutrition_totals.cal }}</span>
+          {% if nutrition_targets.calories %}<span style="color:var(--text-dim);font-size:0.8rem"> / {{ nutrition_targets.calories }}</span>{% endif %}
+        </div>
+        <div>
+          <span style="color:var(--text-dim);font-size:0.78rem">Protein</span>
+          <span style="margin-left:0.35rem;font-weight:700;font-size:0.95rem;color:{% if nutrition_targets.protein_g and nutrition_totals.prot >= nutrition_targets.protein_g %}var(--accent-green){% else %}var(--text){% endif %}">{{ nutrition_totals.prot }}g</span>
+          {% if nutrition_targets.protein_g %}<span style="color:var(--text-dim);font-size:0.8rem"> / {{ nutrition_targets.protein_g }}g</span>{% endif %}
+        </div>
+        <div>
+          <span style="color:var(--text-dim);font-size:0.78rem">Fiber</span>
+          <span style="margin-left:0.35rem;font-weight:700;font-size:0.95rem;color:{% if nutrition_targets.fiber_g and nutrition_totals.fiber >= nutrition_targets.fiber_g %}var(--accent-green){% else %}var(--text){% endif %}">{{ nutrition_totals.fiber }}g</span>
+          {% if nutrition_targets.fiber_g %}<span style="color:var(--text-dim);font-size:0.8rem"> / {{ nutrition_targets.fiber_g }}g</span>{% endif %}
+        </div>
+        <div>
+          <span style="color:var(--text-dim);font-size:0.78rem">Carbs</span>
+          <span style="margin-left:0.35rem;font-size:0.9rem;color:var(--text-muted)">{{ nutrition_totals.carbs }}g</span>
+        </div>
+        <div>
+          <span style="color:var(--text-dim);font-size:0.78rem">Fat</span>
+          <span style="margin-left:0.35rem;font-size:0.9rem;color:var(--text-muted)">{{ nutrition_totals.fat }}g</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0.3rem">
+        {% for entry in nutrition_entries %}
+        <div style="display:flex;align-items:baseline;gap:0.5rem;font-size:0.82rem;padding:0.25rem 0;border-top:1px solid var(--border)">
+          {% if entry.meal %}<span style="color:var(--text-dim);min-width:4rem;font-size:0.75rem;text-transform:capitalize">{{ entry.meal }}</span>{% endif %}
+          <span style="color:var(--text-muted);flex:1">{{ entry.raw_text|truncatechars:80 }}</span>
+          <span style="color:var(--text-dim);white-space:nowrap">{{ entry.calories|floatformat:0 }} kcal · {{ entry.protein_g|floatformat:0 }}g P</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% elif nutrition_targets %}
+      <p style="color:var(--text-dim);font-size:0.85rem;margin:0">Nothing logged for this day. <a href="{% url 'nutrition' %}?date={{ day|date:'Y-m-d' }}" style="color:var(--accent)">Log food ›</a></p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if workouts %}
+    <h2 class="section-label">Workouts</h2>
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+      {% for w in workouts %}
+      <a href="{% url 'workout_detail' w.workout_id %}" class="workout-card" style="text-decoration:none;display:block;">
+        <div class="workout-card-inner">
+          <div class="workout-disc-bar" style="background:{{ discipline_colors|get_item:w.discipline|default:'#888' }}"></div>
+          <div class="workout-card-body">
+            <div class="workout-card-top">
+              <div>
+                <div class="workout-title">{{ w.title }}</div>
+                <div class="workout-meta">
+                  {{ w.fitness_discipline_display|default:w.discipline|title }}
+                  {% if w.instructor_name %} · {{ w.instructor_name }}{% endif %}
+                  {% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}
+                  · {{ w.created_at|date:"g:i A" }}
+                </div>
+              </div>
+            </div>
+            <div class="workout-stats" style="margin-top:0.75rem;">
+              {% if w.heart_rate_avg_best %}
+              <div class="workout-stat">
+                <span class="workout-stat-label">Avg HR</span>
+                <span>{{ w.heart_rate_avg_best|floatformat:0 }} bpm</span>
+              </div>
+              {% endif %}
+              {% with effort=w.effort_points|default:w.average_effort_score %}
+              {% if effort %}
+              <div class="workout-stat">
+                <span class="workout-stat-label">Effort</span>
+                <span>{{ effort|floatformat:1 }}</span>
+              </div>
+              {% endif %}
+              {% endwith %}
+              {% if w.calories %}
+              <div class="workout-stat">
+                <span class="workout-stat-label">Calories</span>
+                <span>{{ w.calories|floatformat:0 }}</span>
+              </div>
+              {% endif %}
+              {% if w.avg_pace_display %}
+              <div class="workout-stat">
+                <span class="workout-stat-label">Pace</span>
+                <span>{{ w.avg_pace_display }}</span>
+              </div>
+              {% endif %}
+              {% if w.output_watts %}
+              <div class="workout-stat">
+                <span class="workout-stat-label">Output</span>
+                <span>{{ w.output_watts|floatformat:0 }} W</span>
+              </div>
+              {% endif %}
+              {% if w.avg_watts and not w.output_watts %}
+              <div class="workout-stat">
+                <span class="workout-stat-label">Avg Power</span>
+                <span>{{ w.avg_watts|floatformat:0 }} W</span>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="stat-card" style="text-align:center;padding:3rem 1rem;">
+      <div style="font-size:2rem;margin-bottom:0.5rem;">🗓</div>
+      <div style="color:var(--text-muted);">No workouts recorded this day.</div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

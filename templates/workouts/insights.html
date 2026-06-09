@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+
+{% block title %}Pattern Insights — Cadence{% endblock %}
+{% block nav_insights_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+  <div>
+    <h1 class="page-title">PATTERN INSIGHTS</h1>
+    <p class="page-sub">Sonnet analyzes 60 days of integrated data — weight, nutrition, recovery, workouts, hunger, and symptoms — to surface non-obvious patterns.</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.5rem">
+    {% if generated_at %}
+    <span style="font-size:0.7rem;color:var(--text-dim)">Generated {{ generated_at|timesince }} ago</span>
+    {% endif %}
+    <button class="btn btn-ghost btn-sm"
+            hx-post="{% url 'pattern_insights_refresh' %}"
+            hx-target="#insights-area"
+            hx-swap="innerHTML"
+            hx-indicator="#insights-spinner"
+            hx-disabled-elt="this">
+      ↺ {% if insights %}Regenerate{% else %}Generate{% endif %}
+      <span id="insights-spinner" class="htmx-indicator" style="font-size:0.75rem;margin-left:0.25rem">…</span>
+    </button>
+  </div>
+</div>
+
+<div class="card">
+  <div id="insights-area">
+    {% include "workouts/partials/pattern_insights.html" %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:1.5rem;border-color:var(--border)">
+  <p style="color:var(--text-dim);font-size:0.78rem;line-height:1.6">
+    Insights are generated once weekly and cached. Data coverage affects quality — the more consistently you log nutrition, weight, and symptoms, the more useful the patterns become.
+    Regenerating uses the latest data and resets the 7-day cache.
+  </p>
+</div>
+{% endblock %}

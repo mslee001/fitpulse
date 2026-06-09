@@ -1,0 +1,34 @@
+<tr class="food-log-row" id="food-entry-{{ entry.pk }}">
+  <td class="col-fav">
+    <form method="post" action="{% url 'nutrition_save_meal' entry.pk %}">
+      {% csrf_token %}
+      <input type="hidden" name="name" value="{{ entry.raw_text|truncatechars:80 }}">
+      <button type="submit" class="tbl-btn-fav{% if entry.is_favorite %} tbl-btn-fav--saved{% endif %}"
+              title="{% if entry.is_favorite %}Saved as quick meal{% else %}Save as quick meal{% endif %}">★</button>
+    </form>
+  </td>
+  <td class="col-meal">
+    {% if entry.meal %}<span class="food-entry-meal">{{ entry.get_meal_display }}</span>{% else %}<span style="color:var(--text-dim)">—</span>{% endif %}
+    {% if entry.ai_confidence == "low" %}<span class="confidence-badge confidence-badge--low" title="Low confidence estimate">~</span>{% endif %}
+    {% if entry.edited_by_user %}<span class="confidence-badge" title="Edited by you" style="color:var(--accent-alt)">✎</span>{% endif %}
+  </td>
+  <td class="col-desc">{{ entry.raw_text }}</td>
+  <td class="col-num col-cal">{{ entry.calories|floatformat:0 }}</td>
+  <td class="col-num col-prot">{{ entry.protein_g|floatformat:0 }}g</td>
+  <td class="col-num col-carbs">{{ entry.carbs_g|floatformat:0 }}g</td>
+  <td class="col-num col-fat">{{ entry.fat_g|floatformat:0 }}g</td>
+  <td class="col-num col-fiber">{% if entry.fiber_g %}{{ entry.fiber_g|floatformat:1 }}g{% else %}—{% endif %}</td>
+  <td class="col-actions">
+    <div class="col-actions-inner">
+      <button class="tbl-btn-edit"
+              hx-get="{% url 'nutrition_edit' entry.pk %}"
+              hx-target="closest tr"
+              hx-swap="outerHTML"
+              title="Edit entry">✎</button>
+      <form method="post" action="{% url 'nutrition_delete' entry.pk %}" onsubmit="return confirm('Remove this entry?')">
+        {% csrf_token %}
+        <button type="submit" class="btn-icon-danger" title="Delete">×</button>
+      </form>
+    </div>
+  </td>
+</tr>

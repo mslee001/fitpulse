@@ -1,0 +1,139 @@
+{% load workout_filters %}
+{% if error %}
+<div style="color:var(--accent-red);font-size:0.85rem;padding:0.5rem 0">{{ error }}</div>
+{% elif result and not result.ok %}
+<div style="color:var(--accent-red);font-size:0.85rem;padding:0.5rem 0">
+  Couldn't parse that — try rephrasing or enter macros manually below.
+</div>
+{% elif result and result.items %}
+
+{% with confidence=result.confidence %}
+<form method="post" action="/nutrition/api/log/" id="save-food-form">
+  {% csrf_token %}
+  <input type="hidden" name="date" value="{{ page_date }}">
+  <input type="hidden" name="raw_text" value="{{ raw_text }}">
+  <input type="hidden" name="meal" id="meal-field" value="{{ meal }}">
+  <input type="hidden" name="ai_model" value="claude-haiku-4-5-20251001">
+  <input type="hidden" name="ai_confidence" value="{{ confidence }}">
+  <input type="hidden" name="edited_by_user" id="edited-flag" value="0">
+
+  <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;flex-wrap:wrap">
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Parsed Items</span>
+    {% if confidence == "low" %}
+    <span class="confidence-badge confidence-badge--low">Low confidence — double-check values</span>
+    {% elif confidence == "medium" %}
+    <span class="confidence-badge confidence-badge--med">Medium confidence</span>
+    {% endif %}
+    {% if result.note %}
+    <span style="font-size:0.78rem;color:var(--text-dim);font-style:italic">{{ result.note }}</span>
+    {% endif %}
+  </div>
+
+  <div style="overflow-x:auto">
+    <table class="parse-items-table" id="parse-items-table">
+      <thead>
+        <tr>
+          <th class="th-item">Item</th>
+          <th class="th-qty">Quantity</th>
+          <th class="th-num">Cal</th>
+          <th class="th-num">Protein g</th>
+          <th class="th-num">Carbs g</th>
+          <th class="th-num">Fat g</th>
+          <th class="th-num">Fiber g</th>
+          <th class="th-del"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in result.items %}
+        <tr>
+          <td><input type="text" name="items-{{ forloop.counter0 }}-name" value="{{ item.name }}" class="parse-cell-input parse-cell-input--name" oninput="markEdited()"></td>
+          <td><input type="text" name="items-{{ forloop.counter0 }}-quantity" value="{{ item.quantity }}" class="parse-cell-input parse-cell-input--qty" oninput="markEdited()"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-calories"  value="{{ item.calories }}"  class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-protein_g" value="{{ item.protein_g }}" class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-carbs_g"   value="{{ item.carbs_g }}"   class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-fat_g"     value="{{ item.fat_g }}"     class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-fiber_g"   value="{{ item.fiber_g }}"   class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
+          <td><button type="button" onclick="removeRow(this)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem;padding:0 0.25rem" title="Remove row">×</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Totals row #}
+  <div id="parse-totals" style="display:flex;gap:1.25rem;padding:0.5rem 0;font-size:0.82rem;color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;border-top:1px solid var(--border);margin-top:0.5rem;flex-wrap:wrap">
+    <span>TOTAL</span>
+    <span id="tot-cal">— kcal</span>
+    <span id="tot-prot">— g P</span>
+    <span id="tot-carbs">— g C</span>
+    <span id="tot-fat">— g F</span>
+    <span id="tot-fiber">— g Fiber</span>
+  </div>
+
+  <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap;align-items:center">
+    <div style="display:flex;align-items:center;gap:0.4rem">
+      <label style="font-size:0.78rem;color:var(--text-muted)">Meal:</label>
+      <select id="meal-select" onchange="document.getElementById('meal-field').value=this.value" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.3rem 0.6rem;font-size:0.82rem">
+        <option value="">—</option>
+        {% for val,label in meal_choices %}
+        <option value="{{ val }}" {% if meal == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-accent btn-sm">Save Entry</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('parse-result').innerHTML=''">Cancel</button>
+  </div>
+</form>
+
+<script>
+(function() {
+  function recalcTotals() {
+    var tbl = document.getElementById('parse-items-table');
+    if (!tbl) return;
+    var rows = tbl.querySelectorAll('tbody tr');
+    var cal=0, prot=0, carbs=0, fat=0, fiber=0;
+    rows.forEach(function(row) {
+      var inputs = row.querySelectorAll('input[type=number]');
+      cal   += parseFloat(inputs[0] && inputs[0].value || 0) || 0;
+      prot  += parseFloat(inputs[1] && inputs[1].value || 0) || 0;
+      carbs += parseFloat(inputs[2] && inputs[2].value || 0) || 0;
+      fat   += parseFloat(inputs[3] && inputs[3].value || 0) || 0;
+      fiber += parseFloat(inputs[4] && inputs[4].value || 0) || 0;
+    });
+    document.getElementById('tot-cal').textContent   = Math.round(cal)   + ' kcal';
+    document.getElementById('tot-prot').textContent  = Math.round(prot)  + 'g P';
+    document.getElementById('tot-carbs').textContent = Math.round(carbs) + 'g C';
+    document.getElementById('tot-fat').textContent   = Math.round(fat)   + 'g F';
+    document.getElementById('tot-fiber').textContent = fiber.toFixed(1)  + 'g Fiber';
+  }
+  window.markEdited = function() {
+    document.getElementById('edited-flag').value = '1';
+    recalcTotals();
+  };
+  window.removeRow = function(btn) {
+    btn.closest('tr').remove();
+    recalcTotals();
+    reindexRows();
+  };
+  function reindexRows() {
+    var tbl = document.getElementById('parse-items-table');
+    if (!tbl) return;
+    tbl.querySelectorAll('tbody tr').forEach(function(row, i) {
+      row.querySelectorAll('input').forEach(function(inp) {
+        inp.name = inp.name.replace(/items-\d+-/, 'items-' + i + '-');
+      });
+    });
+  }
+  recalcTotals();
+})();
+</script>
+{% endwith %}
+
+{% else %}
+{# Empty items from AI — offer manual entry #}
+<div style="padding:0.5rem 0">
+  <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.75rem">
+    {% if result.note %}{{ result.note }}{% else %}Couldn't identify specific food items — try being more specific.{% endif %}
+  </p>
+</div>
+{% endif %}

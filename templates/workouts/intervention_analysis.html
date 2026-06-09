@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}Intervention Analysis — Cadence{% endblock %}
+{% block nav_insights_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h1 class="page-title">Intervention Analysis</h1>
+      <p class="page-sub">Before/after comparison across wellness, body composition, and nutrition</p>
+    </div>
+  </div>
+</div>
+
+<!-- Analysis Controls -->
+<!-- <div class="trends-controls"> -->
+  <div class="chart-card">
+  <h3 class="chart-title">RUN ANALYSIS</h3>
+  <div style="font-size:0.875rem;color:var(--text-muted);line-height:1.6;margin:0.75rem 0 1.25rem;border-bottom:1px solid var(--border);padding-bottom:1.25rem">
+    <p style="margin-bottom:0.75rem">This tool compares two time periods — a baseline (<strong style="color:var(--text)">before</strong>) and an intervention period (<strong style="color:var(--text)">after</strong>) — to detect changes in your metrics. For example, compare the 4 weeks before a dose increase to the 4 weeks after, to see whether HRV, sleep, weight, or other markers shifted.</p>
+    <p style="margin-bottom:0.4rem;font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim)">Picking dates</p>
+    <ul style="margin:0 0 0.75rem 1.1rem">
+      <li>The <strong style="color:var(--text)">before</strong> window should end the day before your intervention started</li>
+      <li>The <strong style="color:var(--text)">after</strong> window should begin on the start date of the intervention</li>
+      <li>Matching window lengths (28 vs. 28 days, etc.) gives the cleanest statistical comparison</li>
+    </ul>
+    <p><strong style="color:var(--text)">Washout days</strong> <span style="color:var(--text-dim)">(advanced)</span> — skips the first N days of the after window. Useful when an intervention takes time to take effect, like a medication dose increase where the first week is a transition rather than steady-state.</p>
+  </div>
+  <div class="trends-controls-grid" style="margin-top:1rem">
+
+    <!-- Intervention selector -->
+    <div class="form-group" style="grid-column:span 2">
+      <label class="form-label">Intervention (optional)</label>
+      <select id="iv-select" class="form-select" onchange="onInterventionChange()">
+        <option value="">— Custom dates —</option>
+        {% for iv in interventions %}
+        <option value="{{ iv.pk }}"
+          data-start="{{ iv.start_date|date:'Y-m-d' }}"
+          data-end="{{ iv.end_date|date:'Y-m-d' }}">
+          {{ iv.name }} ({{ iv.start_date }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Dose timeline (shown when intervention selected) -->
+    <div id="dose-timeline" class="form-group" style="grid-column:span 2;display:none">
+      <label class="form-label">Dose Timeline</label>
+      <div id="dose-timeline-pills" style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem"></div>
+      <div>
+        <label class="form-label" style="font-size:0.75rem">Analyze from dose change</label>
+        <select id="dose-pivot-select" class="form-select" onchange="onDosePivotChange()" style="margin-top:0.25rem">
+          <option value="">— Use intervention start —</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Before window -->
+    <div class="window-label">BEFORE WINDOW</div>
+    <div class="form-group">
+      <label class="form-label">Start</label>
+      <input id="before-start" type="date" class="form-input">
+    </div>
+    <div class="form-group">
+      <label class="form-label">End</label>
+      <input id="before-end" type="date" class="form-input">
+    </div>
+
+    <!-- After window -->
+    <div class="window-label">AFTER WINDOW</div>
+    <div class="form-group">
+      <label class="form-label">Start</label>
+      <input id="after-start" type="date" class="form-input">
+    </div>
+    <div class="form-group">
+      <label class="form-label">End</label>
+      <input id="after-end" type="date" class="form-input">
+    </div>
+
+    <!-- Options -->
+    <div class="window-label">OPTIONS</div>
+    <div class="form-group">
+      <label class="form-label">Weight Goal</label>
+      <select id="weight-goal" class="form-select">
+        <option value="loss">Loss (lower = better)</option>
+        <option value="gain">Gain (higher = better)</option>
+        <option value="maintain">Maintain (neutral)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Washout Days <span style="color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0">(advanced)</span></label>
+      <input id="washout-days" type="number" class="form-input" value="0" min="0" max="90">
+    </div>
+  </div>
+
+  <div style="margin-top:1.25rem;display:flex;align-items:center;gap:1rem">
+    <button class="btn btn-accent" onclick="runAnalysis()">Run Analysis</button>
+    <span id="analysis-status" style="font-size:0.85rem;color:var(--text-muted)"></span>
+  </div>
+</div>
+
+<!-- Results section -->
+<div id="results-section" style="display:none">
+
+  <!-- Metrics Table -->
+  <div class="chart-card">
+    <div class="chart-header">
+      <h3 class="chart-title">METRICS</h3>
+      <span id="metrics-window" style="font-size:0.8rem;color:var(--text-muted)"></span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="analysis-table" id="metrics-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th style="text-align:right">Before</th>
+            <th style="text-align:right">After</th>
+            <th style="text-align:right">Change</th>
+            <th style="text-align:center">N</th>
+          </tr>
+        </thead>
+        <tbody id="metrics-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- AI Interpretation -->
+  <div class="chart-card" id="ai-interp-card" style="margin-top:1.5rem">
+    <div class="chart-header">
+      <h3 class="chart-title">AI INTERPRETATION</h3>
+      <span id="ai-loading" style="display:none;font-size:0.8rem;color:var(--text-muted)">Generating…</span>
+    </div>
+    <div id="ai-interp-body" class="ai-interpretation"></div>
+  </div>
+
+  <!-- Save Analysis -->
+  <div class="chart-card" style="margin-top:1.5rem">
+    <div class="chart-header">
+      <h3 class="chart-title">SAVE ANALYSIS</h3>
+    </div>
+    <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+      <input id="save-label" type="text" class="form-input" placeholder="Analysis label…" style="flex:1;min-width:200px">
+      <button class="btn btn-accent" onclick="saveAnalysis()">Save with AI Interpretation</button>
+      <span id="save-status" style="font-size:0.85rem;color:var(--text-muted)"></span>
+    </div>
+  </div>
+
+</div>
+
+<!-- Saved Analyses -->
+{% if saved_analyses %}
+<div class="chart-card" style="margin-top:1.5rem">
+  <div class="chart-header">
+    <h3 class="chart-title">SAVED ANALYSES</h3>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="saved-analyses-table">
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Intervention</th>
+          <th>Before</th>
+          <th>After</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sa in saved_analyses %}
+        <tr>
+          <td style="color:var(--text)">{{ sa.label }}</td>
+          <td>{% if sa.intervention %}{{ sa.intervention.name }}{% else %}—{% endif %}</td>
+          <td>{{ sa.before_start }} → {{ sa.before_end }}</td>
+          <td>{{ sa.after_start }} → {{ sa.after_end }}</td>
+          <td>{{ sa.created_at|date:"M j, Y" }}</td>
+          <td><a href="{% url 'saved_analysis_detail' sa.pk %}" class="btn btn-ghost btn-sm">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<script>
+let _lastResult = null;
+const interventionsData = {{ interventions_data|safe }};
+
+function getIvData(pk) {
+  return interventionsData.find(iv => iv.id === parseInt(pk));
+}
+
+// ── Auto-populate dates when intervention is selected ─────────────────────
+function onInterventionChange() {
+  const sel = document.getElementById('iv-select');
+  const opt = sel.options[sel.selectedIndex];
+  const ivPk = sel.value;
+  const start = opt.dataset.start;
+
+  // Clear dose timeline
+  const timelineEl = document.getElementById('dose-timeline');
+  const pillsEl    = document.getElementById('dose-timeline-pills');
+  const pivotSel   = document.getElementById('dose-pivot-select');
+  pillsEl.innerHTML = '';
+  pivotSel.innerHTML = '<option value="">— Use intervention start —</option>';
+
+  if (!start) {
+    timelineEl.style.display = 'none';
+    return;
+  }
+
+  // Populate dose timeline
+  const ivData = getIvData(ivPk);
+  if (ivData && ivData.doses && ivData.doses.length) {
+    timelineEl.style.display = '';
+    ivData.doses.forEach(d => {
+      const end = d.end_date || 'ongoing';
+      const pill = document.createElement('span');
+      pill.style.cssText = 'padding:0.2rem 0.5rem;border-radius:4px;background:rgba(255,255,255,0.07);font-size:0.75rem;color:var(--text-muted)';
+      pill.textContent = `${d.dose} (${d.start_date} → ${end})`;
+      pillsEl.appendChild(pill);
+
+      const opt2 = document.createElement('option');
+      opt2.value = d.start_date;
+      opt2.textContent = `${d.dose} — from ${d.start_date}`;
+      pivotSel.appendChild(opt2);
+    });
+  } else {
+    timelineEl.style.display = 'none';
+  }
+
+  // Auto-populate analysis dates from intervention start
+  setAnalysisDates(start);
+}
+
+function setAnalysisDates(start) {
+  // Before window: 28 days before start
+  const startDate = new Date(start + 'T12:00:00');
+  const beforeEnd = new Date(startDate); beforeEnd.setDate(beforeEnd.getDate() - 1);
+  const beforeStart = new Date(startDate); beforeStart.setDate(beforeStart.getDate() - 28);
+
+  // After window: start + 28 days
+  const afterStart = new Date(startDate);
+  const afterEnd = new Date(startDate); afterEnd.setDate(afterEnd.getDate() + 27);
+
+  document.getElementById('before-start').value = fmtDate(beforeStart);
+  document.getElementById('before-end').value   = fmtDate(beforeEnd);
+  document.getElementById('after-start').value  = fmtDate(afterStart);
+  document.getElementById('after-end').value    = fmtDate(afterEnd);
+}
+
+function onDosePivotChange() {
+  const pivotDate = document.getElementById('dose-pivot-select').value;
+  if (pivotDate) {
+    setAnalysisDates(pivotDate);
+  } else {
+    // Revert to intervention start
+    const ivSel = document.getElementById('iv-select');
+    const start = ivSel.options[ivSel.selectedIndex].dataset.start;
+    if (start) setAnalysisDates(start);
+  }
+}
+
+function fmtDate(d) {
+  return d.toISOString().split('T')[0];
+}
+
+// ── Run analysis ──────────────────────────────────────────────────────────
+async function runAnalysis() {
+  const payload = {
+    before_start:  document.getElementById('before-start').value,
+    before_end:    document.getElementById('before-end').value,
+    after_start:   document.getElementById('after-start').value,
+    after_end:     document.getElementById('after-end').value,
+    weight_goal:   document.getElementById('weight-goal').value,
+    washout_days:  parseInt(document.getElementById('washout-days').value || '0'),
+  };
+  if (!payload.before_start || !payload.before_end || !payload.after_start || !payload.after_end) {
+    setStatus('analysis-status', 'Please fill in all date fields.', 'var(--accent-red)');
+    return;
+  }
+
+  setStatus('analysis-status', 'Running…', 'var(--text-muted)');
+  try {
+    const resp = await fetch("{% url 'run_analysis' %}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (data.error) { setStatus('analysis-status', data.error, 'var(--accent-red)'); return; }
+    _lastResult = data;
+    renderResults(data);
+    setStatus('analysis-status', 'Done.', 'var(--accent-green)');
+  } catch(e) {
+    setStatus('analysis-status', 'Error: ' + e.message, 'var(--accent-red)');
+  }
+}
+
+function renderResults(data) {
+  document.getElementById('results-section').style.display = '';
+  document.getElementById('metrics-window').textContent =
+    `Before: ${data.before_start} → ${data.before_end} (${data.before_n} days) | After: ${data.after_start} → ${data.after_end} (${data.after_n} days)`;
+
+  // Clear AI
+  document.getElementById('ai-interp-body').textContent = '';
+
+  // Render metrics table
+  const tbody = document.getElementById('metrics-tbody');
+  tbody.innerHTML = '';
+  for (const group of data.groups) {
+    const hasData = group.metrics.some(m => m.before_n > 0 || m.after_n > 0);
+    if (!hasData) continue;
+
+    // Group header
+    const hdr = document.createElement('tr');
+    hdr.className = 'analysis-group-header';
+    hdr.innerHTML = `<td colspan="5">${group.name}</td>`;
+    tbody.appendChild(hdr);
+
+    for (const m of group.metrics) {
+      if (m.before_n === 0 && m.after_n === 0) continue;
+      const rowClass = m.improved === true ? 'analysis-improved' :
+                       m.improved === false ? 'analysis-worsened' : 'analysis-neutral';
+      const unit = m.unit ? ' ' + m.unit : '';
+      const bStr = m.before_mean != null ? m.before_mean.toFixed(1) + unit : '—';
+      const aStr = m.after_mean  != null ? m.after_mean.toFixed(1)  + unit : '—';
+      let changeStr = '—';
+      let changeColor = 'inherit';
+      if (m.pct_change != null) {
+        const sign = m.pct_change > 0 ? '+' : '';
+        changeStr = sign + m.pct_change.toFixed(1) + '%';
+        if (m.improved === true)  changeColor = 'var(--accent-green)';
+        if (m.improved === false) changeColor = 'var(--accent-red)';
+      }
+      const tr = document.createElement('tr');
+      tr.className = rowClass;
+      tr.innerHTML = `
+        <td>${m.display_name}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem">${bStr}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem">${aStr}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:${changeColor};font-weight:700">${changeStr}</td>
+        <td style="text-align:center;color:var(--text-dim);font-size:0.78rem">${m.before_n}/${m.after_n}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+  // Pre-fill save label
+  const ivSel = document.getElementById('iv-select');
+  const ivName = ivSel.options[ivSel.selectedIndex]?.text || '';
+  document.getElementById('save-label').value = ivName ? `${ivName} — ${data.after_start}` : `Analysis ${data.after_start}`;
+}
+
+// ── Save analysis ─────────────────────────────────────────────────────────
+async function saveAnalysis() {
+  if (!_lastResult) { setStatus('save-status', 'Run an analysis first.', 'var(--accent-red)'); return; }
+  setStatus('save-status', 'Saving + generating AI interpretation…', 'var(--text-muted)');
+  document.getElementById('ai-loading').style.display = '';
+  const ivId = document.getElementById('iv-select').value;
+  const payload = {
+    label:        document.getElementById('save-label').value || 'Untitled',
+    intervention_id: ivId || null,
+    before_start: _lastResult.before_start,
+    before_end:   _lastResult.before_end,
+    after_start:  _lastResult.after_start,
+    after_end:    _lastResult.after_end,
+    window_days:  28,
+    washout_days: parseInt(document.getElementById('washout-days').value || '0'),
+    weight_goal:  document.getElementById('weight-goal').value,
+    metrics_json: _lastResult,
+  };
+  try {
+    const resp = await fetch("{% url 'save_analysis' %}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      setStatus('save-status', 'Saved! Reloading…', 'var(--accent-green)');
+      setTimeout(() => { window.location.href = "{% url 'saved_analysis_detail' 0 %}".replace('/0/', '/' + data.id + '/'); }, 1200);
+    } else {
+      setStatus('save-status', 'Error saving.', 'var(--accent-red)');
+    }
+  } catch(e) {
+    setStatus('save-status', 'Error: ' + e.message, 'var(--accent-red)');
+  } finally {
+    document.getElementById('ai-loading').style.display = 'none';
+  }
+}
+
+function setStatus(id, msg, color) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.color = color || 'var(--text-muted)';
+}
+</script>
+{% endblock %}

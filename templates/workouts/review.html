@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}Weekly Review · Cadence{% endblock %}
+{% block nav_insights_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">WEEKLY REVIEW</div>
+    <div class="page-subtitle">AI-generated review of your most recently completed week</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 280px;gap:1.5rem;align-items:start">
+
+  {# ── Current week review ── #}
+  <div>
+    {% if current_review %}
+    <div class="card" style="margin-bottom:1.5rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.5rem">
+        <div>
+          <div class="section-title" style="margin-bottom:0.15rem">
+            WEEK OF {{ current_review.week_start|date:"M j" }} – {{ current_review.week_end|date:"M j, Y" }}
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-dim)">Generated {{ current_review.generated_at|date:"M j, Y g:i A" }}</div>
+        </div>
+        <a href="{% url 'weekly_review' %}?refresh=1" class="btn btn-ghost btn-sm">↺ Regenerate</a>
+      </div>
+      <div class="insights-item" style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">
+        {{ current_review.content|format_nutrition_insights }}
+      </div>
+    </div>
+    {% else %}
+    <div class="card" style="margin-bottom:1.5rem">
+      <div style="color:var(--text-dim);font-size:0.9rem;padding:1rem 0">
+        No review available yet.
+        <a href="{% url 'weekly_review' %}?refresh=1" class="btn btn-sm btn-accent" style="margin-left:0.75rem">Generate Now</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Archive ── #}
+    {% if archive %}
+    <div class="card">
+      <div class="section-title" style="margin-bottom:1rem">PAST REVIEWS</div>
+      <div style="display:flex;flex-direction:column;gap:0.75rem">
+        {% for review in archive %}
+        <details style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+          <summary style="padding:0.65rem 1rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:var(--bg-raised);list-style:none;font-size:0.875rem;font-weight:600">
+            <span>Week of {{ review.week_start|date:"M j" }} – {{ review.week_end|date:"M j, Y" }}</span>
+            <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">{{ review.generated_at|date:"M j" }}</span>
+          </summary>
+          <div style="padding:1rem 1.25rem;background:var(--bg-card);line-height:1.7;font-size:0.875rem">
+            {{ review.content|format_nutrition_insights }}
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── Sidebar ── #}
+  <div>
+    <div class="card" style="margin-bottom:1rem">
+      <div class="section-title" style="margin-bottom:0.75rem">ABOUT WEEKLY REVIEW</div>
+      <p style="color:var(--text-dim);font-size:0.82rem;line-height:1.6;margin:0 0 0.75rem">
+        Reviews are generated every Sunday for the week that just ended (Mon–Sun).
+        Covers weight trend, nutrition adherence, workouts, hunger patterns, and symptoms.
+      </p>
+      <p style="color:var(--text-dim);font-size:0.82rem;line-height:1.6;margin:0">
+        Use <strong>Regenerate</strong> to get a fresh analysis, for example after syncing new data.
+      </p>
+    </div>
+    <div class="card">
+      <div class="section-title" style="margin-bottom:0.75rem">QUICK LINKS</div>
+      <div style="display:flex;flex-direction:column;gap:0.4rem">
+        <a href="{% url 'nutrition_analytics' %}" class="btn btn-ghost btn-sm" style="text-align:left">Nutrition Analytics</a>
+        <a href="{% url 'insights' %}" class="btn btn-ghost btn-sm" style="text-align:left">Pattern Insights</a>
+        <a href="{% url 'body' %}" class="btn btn-ghost btn-sm" style="text-align:left">Body Trends</a>
+        <a href="{% url 'symptoms' %}" class="btn btn-ghost btn-sm" style="text-align:left">Symptoms Log</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+
+{% block title %}Nutrition Analytics — Cadence{% endblock %}
+{% block nav_nutrition_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+  <div>
+    <h1 class="page-title">NUTRITION ANALYTICS</h1>
+    <p class="page-sub">
+      <a href="{% url 'nutrition' %}" style="color:var(--text-muted);font-size:0.85rem">‹ Back to today</a>
+      &nbsp;·&nbsp;
+      <a href="{% url 'nutrition_targets' %}" style="color:var(--text-muted);font-size:0.85rem">Edit targets ›</a>
+    </p>
+  </div>
+  <div style="display:flex;gap:0.4rem;margin-top:0.5rem">
+    {% for val, label in ranges %}
+    <a href="?range={{ val }}" class="btn btn-sm {% if val == range_param %}btn-accent{% else %}btn-ghost{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Adherence overview ── #}
+<div class="card" style="margin-bottom:2rem">
+  <div class="section-title" style="margin-bottom:1.25rem">OVERVIEW — LAST {{ range_days }} DAYS</div>
+  <div class="nutr-adh-grid">
+    <div class="nutr-adh-stat">
+      <div class="nutr-adh-val" style="color:{% if logged_days >= total_days|floatformat:0 %}var(--accent-green){% elif logged_days > 0 %}var(--text){% else %}var(--text-dim){% endif %}">
+        {{ logged_days }}<span style="font-size:1.1rem;opacity:0.5">/{{ total_days }}</span>
+      </div>
+      <div class="nutr-adh-label">Days Logged</div>
+    </div>
+    {% if avg_cal %}
+    <div class="nutr-adh-stat">
+      <div class="nutr-adh-val" style="color:var(--text)">
+        {{ avg_cal }}
+        {% if cal_t %}<span style="font-size:1rem;opacity:0.4"> / {{ cal_t }}</span>{% endif %}
+      </div>
+      <div class="nutr-adh-label">Avg Cal / Day</div>
+    </div>
+    {% endif %}
+    {% if avg_prot %}
+    <div class="nutr-adh-stat">
+      <div class="nutr-adh-val" style="color:{% if prot_t and avg_prot >= prot_t %}var(--accent-green){% elif days_hit_prot is not None and days_hit_prot < 3 %}var(--accent){% else %}var(--text){% endif %}">
+        {{ avg_prot }}g
+        {% if prot_t %}<span style="font-size:1rem;opacity:0.4"> / {{ prot_t }}g</span>{% endif %}
+      </div>
+      <div class="nutr-adh-label">Avg Protein / Day</div>
+    </div>
+    {% endif %}
+    {% if avg_fiber %}
+    <div class="nutr-adh-stat">
+      <div class="nutr-adh-val" style="color:{% if fiber_t and avg_fiber >= fiber_t %}var(--accent-green){% else %}var(--text){% endif %}">
+        {{ avg_fiber }}g
+        {% if fiber_t %}<span style="font-size:1rem;opacity:0.4"> / {{ fiber_t }}g</span>{% endif %}
+      </div>
+      <div class="nutr-adh-label">Avg Fiber / Day</div>
+    </div>
+    {% endif %}
+    {% if days_hit_prot is not None %}
+    <div class="nutr-adh-stat">
+      <div class="nutr-adh-val" style="color:{% if days_hit_prot >= 5 %}var(--accent-green){% elif days_hit_prot <= 2 %}var(--accent){% else %}var(--text){% endif %}">
+        {{ days_hit_prot }}<span style="font-size:1.1rem;opacity:0.5">/{{ logged_days }}</span>
+      </div>
+      <div class="nutr-adh-label">Protein Target Hit</div>
+    </div>
+    {% endif %}
+    {% if avg_prot_gap %}
+    <div class="nutr-adh-stat">
+      <div class="nutr-adh-val" style="color:var(--accent)">
+        {{ avg_prot_gap }}g
+      </div>
+      <div class="nutr-adh-label">Avg Protein Shortfall</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Macro trend chart ── #}
+{% if chart_data_json != "[]" %}
+<div class="card" style="margin-bottom:2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+    <div class="section-title" style="margin-bottom:0">MACRO TRENDS</div>
+    <div style="display:flex;gap:0.5rem;font-size:0.75rem">
+      <button onclick="toggleSeries('cal')" id="btn-cal" class="btn btn-ghost btn-sm" style="font-size:0.72rem">Calories</button>
+      <button onclick="toggleSeries('protein')" id="btn-protein" class="btn btn-ghost btn-sm" style="font-size:0.72rem">Protein</button>
+      <button onclick="toggleSeries('fiber')" id="btn-fiber" class="btn btn-ghost btn-sm" style="font-size:0.72rem">Fiber</button>
+      <button onclick="toggleSeries('carbs')" id="btn-carbs" class="btn btn-ghost btn-sm" style="font-size:0.72rem;opacity:0.5">Carbs</button>
+      <button onclick="toggleSeries('fat')" id="btn-fat" class="btn btn-ghost btn-sm" style="font-size:0.72rem;opacity:0.5">Fat</button>
+    </div>
+  </div>
+  <div style="position:relative;height:240px">
+    <canvas id="macro-chart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+{# ── Day-of-week ── #}
+{% if dow_stats_json != "[]" %}
+<div class="card" style="margin-bottom:2rem">
+  <div class="section-title" style="margin-bottom:1rem">DAY-OF-WEEK PATTERNS</div>
+  <div style="position:relative;height:180px">
+    <canvas id="dow-chart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+{# ── Top foods ── #}
+{% if top_foods %}
+<div class="card" style="margin-bottom:2rem">
+  <div class="section-title" style="margin-bottom:1rem">TOP FOODS</div>
+  <div style="display:flex;flex-direction:column;gap:0.4rem">
+    {% for food in top_foods|slice:":10" %}
+    <div style="display:flex;align-items:baseline;gap:0.5rem;font-size:0.83rem;padding:0.25rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
+      <span style="color:var(--text-dim);min-width:1.5rem;font-size:0.75rem;font-weight:700">{{ forloop.counter }}</span>
+      <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ food.name }}</span>
+      <span style="color:var(--text-dim);white-space:nowrap;font-size:0.78rem">×{{ food.count }}</span>
+      <span style="color:var(--text-dim);white-space:nowrap;font-size:0.78rem">{{ food.avg_protein_g|floatformat:0 }}g P</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Hunger trend ── #}
+{% if hunger_chart_json != "[]" %}
+<div class="card" style="margin-bottom:2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+    <div class="section-title" style="margin-bottom:0">HUNGER & SATIETY</div>
+    <a href="{% url 'symptoms' %}" class="btn btn-ghost btn-sm" style="font-size:0.72rem">Log symptoms ›</a>
+  </div>
+  {% if hunger_avg_morning is not None %}
+  <div style="display:flex;gap:2rem;margin-bottom:1rem;flex-wrap:wrap">
+    <div>
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Avg Morning Hunger</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;font-weight:700;
+        color:{% if hunger_avg_morning <= 3 %}var(--accent-green){% elif hunger_avg_morning >= 7 %}var(--accent-red){% else %}var(--text){% endif %}">
+        {{ hunger_avg_morning }}/10
+      </div>
+      <div style="font-size:0.72rem;color:var(--text-dim)">
+        {% if hunger_avg_morning <= 3 %}GLP-1 suppression strong
+        {% elif hunger_avg_morning >= 7 %}May signal dose tolerance
+        {% else %}Moderate appetite{% endif %}
+      </div>
+    </div>
+    {% if hunger_avg_fullness is not None %}
+    <div>
+      <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Avg Post-Meal Fullness</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;font-weight:700">{{ hunger_avg_fullness }}/10</div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div style="position:relative;height:180px">
+    <canvas id="hunger-chart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+{# ── Symptom summary ── #}
+{% if symptom_summary %}
+<div class="card" style="margin-bottom:2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+    <div class="section-title" style="margin-bottom:0">SYMPTOMS — LAST {{ range_days }} DAYS</div>
+    <a href="{% url 'symptoms' %}" class="btn btn-ghost btn-sm" style="font-size:0.72rem">Log new ›</a>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:0.4rem">
+    {% for row in symptom_summary %}
+    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.35rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
+      <span style="flex:1;font-size:0.85rem;color:var(--text-muted);text-transform:capitalize">{{ row.symptom|title }}</span>
+      <span style="font-size:0.82rem;color:var(--text-dim)">×{{ row.count }}</span>
+      <span style="font-size:0.75rem;padding:0.15rem 0.45rem;border-radius:var(--r);background:
+        {% if row.avg_sev >= 2.5 %}color-mix(in srgb, var(--accent-red) 15%, transparent){% elif row.avg_sev >= 1.5 %}color-mix(in srgb, var(--accent) 12%, transparent){% else %}color-mix(in srgb, var(--accent-green) 12%, transparent){% endif %};
+        color:{% if row.avg_sev >= 2.5 %}var(--accent-red){% elif row.avg_sev >= 1.5 %}var(--accent){% else %}var(--accent-green){% endif %}">
+        {% if row.avg_sev >= 2.5 %}Severe avg{% elif row.avg_sev >= 1.5 %}Moderate avg{% else %}Mild avg{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── AI insights ── #}
+<div class="card" style="margin-bottom:2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+    <div class="section-title" style="margin-bottom:0">AI INSIGHTS</div>
+    <div style="display:flex;align-items:center;gap:0.75rem">
+      {% if insights_generated_at %}
+      <span style="font-size:0.7rem;color:var(--text-dim)">Generated {{ insights_generated_at|timesince }} ago</span>
+      {% endif %}
+      <button class="btn btn-ghost btn-sm"
+              hx-post="{% url 'nutrition_insights_refresh' %}?range={{ range_param }}"
+              hx-target="#insights-area"
+              hx-swap="innerHTML"
+              hx-indicator="#insights-spinner"
+              hx-disabled-elt="this">
+        ↺ {% if insights %}Regenerate{% else %}Generate{% endif %}
+        <span id="insights-spinner" class="htmx-indicator" style="font-size:0.75rem;margin-left:0.25rem">…</span>
+      </button>
+    </div>
+  </div>
+  <div id="insights-area" class="insights-item" style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">
+    {% include "workouts/partials/nutrition_insights.html" %}
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const raw = {{ chart_data_json|safe }};
+  if (!raw.length) return;
+
+  const labels = raw.map(d => {
+    const dt = new Date(d.date);
+    return dt.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+  });
+
+  const calData    = raw.map(d => d.cal);
+  const protData   = raw.map(d => d.protein);
+  const carbsData  = raw.map(d => d.carbs);
+  const fatData    = raw.map(d => d.fat);
+  const fiberData  = raw.map(d => d.fiber);
+
+  const calT   = {{ cal_t|default:"null" }};
+  const protT  = {{ prot_t|default:"null" }};
+  const fiberT = {{ fiber_t|default:"null" }};
+
+  const datasets = {
+    cal: {
+      label: 'Calories',
+      data: calData,
+      borderColor: '#FF6B35',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: raw.length > 60 ? 0 : 3,
+      tension: 0.3,
+      yAxisID: 'y',
+    },
+    protein: {
+      label: 'Protein (g)',
+      data: protData,
+      borderColor: '#4FC3F7',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: raw.length > 60 ? 0 : 3,
+      tension: 0.3,
+      yAxisID: 'y2',
+    },
+    carbs: {
+      label: 'Carbs (g)',
+      data: carbsData,
+      borderColor: '#FFD54F',
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.3,
+      yAxisID: 'y2',
+      hidden: true,
+    },
+    fat: {
+      label: 'Fat (g)',
+      data: fatData,
+      borderColor: '#FF8A65',
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.3,
+      yAxisID: 'y2',
+      hidden: true,
+    },
+    fiber: {
+      label: 'Fiber (g)',
+      data: fiberData,
+      borderColor: '#B4FF39',
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: raw.length > 60 ? 0 : 3,
+      tension: 0.3,
+      yAxisID: 'y2',
+    },
+  };
+
+  const allDatasets = [datasets.cal, datasets.protein, datasets.carbs, datasets.fat, datasets.fiber];
+
+  // Target reference lines
+  if (calT)   allDatasets.push({label:'Cal target',  data: raw.map(()=>calT),   borderColor:'#FF6B35', borderWidth:1, borderDash:[4,4], pointRadius:0, yAxisID:'y',  tension:0});
+  if (protT)  allDatasets.push({label:'Prot target', data: raw.map(()=>protT),  borderColor:'#4FC3F7', borderWidth:1, borderDash:[4,4], pointRadius:0, yAxisID:'y2', tension:0});
+  if (fiberT) allDatasets.push({label:'Fiber target',data: raw.map(()=>fiberT), borderColor:'#B4FF39', borderWidth:1, borderDash:[4,4], pointRadius:0, yAxisID:'y2', tension:0});
+
+  const ctx = document.getElementById('macro-chart').getContext('2d');
+  window._macroChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: allDatasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y:  { position: 'left',  ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' }, title: { display: true, text: 'kcal', color: '#888', font: { size: 10 } } },
+        y2: { position: 'right', ticks: { color: '#888', font: { size: 10 } }, grid: { display: false }, title: { display: true, text: 'g', color: '#888', font: { size: 10 } } },
+      },
+    },
+  });
+
+  // Hunger trend chart
+  const hungerRaw = {{ hunger_chart_json|safe }};
+  if (hungerRaw && hungerRaw.length) {
+    const hCtx = document.getElementById('hunger-chart').getContext('2d');
+    const hasMorning = hungerRaw.some(d => d.morning_avg != null);
+    const datasets = [{
+      label: 'Daily Avg Hunger',
+      data: hungerRaw.map(d => d.avg),
+      borderColor: '#FF6B35',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      pointRadius: hungerRaw.length > 30 ? 0 : 3,
+      tension: 0.3,
+      spanGaps: true,
+    }];
+    if (hasMorning) {
+      datasets.push({
+        label: 'Morning Hunger',
+        data: hungerRaw.map(d => d.morning_avg),
+        borderColor: 'rgba(255,107,53,0.4)',
+        backgroundColor: 'rgba(255,107,53,0.15)',
+        borderWidth: 1,
+        borderDash: [4, 3],
+        pointRadius: hungerRaw.length > 30 ? 0 : 3,
+        pointStyle: 'circle',
+        tension: 0.3,
+        spanGaps: false,
+      });
+    }
+    new Chart(hCtx, {
+      type: 'line',
+      data: {
+        labels: hungerRaw.map(d => { const dt = new Date(d.date); return dt.toLocaleDateString('en-US', {month:'short', day:'numeric'}); }),
+        datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: hasMorning, labels: { color: '#888', font: { size: 10 }, boxWidth: 12 } } },
+        scales: {
+          x: { ticks: { color: '#888', font: { size: 10 }, maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y: { min: 0, max: 10, ticks: { color: '#888', font: { size: 10 }, stepSize: 2 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        },
+      },
+    });
+  }
+
+  // Day-of-week chart
+  const dowRaw = {{ dow_stats_json|safe }};
+  if (dowRaw && dowRaw.length) {
+    const dowCtx = document.getElementById('dow-chart').getContext('2d');
+    new Chart(dowCtx, {
+      type: 'bar',
+      data: {
+        labels: dowRaw.map(d => d.day_name),
+        datasets: [{
+          label: 'Avg Calories',
+          data: dowRaw.map(d => d.avg_cal),
+          backgroundColor: dowRaw.map(d => d.avg_cal ? '#FF6B35' : '#2a2a38'),
+          borderRadius: 3,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#888', font: { size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        },
+      },
+    });
+  }
+});
+
+function toggleSeries(key) {
+  if (!window._macroChart) return;
+  const labelMap = { cal: 'Calories', protein: 'Protein (g)', carbs: 'Carbs (g)', fat: 'Fat (g)', fiber: 'Fiber (g)' };
+  const chart = window._macroChart;
+  chart.data.datasets.forEach(ds => {
+    if (ds.label === labelMap[key]) {
+      ds.hidden = !ds.hidden;
+    }
+  });
+  chart.update();
+  const btn = document.getElementById('btn-' + key);
+  if (btn) btn.style.opacity = chart.data.datasets.find(d => d.label === labelMap[key])?.hidden ? '0.4' : '1';
+}
+</script>
+
+{% endblock %}

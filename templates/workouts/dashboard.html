@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Cadence{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">YOUR STATS</h1>
+  <p class="page-sub">Training overview and discipline breakdown</p>
+</div>
+
+{% if total_cached == 0 %}
+<div class="empty-state">
+  <div class="empty-icon">◈</div>
+  <h2>No workouts cached yet</h2>
+  <p>Hit <strong>Sync</strong> in the nav to pull your workout history from Peloton.<br>
+     Make sure your <code>PELOTON_SESSION_ID</code> and <code>PELOTON_USER_ID</code> are set in <code>.env</code>.</p>
+</div>
+{% else %}
+
+<!-- Overview cards from API -->
+{% with wc=overview.workout_counts %}
+<div class="stat-grid">
+  <div class="stat-card stat-card--hero">
+    <div class="stat-label">Total Workouts</div>
+    <div class="stat-value">{{ wc.total_workouts|default:"—" }}</div>
+  </div>
+  {% with s=overview.streaks %}
+  <div class="stat-card">
+    <div class="stat-label">Current Streak</div>
+    <div class="stat-value">{{ s.current_weekly|default:"0" }}<span class="stat-unit">wks</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Best Streak</div>
+    <div class="stat-value">{{ s.best_weekly|default:"0" }}<span class="stat-unit">wks</span></div>
+  </div>
+  {% endwith %}
+  <div class="stat-card">
+    <div class="stat-label">Cached Locally</div>
+    <div class="stat-value">{{ total_cached }}</div>
+  </div>
+</div>
+{% endwith %}
+
+<!-- Discipline breakdown -->
+<section class="section">
+  <h2 class="section-title">BY DISCIPLINE</h2>
+  <div class="discipline-grid">
+    {% for slug, label, count, color in discipline_counts %}
+    <a href="{% url 'history' %}?discipline={{ slug }}" class="discipline-card" style="border-top:2px solid {{ color }}">
+      <div class="discipline-name" style="color:{{ color }}">{{ label }}</div>
+      <div class="discipline-count">{{ count }}</div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Personal records -->
+{% if overview.personal_records %}
+<section class="section">
+  <h2 class="section-title">PERSONAL RECORDS</h2>
+  <div class="records-grid">
+    {% for pr in overview.personal_records %}
+    <div class="record-card">
+      <div class="record-discipline">{{ pr.name }}</div>
+      {% for r in pr.records %}
+      <div class="record-row">
+        <span class="record-name">{{ r.name }}</span>
+        <span class="record-value">{{ r.value }} <span class="record-unit">{{ r.unit }}</span></span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% endif %}
+{% endblock %}

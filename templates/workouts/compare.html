@@ -1,0 +1,677 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}Compare Workouts — Cadence{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+{% if not workouts %}
+<div class="page-header">
+  <h1 class="page-title">COMPARE</h1>
+  <p class="page-sub">Select 2–4 workouts from <a href="{% url 'history' %}">Workout History</a> to compare</p>
+</div>
+<div class="empty-state">
+  <div class="empty-icon">⊕</div>
+  <h2>Nothing selected yet</h2>
+  <p>Go to <a href="{% url 'history' %}">Workout History</a>, check the boxes on 2–4 workouts, then hit <strong>Compare →</strong></p>
+</div>
+
+{% else %}
+
+{% with COLORS="#FF6B35,#00D1FF,#B4FF39,#FF3B5C" %}
+
+<!-- compare-top: left col (header + cards) + right col (AI) for 2 workouts; stacked for 3-4 -->
+<div class="compare-top" data-count="{{ workouts|length }}">
+
+  <div class="compare-left-col">
+    <div class="page-header" style="margin-bottom:1.5rem">
+      <h1 class="page-title">COMPARE</h1>
+      <p class="page-sub">{{ workouts|length }} workout{{ workouts|length|pluralize }} · {{ compare_mode|title }} mode</p>
+    </div>
+
+    <div class="compare-header-grid">
+      {% for w in workouts %}
+      {% with color=COLORS|split:","|index:forloop.counter0 %}
+      <a class="compare-header-card" href="{% url 'workout_detail' w.workout_id %}" style="border-top-color:{{ color }};text-decoration:none;display:block">
+        <div class="compare-card-date">{{ w.created_at|date:"M j, Y" }}</div>
+        <div class="compare-card-title">
+          {{ w.title|default:"Workout" }}
+          {% if w.is_pr %}<span style="font-size:0.7rem;color:#FFD700;margin-left:0.4rem">🏆 PR</span>{% endif %}
+        </div>
+        <div class="compare-card-instructor">{{ w.instructor_name }}{% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}</div>
+        <div class="compare-metrics">
+          {% if w.is_run %}
+            {% if w.avg_pace_display %}<div class="cm"><span class="cm-v">{{ w.avg_pace_display }}</span><span class="cm-l">avg pace</span></div>{% endif %}
+            {% if w.distance_miles %}<div class="cm"><span class="cm-v">{{ w.distance_miles|floatformat:2 }}</span><span class="cm-l">miles</span></div>{% endif %}
+            {% if w.elevation_gain %}<div class="cm"><span class="cm-v">{{ w.elevation_gain|floatformat:0 }}</span><span class="cm-l">ft elev</span></div>{% endif %}
+          {% elif w.is_strength %}
+            {% if w.effort_score %}<div class="cm"><span class="cm-v">{{ w.effort_score|floatformat:1 }}</span><span class="cm-l">effort</span></div>{% endif %}
+            {% if w.movement_tracker_tier %}
+              <div class="cm"><span class="cm-v" style="font-size:0.85rem">{{ w.movement_tracker_tier }}</span><span class="cm-l">tier</span></div>
+            {% endif %}
+          {% else %}
+            {% if w.avg_cadence %}<div class="cm"><span class="cm-v">{{ w.avg_cadence|floatformat:0 }}</span><span class="cm-l">rpm</span></div>{% endif %}
+          {% endif %}
+          {% if w.output_watts %}<div class="cm"><span class="cm-v">{{ w.output_watts|format_kj }}</span><span class="cm-l">output kJ</span></div>{% endif %}
+          {% if w.effort_points %}<div class="cm"><span class="cm-v">{{ w.effort_points|floatformat:0 }}</span><span class="cm-l">effort pts</span></div>{% endif %}
+          {% if w.heart_rate_avg_best %}<div class="cm"><span class="cm-v">{{ w.heart_rate_avg_best|floatformat:0 }}</span><span class="cm-l">avg bpm</span></div>{% endif %}
+          {% if w.calories %}<div class="cm"><span class="cm-v">{{ w.calories|floatformat:0 }}</span><span class="cm-l">cal</span></div>{% endif %}
+        </div>
+      </a>
+      {% endwith %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="chart-card compare-ai-card">
+    <div class="chart-header">
+      <h3 class="chart-title">AI ANALYSIS</h3>
+    </div>
+    <div id="compare-ai-body" style="padding:0.25rem 0">
+      <button class="btn btn-accent"
+              hx-get="{% url 'compare_analysis' %}?ids={{ workout_ids|join:',' }}"
+              hx-target="#compare-ai-body"
+              hx-swap="innerHTML"
+              hx-indicator="#compare-ai-spinner">
+        Generate Analysis
+      </button>
+      <span id="compare-ai-spinner" class="cai-spinner htmx-indicator" style="margin-left:0.75rem;vertical-align:middle"></span>
+    </div>
+  </div>
+
+</div>
+
+<!-- Stats breakdown table (JS-rendered) -->
+<div class="chart-card" style="margin-bottom:1rem">
+  <div class="chart-header">
+    <h3 class="chart-title">STATS BREAKDOWN</h3>
+  </div>
+  <div id="statsTableContainer"></div>
+</div>
+
+<!-- Overlay chart -->
+<div class="chart-card" id="overlayChartCard">
+  <div class="chart-header">
+    <h3 class="chart-title">OVERLAY COMPARISON</h3>
+    <div class="chart-toggles">
+      {% if compare_mode == "run" %}
+        <button class="chart-toggle active" data-metric="pace">Pace</button>
+        <button class="chart-toggle" data-metric="speed">Speed</button>
+        <button class="chart-toggle" data-metric="incline">Incline</button>
+        <button class="chart-toggle" data-metric="heart_rate">Heart Rate</button>
+      {% elif compare_mode == "strength" %}
+        <button class="chart-toggle active" data-metric="heart_rate">Heart Rate</button>
+      {% else %}
+        <button class="chart-toggle active" data-metric="output">Output</button>
+        <button class="chart-toggle" data-metric="cadence">Cadence</button>
+        <button class="chart-toggle" data-metric="resistance">Resistance</button>
+        <button class="chart-toggle" data-metric="heart_rate">Heart Rate</button>
+      {% endif %}
+    </div>
+  </div>
+  <canvas id="compareChart" height="110"></canvas>
+  <div id="compareChartNoData" style="display:none;text-align:center;padding:2rem 0;color:var(--text-dim);font-size:0.85rem;">
+    No data for this metric in the selected workouts.
+  </div>
+</div>
+
+<!-- Run split-by-split comparison table -->
+{% if compare_mode == "run" %}
+<div class="chart-card" style="margin-top:1rem">
+  <div class="chart-header">
+    <h3 class="chart-title">SPLIT-BY-SPLIT BREAKDOWN</h3>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Mile</th>
+          {% for w in workouts %}
+          {% with color=COLORS|split:","|index:forloop.counter0 %}
+          <th colspan="2" style="border-left:2px solid {{ color }}">
+            {{ w.created_at|date:"M j" }}
+          </th>
+          {% endwith %}
+          {% endfor %}
+        </tr>
+        <tr>
+          <th></th>
+          {% for w in workouts %}
+          <th>Pace</th>
+          <th>HR</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody id="splits-table-body"></tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Strength movements comparison (JS-driven) -->
+{% if compare_mode == "strength" %}
+<div id="movementsCompare"></div>
+{% endif %}
+
+{% endwith %}
+{% endif %}
+
+<script>
+const perfData = {{ perf_data|safe }};
+const workoutIds = {{ workout_ids|safe }};
+const compareMode = "{{ compare_mode }}";
+const splitsComparison = {{ splits_comparison|safe }};
+const workoutDetailData = {{ workout_detail_data|safe }};
+const workoutStats = {{ workout_stats|safe }};
+const workoutDates = [{% for w in workouts %}"{{ w.created_at|date:'M j, Y' }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+
+const COLORS = ["#FF6B35", "#00D1FF", "#B4FF39", "#FF3B5C"];
+
+function formatPace(sec) {
+  if (!sec && sec !== 0) return "—";
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function getSummary(id, slug) {
+  return ((perfData[id] || {}).summaries || {})[slug];
+}
+function getAvgSummary(id, slug) {
+  return ((perfData[id] || {}).average_summaries || {})[slug];
+}
+function getMetric(id, slug, field) {
+  return (((perfData[id] || {}).metrics_by_slug || {})[slug] || {})[field];
+}
+function fmtPace(secPerMile) {
+  if (!secPerMile) return "—";
+  const m = Math.floor(secPerMile / 60);
+  const s = Math.round(secPerMile % 60);
+  return `${m}:${s.toString().padStart(2, "0")}/mi`;
+}
+
+function buildStatsTable() {
+  const container = document.getElementById("statsTableContainer");
+  if (!container) return;
+
+  let rows = [];
+
+  if (compareMode === "run") {
+    rows = [
+      { label: "Avg Pace", dir: "lower", vals: workoutIds.map(id => {
+        const s = getAvgSummary(id, "avg_pace");
+        if (s?.value) { const sec = s.value * 60; return { d: fmtPace(sec), r: sec }; }
+        const m = workoutStats[id]?.avg_pace_seconds;
+        return m ? { d: fmtPace(m), r: m } : { d: "—", r: null };
+      })},
+      { label: "Distance", dir: "higher", vals: workoutIds.map(id => {
+        const s = getSummary(id, "distance");
+        if (s?.value != null) return { d: `${s.value.toFixed(2)} mi`, r: s.value };
+        const m = workoutStats[id]?.distance_miles;
+        return m ? { d: `${m.toFixed(2)} mi`, r: m } : { d: "—", r: null };
+      })},
+      { label: "Elevation Gain", dir: "higher", vals: workoutIds.map(id => {
+        const s = getSummary(id, "elevation");
+        if (s?.value != null) return { d: `${Math.round(s.value)} ft`, r: s.value };
+        const m = workoutStats[id]?.elevation_gain;
+        return m ? { d: `${Math.round(m)} ft`, r: m } : { d: "—", r: null };
+      })},
+      { label: "Avg Incline", dir: "higher", vals: workoutIds.map(id => {
+        const s = getAvgSummary(id, "avg_incline");
+        if (s?.value != null) return { d: `${s.value.toFixed(1)}%`, r: s.value };
+        const m = workoutStats[id]?.avg_incline;
+        return m ? { d: `${m.toFixed(1)}%`, r: m } : { d: "—", r: null };
+      })},
+      { label: "Max Speed", dir: "higher", vals: workoutIds.map(id => {
+        const v = getMetric(id, "speed", "max_value") ?? workoutStats[id]?.max_speed_mph;
+        return v ? { d: `${v.toFixed(1)} mph`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Avg Heart Rate", dir: null, vals: workoutIds.map(id => {
+        const v = getMetric(id, "heart_rate", "average_value") ?? workoutStats[id]?.heart_rate_avg;
+        return v ? { d: `${Math.round(v)} bpm`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Max Heart Rate", dir: null, vals: workoutIds.map(id => {
+        const v = getMetric(id, "heart_rate", "max_value") ?? workoutStats[id]?.heart_rate_max;
+        return v ? { d: `${Math.round(v)} bpm`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Calories", dir: "higher", vals: workoutIds.map(id => {
+        const s = getSummary(id, "calories");
+        if (s?.value != null) return { d: Math.round(s.value).toString(), r: s.value };
+        const v = workoutStats[id]?.calories;
+        return v ? { d: Math.round(v).toString(), r: v } : { d: "—", r: null };
+      })},
+      { label: "Effort Points", dir: "higher", vals: workoutIds.map(id => {
+        const v = perfData[id]?.effort_zones?.total_effort_points;
+        return v ? { d: v.toFixed(1), r: v } : { d: "—", r: null };
+      })},
+      { label: "Leaderboard", dir: "lower", vals: workoutIds.map(id => {
+        const s = workoutStats[id];
+        if (s?.leaderboard_rank && s?.total_leaderboard_users) {
+          return { d: `#${s.leaderboard_rank} <span style="color:var(--text-dim);font-size:0.75rem">(beat ${s.leaderboard_pct}%)</span>`, r: s.leaderboard_rank };
+        }
+        return { d: "—", r: null };
+      })},
+    ];
+
+    // Running form rows — only added when at least one workout has Garmin form data
+    const hasForm = workoutIds.some(id => workoutStats[id]?.run_cadence_avg != null);
+    if (hasForm) {
+      rows.push(
+        { label: "Cadence (running only)", dir: "higher", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.run_cadence_avg;
+          return v != null ? { d: `${Math.round(v)} spm`, r: v } : { d: "—", r: null };
+        })},
+        { label: "Stride Length", dir: null, vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.stride_length_avg;
+          return v != null ? { d: `${v.toFixed(1)} cm`, r: v } : { d: "—", r: null };
+        })},
+        { label: "Vert. Oscillation", dir: "lower", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.vertical_oscillation_avg;
+          return v != null ? { d: `${v.toFixed(1)} cm`, r: v } : { d: "—", r: null };
+        })},
+        { label: "Vert. Ratio", dir: "lower", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.vertical_ratio_avg;
+          return v != null ? { d: `${v.toFixed(1)}%`, r: v } : { d: "—", r: null };
+        })},
+        { label: "Ground Contact", dir: "lower", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.ground_contact_time_avg;
+          return v != null ? { d: `${Math.round(v)} ms`, r: v } : { d: "—", r: null };
+        })},
+      );
+    }
+  } else if (compareMode === "strength") {
+    const hasExerciseSets = workoutIds.some(id => (workoutDetailData[id]?.exercise_sets || []).length > 0);
+    const hasPelotonMovements = workoutIds.some(id => (workoutDetailData[id]?.movements || []).length > 0);
+    rows = [
+      { label: "Calories", dir: "higher", vals: workoutIds.map(id => {
+        const s = getSummary(id, "calories");
+        if (s?.value != null) return { d: Math.round(s.value).toString(), r: s.value };
+        const v = workoutStats[id]?.calories;
+        return v ? { d: Math.round(v).toString(), r: v } : { d: "—", r: null };
+      })},
+      { label: "Avg Heart Rate", dir: null, vals: workoutIds.map(id => {
+        const v = getMetric(id, "heart_rate", "average_value") ?? workoutStats[id]?.heart_rate_avg;
+        return v ? { d: `${Math.round(v)} bpm`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Max Heart Rate", dir: null, vals: workoutIds.map(id => {
+        const v = getMetric(id, "heart_rate", "max_value") ?? workoutStats[id]?.heart_rate_max;
+        return v ? { d: `${Math.round(v)} bpm`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Effort Points", dir: "higher", vals: workoutIds.map(id => {
+        const v = perfData[id]?.effort_zones?.total_effort_points;
+        return v ? { d: v.toFixed(1), r: v } : { d: "—", r: null };
+      })},
+    ];
+    if (hasExerciseSets) {
+      rows.push(
+        { label: "Total Sets", dir: "higher", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.total_sets;
+          return v ? { d: v.toString(), r: v } : { d: "—", r: null };
+        })},
+        { label: "Total Reps", dir: "higher", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.total_reps;
+          return v ? { d: v.toLocaleString(), r: v } : { d: "—", r: null };
+        })},
+        { label: "Exercises", dir: "higher", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.unique_exercises;
+          return v ? { d: v.toString(), r: v } : { d: "—", r: null };
+        })},
+      );
+    }
+    if (hasPelotonMovements) {
+      rows.push(
+        { label: "Tracker Tier", dir: null, vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.movement_tracker_tier;
+          return { d: v || "—", r: null };
+        })},
+        { label: "Total Volume", dir: "higher", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.movement_summary?.total_volume;
+          return v ? { d: `${Math.round(v).toLocaleString()} lb`, r: v } : { d: "—", r: null };
+        })},
+        { label: "Movements", dir: "higher", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.movement_summary?.num_movements;
+          return v != null ? { d: v.toString(), r: v } : { d: "—", r: null };
+        })},
+        { label: "Completion", dir: "higher", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.movement_summary?.completion_percentage;
+          return v != null ? { d: `${Math.round(v)}%`, r: v } : { d: "—", r: null };
+        })},
+        { label: "Targets Hit", dir: "higher", vals: workoutIds.map(id => {
+          const v = workoutStats[id]?.movement_summary?.num_targets_reached;
+          return v != null ? { d: v.toString(), r: v } : { d: "—", r: null };
+        })},
+      );
+    }
+  } else {
+    rows = [
+      { label: "Output", dir: "higher", vals: workoutIds.map(id => {
+        const s = getSummary(id, "total_output");
+        if (s?.value != null) return { d: `${Math.round(s.value).toLocaleString()} kJ`, r: s.value };
+        const v = workoutStats[id]?.output_watts;
+        return v ? { d: `${Math.round(v/1000).toLocaleString()} kJ`, r: v/1000 } : { d: "—", r: null };
+      })},
+      { label: "Avg Watts", dir: "higher", vals: workoutIds.map(id => {
+        const s = getAvgSummary(id, "avg_watts");
+        if (s?.value != null) return { d: `${Math.round(s.value)} W`, r: s.value };
+        const v = workoutStats[id]?.avg_watts;
+        return v ? { d: `${Math.round(v)} W`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Avg Cadence", dir: "higher", vals: workoutIds.map(id => {
+        const s = getAvgSummary(id, "avg_cadence");
+        if (s?.value != null) return { d: `${Math.round(s.value)} rpm`, r: s.value };
+        const v = workoutStats[id]?.avg_cadence;
+        return v ? { d: `${Math.round(v)} rpm`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Avg Resistance", dir: null, vals: workoutIds.map(id => {
+        const s = getAvgSummary(id, "avg_resistance");
+        if (s?.value != null) return { d: `${Math.round(s.value)}%`, r: s.value };
+        const v = workoutStats[id]?.avg_resistance;
+        return v ? { d: `${Math.round(v)}%`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Distance", dir: "higher", vals: workoutIds.map(id => {
+        const s = getSummary(id, "distance");
+        if (s?.value != null) return { d: `${s.value.toFixed(2)} mi`, r: s.value };
+        const v = workoutStats[id]?.distance;
+        return v ? { d: `${v.toFixed(2)} mi`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Avg Heart Rate", dir: null, vals: workoutIds.map(id => {
+        const v = getMetric(id, "heart_rate", "average_value") ?? workoutStats[id]?.heart_rate_avg;
+        return v ? { d: `${Math.round(v)} bpm`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Max Heart Rate", dir: null, vals: workoutIds.map(id => {
+        const v = getMetric(id, "heart_rate", "max_value") ?? workoutStats[id]?.heart_rate_max;
+        return v ? { d: `${Math.round(v)} bpm`, r: v } : { d: "—", r: null };
+      })},
+      { label: "Calories", dir: "higher", vals: workoutIds.map(id => {
+        const s = getSummary(id, "calories");
+        if (s?.value != null) return { d: Math.round(s.value).toString(), r: s.value };
+        const v = workoutStats[id]?.calories;
+        return v ? { d: Math.round(v).toString(), r: v } : { d: "—", r: null };
+      })},
+      { label: "Leaderboard", dir: "lower", vals: workoutIds.map(id => {
+        const s = workoutStats[id];
+        if (s?.leaderboard_rank && s?.total_leaderboard_users) {
+          return { d: `#${s.leaderboard_rank} <span style="color:var(--text-dim);font-size:0.75rem">(beat ${s.leaderboard_pct}%)</span>`, r: s.leaderboard_rank };
+        }
+        return { d: "—", r: null };
+      })},
+    ];
+  }
+
+  const headerCells = workoutIds.map((id, i) => {
+    return `<th style="border-top:2px solid ${COLORS[i]}">${workoutDates[i] || `W${i+1}`}</th>`;
+  }).join("");
+
+  const bodyRows = rows.map(row => {
+    const raws = row.vals.map(v => v.r);
+    const validRaws = raws.filter(v => v !== null && !isNaN(v));
+    let bestRaw = null;
+    if (row.dir && validRaws.length >= 2) {
+      bestRaw = row.dir === "lower" ? Math.min(...validRaws) : Math.max(...validRaws);
+    }
+    const cells = row.vals.map((v, i) => {
+      const isBest = bestRaw !== null && v.r !== null && v.r === bestRaw;
+      const arrow = isBest ? `<span style="font-size:0.7em;opacity:0.7"> ${row.dir === "lower" ? "↓" : "↑"}</span>` : "";
+      return `<td class="mono${isBest ? " cell-best" : ""}">${v.d}${arrow}</td>`;
+    }).join("");
+    return `<tr>
+      <td style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap">${row.label}</td>
+      ${cells}
+    </tr>`;
+  }).join("");
+
+  container.innerHTML = `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.12em;color:var(--text-muted);text-transform:uppercase">Stat</th>
+            ${headerCells}
+          </tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+}
+
+function makeLabels(numPoints, everyN) {
+  return Array.from({ length: numPoints }, (_, i) => {
+    const totalSec = i * everyN;
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  });
+}
+
+
+let compareChart;
+function buildCompare(metricKey) {
+  const isPace = metricKey === "pace";
+  const canvas = document.getElementById("compareChart");
+  const noData = document.getElementById("compareChartNoData");
+
+  const datasets = workoutIds.map((id, i) => {
+    const graph = perfData[id] || {};
+    const m = (graph.metrics_by_slug || {})[metricKey];
+    return {
+      label: `W${i + 1} · ${(perfData[id] || {}).duration ? Math.round((perfData[id].duration) / 60) + "min" : "—"}`,
+      data: m ? m.values : [],
+      borderColor: COLORS[i],
+      backgroundColor: "transparent",
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: false,
+      tension: 0.3,
+    };
+  });
+
+  const maxLen = Math.max(...datasets.map(d => d.data.length), 0);
+  if (maxLen === 0) {
+    if (compareChart) { compareChart.destroy(); compareChart = null; }
+    canvas.style.display = "none";
+    if (noData) noData.style.display = "";
+    return;
+  }
+  canvas.style.display = "";
+  if (noData) noData.style.display = "none";
+
+  const everyN = (perfData[workoutIds[0]] || {}).every_n || 5;
+  const labels = makeLabels(maxLen, everyN);
+
+  if (compareChart) compareChart.destroy();
+  compareChart = new Chart(document.getElementById("compareChart"), {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: "#aaa", font: { family: "Barlow Condensed", size: 12 }, padding: 16 }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const label = ctx.dataset.label.split(" · ")[0];
+              return isPace
+                ? `${label}: ${formatPace(ctx.raw)}`
+                : `${label}: ${ctx.formattedValue}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: "#ffffff0d" }, ticks: { color: "#888", maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
+        y: {
+          grace: "5%",
+          grid: { color: "#ffffff0d" },
+          ticks: {
+            color: "#888",
+            font: { family: "JetBrains Mono", size: 10 },
+            callback: v => isPace ? formatPace(v) : v,
+          },
+          reverse: isPace,
+        },
+      }
+    }
+  });
+}
+
+// Run splits table
+function buildSplitsTable() {
+  if (compareMode !== "run" || !splitsComparison.length) return;
+  const tbody = document.getElementById("splits-table-body");
+  tbody.innerHTML = splitsComparison.map(row => {
+    const cells = workoutIds.map(id => {
+      const s = row[id];
+      if (!s) return "<td class='mono muted'>—</td><td class='mono muted'>—</td>";
+      const isBest = s.is_best;
+      return `<td class="mono${isBest ? " cell-best" : ""}">${formatPace(s.pace)}</td><td class="mono">${s.heart_rate ? Math.round(s.heart_rate) + " bpm" : "—"}</td>`;
+    }).join("");
+    return `<tr><td><strong>Mile ${row.mile}</strong></td>${cells}</tr>`;
+  }).join("");
+}
+
+// Strength movements comparison
+function buildMovementsTable() {
+  if (compareMode !== "strength") return;
+  const container = document.getElementById("movementsCompare");
+  if (!container) return;
+
+  const allMovements = new Map();
+  workoutIds.forEach(id => {
+    const detail = workoutDetailData[id] || {};
+    (detail.movements || []).forEach(m => {
+      if (!allMovements.has(m.name)) allMovements.set(m.name, {});
+      allMovements.get(m.name)[id] = m;
+    });
+  });
+
+  if (!allMovements.size) return;
+
+  const headers = workoutIds.map((id, i) => {
+    const perf = perfData[id] || {};
+    const detail = workoutDetailData[id] || {};
+    const tier = detail.movement_tracker_tier || "";
+    return `<th style="border-top:2px solid ${COLORS[i]}">W${i + 1}${tier ? `<br><span style="font-size:0.7rem;color:${COLORS[i]}">${tier}</span>` : ""}</th>`;
+  }).join("");
+
+  let rows = "";
+  allMovements.forEach((byWorkout, name) => {
+    const cells = workoutIds.map(id => {
+      const m = byWorkout[id];
+      if (!m) return `<td class="muted">—</td>`;
+      const reps = m.reps_done != null
+        ? `${m.reps_done}${m.reps_target ? "/" + m.reps_target : ""} reps`
+        : null;
+      const weight = m.weight_lbs ? `${m.weight_lbs} lb` : null;
+      const sets = m.sets_done != null && m.sets_target != null
+        ? `${m.sets_done}/${m.sets_target} sets`
+        : null;
+      const reached = m.is_target_reached
+        ? `<span style="color:var(--accent-green);font-size:0.7rem">✓</span>`
+        : "";
+      const parts = [reps, weight, sets].filter(Boolean);
+      return `<td class="mono" style="font-size:0.8rem">${reached} ${parts.join(" · ") || "—"}</td>`;
+    }).join("");
+    rows += `<tr><td style="font-size:0.82rem;white-space:nowrap">${name}</td>${cells}</tr>`;
+  });
+
+  container.innerHTML = `
+    <div class="chart-card" style="margin-top:1rem">
+      <div class="chart-header">
+        <h3 class="chart-title">MOVEMENT BREAKDOWN</h3>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Movement</th>${headers}</tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// Garmin exercise sets comparison table
+function buildExerciseSetsTable() {
+  if (compareMode !== "strength") return;
+  const container = document.getElementById("movementsCompare");
+  if (!container) return;
+
+  const hasExerciseSets = workoutIds.some(id => (workoutDetailData[id]?.exercise_sets || []).length > 0);
+  if (!hasExerciseSets) return;
+
+  // Group sets by exercise name across all workouts
+  const exercises = new Map();
+  workoutIds.forEach(id => {
+    (workoutDetailData[id]?.exercise_sets || []).forEach(s => {
+      const name = s.exercise || "Unknown";
+      if (!exercises.has(name)) exercises.set(name, {});
+      if (!exercises.get(name)[id]) exercises.get(name)[id] = [];
+      exercises.get(name)[id].push(s);
+    });
+  });
+  if (!exercises.size) return;
+
+  const headers = workoutIds.map((id, i) => {
+    const totalSets = workoutStats[id]?.total_sets || 0;
+    return `<th style="border-top:2px solid ${COLORS[i]}">${workoutDates[i]}<br><span style="font-size:0.7rem;color:var(--text-dim)">${totalSets} sets</span></th>`;
+  }).join("");
+
+  let rows = "";
+  exercises.forEach((byWorkout, name) => {
+    const cells = workoutIds.map(id => {
+      const sets = byWorkout[id] || [];
+      if (!sets.length) return `<td class="muted">—</td>`;
+      const repSets = sets.filter(s => s.reps != null);
+      const timedSets = sets.filter(s => s.reps == null && s.duration_seconds);
+      const parts = [];
+      if (repSets.length) {
+        const avgReps = Math.round(repSets.reduce((a, s) => a + s.reps, 0) / repSets.length);
+        const wt = repSets[0].weight_kg ? ` · ${(repSets[0].weight_kg * 2.20462).toFixed(0)} lb` : "";
+        parts.push(`${repSets.length}×${avgReps}${wt}`);
+      }
+      if (timedSets.length) {
+        const avgSecs = Math.round(timedSets.reduce((a, s) => a + s.duration_seconds, 0) / timedSets.length);
+        parts.push(`${timedSets.length}×${avgSecs}s`);
+      }
+      return `<td class="mono" style="font-size:0.8rem">${parts.join(" + ")}</td>`;
+    }).join("");
+    rows += `<tr><td style="font-size:0.82rem;white-space:nowrap">${name}</td>${cells}</tr>`;
+  });
+
+  container.insertAdjacentHTML("beforeend", `
+    <div class="chart-card" style="margin-top:1rem">
+      <div class="chart-header">
+        <h3 class="chart-title">EXERCISE BREAKDOWN</h3>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Exercise</th>${headers}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const defaultMetric = compareMode === "run" ? "pace"
+    : compareMode === "strength" ? "heart_rate"
+    : "output";
+  buildCompare(defaultMetric);
+  buildSplitsTable();
+  buildMovementsTable();
+  buildExerciseSetsTable();
+  buildStatsTable();
+
+  document.querySelectorAll(".chart-toggle").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".chart-toggle").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      buildCompare(btn.dataset.metric);
+    });
+  });
+});
+</script>
+{% endblock %}

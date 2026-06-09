@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}{{ sa.label }} — Cadence{% endblock %}
+{% block nav_insights_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <a href="{% url 'intervention_analysis' %}" class="back-link">← Intervention Analysis</a>
+  <h1 class="page-title">{{ sa.label }}</h1>
+  <p class="page-sub">
+    Saved {{ sa.created_at|date:"M j, Y g:i A" }}
+    {% if sa.intervention %} &middot; {{ sa.intervention.name }}{% endif %}
+    &middot; {{ sa.weight_goal }} goal
+  </p>
+</div>
+
+<!-- Windows -->
+<div class="stat-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));margin-bottom:1.5rem">
+  <div class="stat-card">
+    <div class="stat-label">Before</div>
+    <div style="font-size:0.9rem;margin-top:0.4rem">{{ sa.before_start }} → {{ sa.before_end }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">After</div>
+    <div style="font-size:0.9rem;margin-top:0.4rem">{{ sa.after_start }} → {{ sa.after_end }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Window</div>
+    <div class="stat-value">{{ sa.window_days }}<span class="stat-unit">days</span></div>
+  </div>
+  {% if sa.washout_days %}
+  <div class="stat-card">
+    <div class="stat-label">Washout</div>
+    <div class="stat-value">{{ sa.washout_days }}<span class="stat-unit">days</span></div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- AI Interpretation -->
+{% if sa.ai_interpretation %}
+<div class="card" style="margin-bottom:2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+    <div class="section-title" style="margin-bottom:0">AI INTERPRETATION</div>
+    <span style="font-size:0.75rem;color:var(--text-dim)">{{ sa.ai_model }}</span>
+  </div>
+  <div class="insights-item" style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">
+    {{ sa.ai_interpretation|format_nutrition_insights }}
+  </div>
+</div>
+{% endif %}
+
+<!-- Metrics -->
+{% if sa.metrics_json %}
+<div class="chart-card" style="margin-top:1.5rem">
+  <div class="chart-header">
+    <h3 class="chart-title">METRICS</h3>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="analysis-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th style="text-align:right">Before</th>
+          <th style="text-align:right">After</th>
+          <th style="text-align:right">Change</th>
+          <th style="text-align:center">N</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for group in sa.metrics_json.groups %}
+          {% with has_data=False %}
+          {% for m in group.metrics %}{% if m.before_n or m.after_n %}{% with has_data=True %}{% endwith %}{% endif %}{% endfor %}
+          {% endwith %}
+          <tr class="analysis-group-header"><td colspan="5">{{ group.name }}</td></tr>
+          {% for m in group.metrics %}
+            {% if m.before_n or m.after_n %}
+            <tr class="{% if m.improved == True %}analysis-improved{% elif m.improved == False %}analysis-worsened{% else %}analysis-neutral{% endif %}">
+              <td>{{ m.display_name }}</td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem">
+                {% if m.before_mean != None %}{{ m.before_mean|floatformat:1 }}{% if m.unit %} {{ m.unit }}{% endif %}{% else %}—{% endif %}
+              </td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem">
+                {% if m.after_mean != None %}{{ m.after_mean|floatformat:1 }}{% if m.unit %} {{ m.unit }}{% endif %}{% else %}—{% endif %}
+              </td>
+              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem;
+                color:{% if m.improved == True %}var(--accent-green){% elif m.improved == False %}var(--accent-red){% else %}inherit{% endif %};font-weight:700">
+                {% if m.pct_change != None %}{% if m.pct_change > 0 %}+{% endif %}{{ m.pct_change|floatformat:1 }}%{% else %}—{% endif %}
+              </td>
+              <td style="text-align:center;color:var(--text-dim);font-size:0.78rem">{{ m.before_n }}/{{ m.after_n }}</td>
+            </tr>
+            {% endif %}
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

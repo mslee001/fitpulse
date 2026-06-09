@@ -1,0 +1,102 @@
+{% load workout_filters %}
+
+{% if not workouts %}
+<div class="empty-state">
+  <div class="empty-icon">◌</div>
+  <p>No workouts match your filters.</p>
+</div>
+{% else %}
+<div class="workout-grid">
+  {% for w in workouts %}
+  {% with disc_color=discipline_colors|get_item:w.discipline|default:"#888888" %}
+  <div class="workout-card" style="border-left:3px solid {{ disc_color }}">
+    <label class="workout-card-check">
+      <input type="checkbox" class="workout-checkbox" data-id="{{ w.workout_id }}">
+    </label>
+
+    {% if w.class_image_url %}
+    <div class="workout-card-img" style="background-image:url('{{ w.class_image_url }}')"></div>
+    {% elif w.source == "garmin" and w.discipline %}
+    <div class="workout-card-img garmin-default-img garmin-default-img--{{ w.discipline }}">{{ w.discipline|garmin_emoji }}</div>
+    {% else %}
+    <div class="workout-card-img workout-card-img--empty">
+      <span class="discipline-badge" style="color:{{ disc_color }}">{{ w.fitness_discipline_display|default:w.discipline }}</span>
+    </div>
+    {% endif %}
+
+    <div class="workout-card-body">
+      <div class="workout-meta">
+        <span class="workout-discipline" style="color:{{ disc_color }}">{{ w.fitness_discipline_display|default:w.discipline|upper }}</span>
+        <span class="workout-duration">{{ w.duration_seconds|format_duration }}</span>
+        <span class="workout-date">{{ w.created_at|date:"M j, Y" }}</span>
+      </div>
+
+      <a href="{% url 'workout_detail' w.workout_id %}" class="workout-title">
+        {{ w.title|default:"Untitled Workout" }}
+      </a>
+
+      {% if w.instructor_name %}
+      <div class="workout-instructor">{{ w.instructor_name }}</div>
+      {% endif %}
+
+      <div class="workout-stats">
+        {% if w.output_watts %}
+        <div class="wstat">
+          <div class="wstat-value">{{ w.output_watts|format_watts }}</div>
+          <div class="wstat-label">Output</div>
+        </div>
+        {% endif %}
+        {% if w.avg_cadence %}
+        <div class="wstat">
+          <div class="wstat-value">{{ w.avg_cadence|floatformat:0 }}<span class="wstat-unit">rpm</span></div>
+          <div class="wstat-label">Avg Cadence</div>
+        </div>
+        {% endif %}
+        {% if w.calories %}
+        <div class="wstat">
+          <div class="wstat-value">{{ w.calories|floatformat:0 }}</div>
+          <div class="wstat-label">Cal</div>
+        </div>
+        {% endif %}
+        {% if w.leaderboard_pct %}
+        <div class="wstat">
+          <div class="wstat-value">{{ w.leaderboard_pct }}%</div>
+          <div class="wstat-label">Beat</div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if w.ride_id %}
+      <a href="{% url 'class_history' w.ride_id %}" class="class-history-link">
+        View all times I've done this class →
+      </a>
+      {% elif w.source == "garmin" and w.discipline %}
+      <a href="{% url 'garmin_activity_history' w.discipline %}{% if w.title %}?title={{ w.title }}{% endif %}" class="class-history-link">
+        View all times I've done this activity →
+      </a>
+      {% endif %}
+      <a href="{{ w.external_url }}" class="class-history-link" target="_blank" rel="noopener">
+        {% if w.source == "garmin" %}View on Garmin Connect ↗{% else %}View on Peloton ↗{% endif %}
+      </a>
+      {% if w.source == "peloton" and w.garmin_activity_id %}
+      <a href="https://connect.garmin.com/modern/activity/{{ w.garmin_activity_id }}" class="class-history-link" target="_blank" rel="noopener">
+        View on Garmin Connect ↗
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endwith %}
+  {% endfor %}
+</div>
+
+{% if has_next %}
+<div class="scroll-sentinel"
+     hx-get="{% url 'history' %}?page={{ page|add:1 }}&discipline={{ filters.discipline }}&instructor={{ filters.instructor }}&duration={{ filters.duration }}&sort={{ filters.sort }}&q={{ filters.q }}"
+     hx-trigger="intersect once"
+     hx-swap="outerHTML">
+  <div style="text-align:center;padding:2rem 0;color:var(--text-muted);font-size:0.85rem;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.05em">
+    LOADING…
+  </div>
+</div>
+{% endif %}
+{% endif %}

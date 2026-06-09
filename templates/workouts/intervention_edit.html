@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}Edit {{ iv.name }} — Cadence{% endblock %}
+{% block nav_body_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <a href="{% url 'interventions' %}" class="back-link">← Interventions</a>
+  <h1 class="page-title">Edit Intervention</h1>
+</div>
+
+<div class="add-form-card" style="max-width:720px">
+  <form method="post">
+    {% csrf_token %}
+    <div class="add-form-grid">
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Name *</label>
+        <input name="name" class="form-input" value="{{ iv.name }}" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <select name="category" class="form-select">
+          {% for val, label in category_choices %}
+          <option value="{{ val }}" {% if iv.category == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dose Summary</label>
+        <input class="form-input" value="{{ iv.dose_summary }}" disabled title="Manage doses via the detail page">
+        <small style="color:var(--text-dim);font-size:0.75rem">Edit individual dose changes on the <a href="{% url 'intervention_detail' iv.pk %}">Manage Doses</a> page.</small>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Start Date *</label>
+        <input name="start_date" type="date" class="form-input" value="{{ iv.start_date|date:'Y-m-d' }}" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">End Date</label>
+        <input name="end_date" type="date" class="form-input" value="{{ iv.end_date|date:'Y-m-d' }}">
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Expected Effects</label>
+        <input name="expected_effects" class="form-input" value="{{ iv.expected_effects }}">
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" class="form-textarea">{{ iv.notes }}</textarea>
+      </div>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:0.75rem">
+      <button type="submit" class="btn btn-accent">Save Changes</button>
+      <a href="{% url 'interventions' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

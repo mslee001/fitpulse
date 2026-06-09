@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}{{ class_title }} History — Cadence{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <a href="{% url 'history' %}" class="back-link">← History</a>
+  <h1 class="page-title">{{ class_title|upper }}</h1>
+  <p class="page-sub">{{ stats.times_taken }} time{{ stats.times_taken|pluralize }} taken</p>
+  {% if show_date_filter %}
+  <form method="get" style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;margin-top:1rem">
+    {% if filter_title %}<input type="hidden" name="title" value="{{ filter_title }}">{% endif %}
+    <div>
+      <label class="filter-label">From</label>
+      <input type="date" name="from_date" value="{{ from_date }}" class="filter-input" style="width:auto">
+    </div>
+    <div>
+      <label class="filter-label">To</label>
+      <input type="date" name="to_date" value="{{ to_date }}" class="filter-input" style="width:auto">
+    </div>
+    <button type="submit" class="btn btn-sm btn-ghost">Filter</button>
+    {% if from_date or to_date %}
+    <a href="{% url 'garmin_activity_history' garmin_discipline %}{% if filter_title %}?title={{ filter_title }}{% endif %}" class="btn btn-sm btn-ghost">Clear</a>
+    {% endif %}
+  </form>
+  {% endif %}
+</div>
+
+<!-- Aggregate stats — discipline-aware -->
+<div class="stat-grid">
+{% if discipline == "running" %}
+  {% if stats.best_pace %}
+  <div class="stat-card stat-card--hero">
+    <div class="stat-label">Best Pace</div>
+    <div class="stat-value" style="font-size:1.6rem">{{ stats.best_pace|format_pace }}</div>
+  </div>
+  {% endif %}
+  {% if stats.avg_pace %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Pace</div>
+    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_pace|format_pace }}</div>
+  </div>
+  {% endif %}
+  {% if stats.best_distance %}
+  <div class="stat-card">
+    <div class="stat-label">Best Distance</div>
+    <div class="stat-value" style="font-size:1.6rem">{{ stats.best_distance|floatformat:2 }}<span class="stat-unit">mi</span></div>
+  </div>
+  {% endif %}
+  {% if stats.avg_hr %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Heart Rate</div>
+    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
+  </div>
+  {% endif %}
+  {% if has_form_data %}
+    {% if stats.avg_cadence %}
+    <div class="stat-card">
+      <div class="stat-label">Avg Cadence</div>
+      <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_cadence|floatformat:0 }}<span class="stat-unit">spm</span></div>
+    </div>
+    {% endif %}
+    {% if stats.avg_vo %}
+    <div class="stat-card">
+      <div class="stat-label">Avg Vert. Osc.</div>
+      <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_vo|floatformat:1 }}<span class="stat-unit">cm</span></div>
+    </div>
+    {% endif %}
+    {% if stats.avg_gct %}
+    <div class="stat-card">
+      <div class="stat-label">Avg GCT</div>
+      <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_gct|floatformat:0 }}<span class="stat-unit">ms</span></div>
+    </div>
+    {% endif %}
+  {% endif %}
+{% elif discipline == "strength" %}
+  {% if stats.max_effort %}
+  <div class="stat-card stat-card--hero">
+    <div class="stat-label">Best Effort</div>
+    <div class="stat-value" style="font-size:1.6rem">{{ stats.max_effort|floatformat:1 }}</div>
+  </div>
+  {% endif %}
+  {% if stats.avg_effort %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Effort</div>
+    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_effort|floatformat:1 }}</div>
+  </div>
+  {% endif %}
+  {% if stats.avg_calories %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Calories</div>
+    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_calories|floatformat:0 }}</div>
+  </div>
+  {% endif %}
+  {% if stats.avg_hr %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Heart Rate</div>
+    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
+  </div>
+  {% endif %}
+{% else %}
+  {% if stats.max_output %}
+  <div class="stat-card stat-card--hero">
+    <div class="stat-label">Best Output</div>
+    <div class="stat-value">{{ stats.max_output|format_watts }}</div>
+  </div>
+  {% endif %}
+  {% if stats.avg_output %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Output</div>
+    <div class="stat-value">{{ stats.avg_output|format_watts }}</div>
+  </div>
+  {% endif %}
+  {% if stats.avg_cadence %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Cadence</div>
+    <div class="stat-value">{{ stats.avg_cadence|floatformat:0 }}<span class="stat-unit">rpm</span></div>
+  </div>
+  {% endif %}
+  {% if stats.avg_resistance %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Resistance</div>
+    <div class="stat-value">{{ stats.avg_resistance|floatformat:0 }}<span class="stat-unit">%</span></div>
+  </div>
+  {% endif %}
+  {% if stats.avg_hr %}
+  <div class="stat-card">
+    <div class="stat-label">Avg Heart Rate</div>
+    <div class="stat-value">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
+  </div>
+  {% endif %}
+{% endif %}
+</div>
+
+<!-- Trend chart -->
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">PROGRESS OVER TIME</h3>
+    <div class="chart-toggles">
+      {% if discipline == "running" %}
+        <button class="chart-toggle active" data-metric="pace">Pace</button>
+        <button class="chart-toggle" data-metric="distance">Distance</button>
+        <button class="chart-toggle" data-metric="heart_rate">Heart Rate</button>
+        {% if has_leaderboard %}<button class="chart-toggle" data-metric="rank_pct">Leaderboard %</button>{% endif %}
+        {% if has_form_data %}
+        <button class="chart-toggle" data-metric="cadence">Cadence</button>
+        <button class="chart-toggle" data-metric="vert_osc">Vert. Osc.</button>
+        <button class="chart-toggle" data-metric="gct">GCT</button>
+        {% endif %}
+      {% elif discipline == "strength" %}
+        <button class="chart-toggle active" data-metric="effort">Effort Score</button>
+        <button class="chart-toggle" data-metric="calories">Calories</button>
+        <button class="chart-toggle" data-metric="heart_rate">Heart Rate</button>
+        {% if has_leaderboard %}<button class="chart-toggle" data-metric="rank_pct">Leaderboard %</button>{% endif %}
+      {% else %}
+        <button class="chart-toggle active" data-metric="output">Output</button>
+        <button class="chart-toggle" data-metric="cadence">Cadence</button>
+        <button class="chart-toggle" data-metric="heart_rate">Heart Rate</button>
+        {% if has_leaderboard %}<button class="chart-toggle" data-metric="rank_pct">Leaderboard %</button>{% endif %}
+      {% endif %}
+    </div>
+  </div>
+  <canvas id="trendChart" height="80"></canvas>
+</div>
+
+<!-- Compare bar -->
+<div id="compareBar" class="compare-sidebar-bar" style="display:none;align-items:center;justify-content:space-between;gap:1rem">
+  <span id="compareBarCount" style="font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;color:var(--text-muted)">0 selected</span>
+  <a id="compareBarLink" href="#" class="btn btn-accent btn-sm">Compare Selected →</a>
+</div>
+
+<!-- All attempts table -->
+<section class="section">
+  <h2 class="section-title">ALL ATTEMPTS</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width:32px"></th>
+          <th>Date</th>
+          {% if discipline == "running" %}
+            <th>Avg Pace</th>
+            <th>Distance</th>
+            <th>Avg HR</th>
+            {% if has_leaderboard %}<th>Leaderboard</th>{% endif %}
+            {% if has_form_data %}<th>Cadence</th><th>Vert. Osc.</th><th>GCT</th>{% endif %}
+          {% elif discipline == "strength" %}
+            <th>Effort</th>
+            <th>Tier</th>
+            <th>Calories</th>
+            <th>Avg HR</th>
+            {% if has_leaderboard %}<th>Leaderboard</th>{% endif %}
+          {% else %}
+            <th>Output</th>
+            <th>Avg Cadence</th>
+            <th>Avg Resistance</th>
+            <th>Avg HR</th>
+            {% if has_leaderboard %}<th>Leaderboard</th>{% endif %}
+          {% endif %}
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in enriched_rows %}
+        {% with w=row.workout %}
+        <tr>
+          <td><input type="checkbox" class="compare-check" value="{{ w.workout_id }}" style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer"></td>
+          <td>{{ w.created_at|date:"M j, Y" }}</td>
+          {% if discipline == "running" %}
+            <td class="mono">{{ row.avg_pace_display|default:"—" }}</td>
+            <td class="mono">{% if row.distance_miles %}{{ row.distance_miles|floatformat:2 }} mi{% else %}—{% endif %}</td>
+            <td class="mono">{% if row.heart_rate_avg %}{{ row.heart_rate_avg|floatformat:0 }} bpm{% else %}—{% endif %}</td>
+            {% if has_leaderboard %}<td class="mono">{% if row.leaderboard_pct %}Beat {{ row.leaderboard_pct }}%{% else %}—{% endif %}</td>{% endif %}
+            {% if has_form_data %}
+            <td class="mono">{% if row.run_cadence_avg %}{{ row.run_cadence_avg|floatformat:0 }} spm{% else %}—{% endif %}</td>
+            <td class="mono">{% if row.vertical_oscillation_avg %}{{ row.vertical_oscillation_avg|floatformat:1 }} cm{% else %}—{% endif %}</td>
+            <td class="mono">{% if row.ground_contact_time_avg %}{{ row.ground_contact_time_avg|floatformat:0 }} ms{% else %}—{% endif %}</td>
+            {% endif %}
+          {% elif discipline == "strength" %}
+            <td class="mono">{% if w.average_effort_score %}{{ w.average_effort_score|floatformat:1 }}{% else %}—{% endif %}</td>
+            <td>{{ w.movement_tracker_tier|default:"—" }}</td>
+            <td class="mono">{% if row.calories %}{{ row.calories|floatformat:0 }}{% else %}—{% endif %}</td>
+            <td class="mono">{% if row.heart_rate_avg %}{{ row.heart_rate_avg|floatformat:0 }} bpm{% else %}—{% endif %}</td>
+            {% if has_leaderboard %}<td class="mono">{% if row.leaderboard_pct %}Beat {{ row.leaderboard_pct }}%{% else %}—{% endif %}</td>{% endif %}
+          {% else %}
+            <td class="mono">{% if w.output_watts %}{{ w.output_watts|format_watts }}{% else %}—{% endif %}</td>
+            <td class="mono">{% if w.avg_cadence %}{{ w.avg_cadence|floatformat:0 }} rpm{% else %}—{% endif %}</td>
+            <td class="mono">{% if w.avg_resistance %}{{ w.avg_resistance|floatformat:0 }}%{% else %}—{% endif %}</td>
+            <td class="mono">{% if row.heart_rate_avg %}{{ row.heart_rate_avg|floatformat:0 }} bpm{% else %}—{% endif %}</td>
+            <td class="mono">{% if row.leaderboard_pct %}Beat {{ row.leaderboard_pct }}%{% else %}—{% endif %}</td>
+          {% endif %}
+          <td style="white-space:nowrap">
+            <a href="{% url 'workout_detail' w.workout_id %}" class="table-link">View →</a>
+            <a href="{{ w.external_url }}" class="table-link" target="_blank" rel="noopener" style="margin-left:0.75rem">{% if w.source == "garmin" %}Garmin ↗{% else %}Peloton ↗{% endif %}</a>
+            {% if w.source == "peloton" and w.garmin_activity_id %}<a href="https://connect.garmin.com/modern/activity/{{ w.garmin_activity_id }}" class="table-link" target="_blank" rel="noopener" style="margin-left:0.75rem">Garmin ↗</a>{% endif %}
+          </td>
+        </tr>
+        {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+const trendData = {{ trend_data|safe }};
+const discipline = "{{ discipline }}";
+const allWorkoutIds = {{ workout_ids_json|safe }};
+let trendChart;
+
+function buildTrend(metricKey) {
+  const labels = trendData.map(d => new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }));
+  let values, label, color, invert = false;
+
+  if (metricKey === 'output') {
+    values = trendData.map(d => d.output_watts); label = 'Output (kJ)'; color = '#FF6B35';
+  } else if (metricKey === 'cadence') {
+    values = trendData.map(d => d.run_cadence_avg ?? d.avg_cadence); label = 'Cadence (spm)'; color = '#FFD54F';
+  } else if (metricKey === 'rank_pct') {
+    values = trendData.map(d => d.leaderboard_pct ?? null);
+    label = 'Leaderboard %'; color = '#B4FF39';
+  } else if (metricKey === 'pace') {
+    values = trendData.map(d => d.avg_pace_seconds); label = 'Avg Pace (sec/mi)'; color = '#00D1FF'; invert = true;
+  } else if (metricKey === 'distance') {
+    values = trendData.map(d => d.distance_miles); label = 'Distance (mi)'; color = '#B4FF39';
+  } else if (metricKey === 'effort') {
+    values = trendData.map(d => d.effort_score); label = 'Effort Score'; color = '#FF6B35';
+  } else if (metricKey === 'calories') {
+    values = trendData.map(d => d.calories); label = 'Calories'; color = '#FFD54F';
+  } else if (metricKey === 'heart_rate') {
+    values = trendData.map(d => d.heart_rate_avg); label = 'Avg Heart Rate (bpm)'; color = '#FF3B5C';
+  } else if (metricKey === 'vert_osc') {
+    values = trendData.map(d => d.vertical_oscillation_avg); label = 'Vert. Oscillation (cm)'; color = '#FFB74D';
+  } else if (metricKey === 'gct') {
+    values = trendData.map(d => d.ground_contact_time_avg); label = 'Ground Contact Time (ms)'; color = '#F48FB1';
+  }
+
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label, data: values,
+        borderColor: color, backgroundColor: color + '22',
+        borderWidth: 2.5, pointRadius: 5, pointHoverRadius: 8,
+        fill: true, tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (metricKey === 'pace' && ctx.raw) {
+                const s = Math.round(ctx.raw);
+                return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}/mi`;
+              }
+              return ctx.formattedValue;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: '#ffffff0d' }, ticks: { color: '#888', font: { family: 'JetBrains Mono', size: 11 } } },
+        y: {
+          reverse: invert,
+          grid: { color: '#ffffff0d' },
+          ticks: {
+            color: '#888', font: { family: 'JetBrains Mono', size: 11 },
+            callback: v => metricKey === 'pace' ? `${Math.floor(v/60)}:${String(v%60).padStart(2,'0')}` : v
+          }
+        },
+      }
+    }
+  });
+}
+
+// Compare bar logic
+function updateCompareBar() {
+  const checked = [...document.querySelectorAll(".compare-check:checked")].map(cb => cb.value);
+  const bar = document.getElementById("compareBar");
+  const link = document.getElementById("compareBarLink");
+  const count = document.getElementById("compareBarCount");
+  if (checked.length >= 2) {
+    bar.style.display = "flex";
+    link.href = `/compare/?ids=${checked.join(",")}`;
+    link.style.opacity = "";
+    link.style.pointerEvents = "";
+    count.textContent = `${checked.length} workouts selected`;
+  } else if (checked.length === 1) {
+    bar.style.display = "flex";
+    link.style.opacity = "0.4";
+    link.style.pointerEvents = "none";
+    count.textContent = "Select 1 more to compare";
+  } else {
+    bar.style.display = "none";
+  }
+}
+document.addEventListener("change", e => {
+  if (e.target.classList.contains("compare-check")) updateCompareBar();
+});
+
+const defaultMetric = discipline === "running" ? "pace" : discipline === "strength" ? "effort" : "output";
+document.addEventListener('DOMContentLoaded', () => {
+  buildTrend(defaultMetric);
+  document.querySelectorAll('.chart-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.chart-toggle').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      buildTrend(btn.dataset.metric);
+    });
+  });
+
+});
+</script>
+{% endblock %}

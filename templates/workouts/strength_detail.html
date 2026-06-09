@@ -1,0 +1,559 @@
+{% extends "workouts/detail_base.html" %}
+{% load workout_filters %}
+
+{% block discipline_tag %}💪 Strength{% endblock %}
+{% block page_title %}{{ workout.title|default:"Strength Workout" }}{% endblock %}
+{% block pr_sub %}{% if workout_detail.total_work %}<div class="pr-banner-sub">Total work: {{ workout_detail.total_work|floatformat:0 }} kJ</div>{% endif %}{% endblock %}
+
+{% block detail_main %}
+    <!-- Key metrics -->
+    <div class="metrics-grid">
+      {% if effort_zones.total_effort_points %}
+      <div class="metric-card metric-card--hero effort-pts-card">
+        <div class="metric-label">Effort Points</div>
+        <div class="metric-value effort-pts-value">{{ effort_zones.total_effort_points|floatformat:1 }}</div>
+      </div>
+      {% endif %}
+      {% with cal=perf_summaries.calories %}
+      <div class="metric-card">
+        <div class="metric-label">Calories</div>
+        <div class="metric-value">{% if cal %}{{ cal.value|floatformat:0 }}{% elif workout.calories %}{{ workout.calories|floatformat:0 }}{% else %}—{% endif %}</div>
+        {% if type_stats.avg_calories %}<div class="metric-sub">Avg: {{ type_stats.avg_calories|floatformat_default:"0" }}</div>{% endif %}
+      </div>
+      {% endwith %}
+      {% if workout.heart_rate_avg %}
+      <div class="metric-card">
+        <div class="metric-label">Avg HR</div>
+        <div class="metric-value">{{ workout.heart_rate_avg|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+        {% if type_stats.avg_hr %}<div class="metric-sub">Avg: {{ type_stats.avg_hr|floatformat_default:"0" }} bpm</div>{% endif %}
+      </div>
+      {% endif %}
+      {% if workout.heart_rate_max %}
+      <div class="metric-card">
+        <div class="metric-label">Max HR</div>
+        <div class="metric-value">{{ workout.heart_rate_max|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      </div>
+      {% endif %}
+      {% if workout.duration_minutes %}
+      <div class="metric-card">
+        <div class="metric-label">Duration</div>
+        <div class="metric-value">{{ workout.duration_minutes }}<span class="metric-unit">min</span></div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- HR over time chart -->
+    <div class="chart-card" id="hrChartCard">
+      <div class="chart-header">
+        <h3 class="chart-title">HEART RATE OVER TIME</h3>
+        <div id="hrStats" style="display:flex;gap:1.5rem"></div>
+      </div>
+      <canvas id="hrChart" height="110"></canvas>
+      <!-- HR zone range annotations, populated by JS -->
+      <div id="hrZoneRanges"></div>
+    </div>
+
+    <!-- HR zone breakdown (populated by JS from performance graph data) -->
+    <div class="chart-card" id="hrZoneCard" style="display:none">
+      <div class="chart-header">
+        <h3 class="chart-title">HEART RATE ZONES</h3>
+      </div>
+      <div class="hr-zones" id="hrZoneBreakdown"></div>
+    </div>
+
+    <!-- Muscle groups worked -->
+    {% if muscle_groups %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">MUSCLES WORKED</h3>
+        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">
+          ● light &nbsp; ●● moderate &nbsp; ●●● high
+        </span>
+      </div>
+      <div class="muscle-group-list">
+        {% for mg in muscle_groups %}
+        <div class="muscle-group-row">
+          <div class="muscle-group-name">{{ mg.display_name }}</div>
+          <div class="muscle-group-bar-wrap">
+            <div class="muscle-group-bar mg-{{ mg.bucket }}" style="width:{{ mg.percentage }}%"></div>
+          </div>
+          <div class="muscle-group-pct">{{ mg.percentage }}%</div>
+          <div class="muscle-group-bucket">
+            {% for i in "123" %}{% if forloop.counter <= mg.bucket %}●{% else %}<span style="opacity:0.2">●</span>{% endif %}{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Class structure — segment cards with muscle group tags and exercise lists -->
+    {% if segments %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">CLASS STRUCTURE</h3>
+        <span class="chart-sub">{{ segments|length }} segment{{ segments|length|pluralize }}</span>
+      </div>
+      <div>
+        {% for seg in segments %}
+        {% with mt=seg.metrics_type %}
+        <div class="segment-card">
+          <div class="segment-card-header">
+            {% if seg.icon_url %}<img src="{{ seg.icon_url }}" class="segment-card-icon" alt="">{% endif %}
+            <span class="segment-card-name">{{ seg.name|default:"Block" }}</span>
+            {% if mt and mt != "floor" and mt != "running" %}
+            <span class="muscle-tag
+              {% if 'upper' in mt %}muscle-tag--upper
+              {% elif 'lower' in mt or 'leg' in mt or 'glute' in mt %}muscle-tag--lower
+              {% elif 'core' in mt or 'ab' in mt %}muscle-tag--core
+              {% elif 'full' in mt or 'total' in mt %}muscle-tag--full
+              {% elif 'cardio' in mt %}muscle-tag--cardio
+              {% endif %}
+            ">{{ mt|prettify_slug }}</span>
+            {% endif %}
+            <span class="segment-card-dur">{{ seg.length_seconds|format_duration }}</span>
+          </div>
+          <div class="segment-card-bar-wrap">
+            <div class="segment-card-bar" style="width:{{ seg.length_seconds|pct:workout.duration_seconds }}%"></div>
+          </div>
+          {% if seg.subsegments %}
+          <div class="subsegment-list">
+            {% for sub in seg.subsegments %}
+            <div class="subsegment-row{% if sub.type == 'rest' %} subsegment-row--rest{% endif %}">
+              <span class="subsegment-name">{{ sub.name|default:"Exercise" }}</span>
+              {% if sub.metrics_type and sub.metrics_type != seg.metrics_type and sub.metrics_type != "floor" %}
+              <span class="subsegment-type">{{ sub.metrics_type|prettify_slug }}</span>
+              {% endif %}
+              <span class="subsegment-dur">{{ sub.length_seconds|format_duration }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endwith %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Exercise sets (Garmin) -->
+    {% if workout.exercise_sets_json %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">EXERCISE SETS</h3>
+        <span class="chart-sub" id="exerciseSetsCount"></span>
+      </div>
+      <canvas id="repsChart" height="120"></canvas>
+      <div class="table-wrap" style="margin-top:1rem">
+        <table class="data-table">
+          <thead>
+            <tr><th>#</th><th>Exercise</th><th>Reps / Time</th><th>Weight</th></tr>
+          </thead>
+          <tbody id="exerciseSetsBody"></tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- vs. your strength averages -->
+    {% if type_stats.count %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">VS. YOUR AVERAGES</h3>
+        <span class="chart-sub">{{ type_stats.count }} other strength workout{{ type_stats.count|pluralize }}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table comparison-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>This Workout</th>
+              <th>Your Average</th>
+              <th>Your Best</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if type_stats.avg_calories %}
+            <tr>
+              <td>Calories</td>
+              <td class="mono comp-this">{% if perf_summaries.calories %}{{ perf_summaries.calories.value|floatformat:0 }}{% elif workout.calories %}{{ workout.calories|floatformat:0 }}{% else %}—{% endif %}</td>
+              <td class="mono comp-avg">{{ type_stats.avg_calories|floatformat_default:"0" }}</td>
+              <td class="mono comp-best">—</td>
+            </tr>
+            {% endif %}
+            {% if workout.heart_rate_avg and type_stats.avg_hr %}
+            <tr>
+              <td>Avg Heart Rate</td>
+              <td class="mono comp-this">{{ workout.heart_rate_avg|floatformat:0 }} bpm</td>
+              <td class="mono comp-avg">{{ type_stats.avg_hr|floatformat_default:"0" }} bpm</td>
+              <td class="mono comp-best">—</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Movement tracker -->
+    {% if workout_detail.movements %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">MOVEMENT TRACKER</h3>
+        <div style="display:flex;align-items:center;gap:0.6rem">
+          {% if workout_detail.movement_tracker_tier %}
+          {% with tier=workout_detail.movement_tracker_tier|lower %}
+          <span class="tier-badge tier-badge--{{ tier }}">{{ workout_detail.movement_tracker_tier }}</span>
+          {% endwith %}
+          {% endif %}
+          {% if workout_detail.movement_summary.completion_percentage %}
+          <span class="chart-sub">{{ workout_detail.movement_summary.completion_percentage|floatformat:0 }}% complete</span>
+          {% endif %}
+        </div>
+      </div>
+      <!-- Summary totals -->
+      {% with ms=workout_detail.movement_summary %}
+      {% if ms %}
+      <div class="movement-summary-row">
+        {% if ms.total_repetitions %}
+        <div class="movement-summary-item">
+          <div class="movement-summary-num">{{ ms.total_repetitions }}</div>
+          <div class="movement-summary-label">Total Reps</div>
+        </div>
+        {% endif %}
+        {% if ms.total_volume %}
+        <div class="movement-summary-item">
+          <div class="movement-summary-num">{{ ms.total_volume|floatformat:0 }}</div>
+          <div class="movement-summary-label">Volume ({{ ms.weight_unit }})</div>
+        </div>
+        {% endif %}
+        {% if ms.num_targets_reached and ms.num_movements %}
+        <div class="movement-summary-item">
+          <div class="movement-summary-num">{{ ms.num_targets_reached }}/{{ ms.num_movements }}</div>
+          <div class="movement-summary-label">Targets Hit</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endwith %}
+      <!-- Per-exercise table -->
+      <div class="movement-table-wrap">
+        <table class="movement-table">
+          <thead>
+            <tr>
+              <th>Exercise</th>
+              <th>Sets</th>
+              <th>Reps</th>
+              <th>Weight</th>
+              <th>Volume</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in workout_detail.movements %}
+            <tr class="{% if m.is_target_reached %}movement-hit{% else %}movement-miss{% endif %}">
+              <td class="movement-name-cell">
+                <span class="movement-target-icon">{% if m.is_target_reached %}✓{% else %}○{% endif %}</span>
+                {{ m.name }}
+                {% for tag in m.tags %}
+                <span class="movement-tag">{{ tag|prettify_slug }}</span>
+                {% endfor %}
+              </td>
+              <td class="mono">
+                {% if m.sets_done %}{{ m.sets_done }}{% if m.sets_target %}/{{ m.sets_target }}{% endif %}{% else %}—{% endif %}
+              </td>
+              <td class="mono">
+                {% if m.reps_done %}{{ m.reps_done }}{% if m.reps_target %}<span style="color:var(--text-dim)"> / {{ m.reps_target }}</span>{% endif %}{% else %}—{% endif %}
+              </td>
+              <td class="mono {% if m.weight_cat %}weight-cat-{{ m.weight_cat }}{% endif %}">
+                {% if m.weight_lbs %}{{ m.weight_lbs|floatformat:0 }} lb{% else %}—{% endif %}
+              </td>
+              <td class="mono">
+                {% if m.volume %}{{ m.volume|floatformat:0 }}{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Achievements -->
+    {% if workout_detail.achievements %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">ACHIEVEMENTS EARNED</h3>
+        <span class="chart-sub">{{ workout_detail.achievements|length }}</span>
+      </div>
+      <div class="achievements-row">
+        {% for a in workout_detail.achievements %}
+        <div class="achievement-badge">
+          {% if a.image_url %}<img src="{{ a.image_url }}" alt="{{ a.name }}">{% endif %}
+          <div class="achievement-badge-text">
+            <div class="achievement-badge-name">{{ a.name }}</div>
+            {% if a.description %}<div class="achievement-badge-desc">{{ a.description }}</div>{% endif %}
+            {% if a.count %}<div class="achievement-badge-count">x{{ a.count }} total</div>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+{% endblock %}
+
+{% block history_item_stats %}
+          {% if w.effort_score %}<span>Effort {{ w.effort_score|floatformat:1 }}</span>{% endif %}
+          {% if w.calories %}<span>{{ w.calories|floatformat:0 }} cal</span>{% endif %}
+          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
+{% endblock %}
+
+{% block recent_section %}
+    <!-- Recent strength workouts, populated by JS -->
+    <div class="recent-section" id="recentStrengthSidebar" style="display:none">
+      <div class="sidebar-title">RECENT STRENGTH</div>
+      <div id="recentStrengthList" class="sidebar-scroll-list"></div>
+    </div>
+{% endblock %}
+
+{% block detail_scripts %}
+<script>
+const perf = {{ perf|safe }};
+const metrics = perf.metrics_by_slug || {};
+const everyN = perf.every_n || 5;
+const recentStrength = {{ recent_strength|safe }};
+const currentWorkoutId = "{{ workout.workout_id }}";
+const exerciseSets = {{ exercise_sets|safe }};
+const hrZonesDirect = {{ hr_zones_direct|safe }};
+
+function makeLabels(n) {
+  return Array.from({ length: n }, (_, i) => {
+    const m = Math.floor(i * everyN / 60);
+    const s = (i * everyN) % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  });
+}
+
+const ZONE_COLORS = ["#4FC3F7","#81C784","#FFD54F","#FF8A65","#E57373"];
+const hrMeta = metrics.heart_rate;
+const hrThresholds = (hrMeta?.zones || []).map((z, i) => {
+  const range = z.range || "";
+  let min = 0, max = Infinity;
+  if (range.startsWith(">=")) {
+    min = parseFloat(range.slice(2)) || 0;
+  } else if (range.startsWith("<")) {
+    max = parseFloat(range.slice(1)) || Infinity;
+  } else {
+    const parts = range.split("-").map(parseFloat);
+    min = isNaN(parts[0]) ? 0 : parts[0];
+    max = isNaN(parts[1]) ? Infinity : parts[1];
+  }
+  return { min, max, color: ZONE_COLORS[i] };
+});
+function getHrZoneColor(bpm) {
+  if (!bpm || !hrThresholds.length) return "#FF3B5C";
+  for (const t of hrThresholds) { if (bpm >= t.min && bpm <= t.max) return t.color; }
+  return ZONE_COLORS[ZONE_COLORS.length - 1];
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const { gridColor, tickColor, mainLineWidth } = window.chartTheme;
+
+  const hr = hrMeta;
+  if (hr?.values?.length) {
+    new Chart(document.getElementById("hrChart"), {
+      type: "line",
+      data: {
+        labels: makeLabels(hr.values.length),
+        datasets: [{
+          label: "Heart Rate (bpm)",
+          data: hr.values,
+          borderColor: "#FF3B5C",
+          backgroundColor: "transparent",
+          borderWidth: mainLineWidth,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.3,
+          segment: {
+            borderColor: ctx => getHrZoneColor(ctx.p0.parsed.y),
+          },
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ctx.parsed.y != null ? Math.round(ctx.parsed.y) + " bpm" : "—" } }
+        },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
+          y: { grace: "5%", grid: { color: gridColor }, ticks: { color: tickColor, font: { family: "JetBrains Mono", size: 10 } } },
+        }
+      }
+    });
+
+    // Avg/max next to chart title
+    const hrStats = document.getElementById("hrStats");
+    if (hr.average_value != null)
+      hrStats.innerHTML += `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;color:var(--text-muted)">avg <span style="color:#FF3B5C;font-weight:700">${Math.round(hr.average_value)} bpm</span></div>`;
+    if (hr.max_value != null)
+      hrStats.innerHTML += `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;color:var(--text-muted)">max <span style="color:#FF3B5C;font-weight:700">${Math.round(hr.max_value)} bpm</span></div>`;
+
+    // HR zone range labels (with time spent)
+    const hrZonesEl = document.getElementById("hrZoneRanges");
+    if (hrZonesEl && hr.zones?.length) {
+      let html = '<div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.5rem">';
+      hr.zones.forEach((z, i) => {
+        const dur = z.duration ? `${Math.floor(z.duration/60)}m ${z.duration%60}s` : "";
+        const col = ZONE_COLORS[i];
+        html += `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:3px;padding:0.1rem 0.5rem">${z.display_name}: ${z.range}${dur ? " · " + dur : ""}</span>`;
+      });
+      html += "</div>";
+      hrZonesEl.innerHTML = html;
+    }
+  } else {
+    // No time-series HR data — hide the empty chart card
+    const hrChartCard = document.getElementById("hrChartCard");
+    if (hrChartCard) hrChartCard.style.display = "none";
+  }
+
+  // HR zone breakdown bars — use perf graph zones first, fall back to model hr_z*_seconds
+  const zoneCard = document.getElementById("hrZoneCard");
+  const zoneBreakdown = document.getElementById("hrZoneBreakdown");
+  if (zoneCard && zoneBreakdown) {
+    const zoneNames = ["Warm Up", "Easy", "Aerobic", "Threshold", "Max"];
+    let zoneSecs = null;
+    if (hr?.zones?.length) {
+      const total = hr.zones.reduce((s, z) => s + (z.duration || 0), 0);
+      if (total > 0) zoneSecs = hr.zones.map(z => z.duration || 0);
+    } else if (hrZonesDirect) {
+      const arr = ["z1","z2","z3","z4","z5"].map(k => hrZonesDirect[k] || 0);
+      if (arr.some(v => v > 0)) zoneSecs = arr;
+    }
+    if (zoneSecs) {
+      const totalDur = zoneSecs.reduce((a, b) => a + b, 0);
+      let html = "";
+      zoneSecs.forEach((dur, i) => {
+        const pct = Math.round((dur / totalDur) * 100);
+        const col = ZONE_COLORS[i];
+        const timeStr = dur ? `${Math.floor(dur/60)}m ${String(dur%60).padStart(2,"0")}s` : "—";
+        html += `<div class="hr-zone-row">
+          <div class="hr-zone-label" style="color:${col}">Z${i+1} ${zoneNames[i]}</div>
+          <div class="hr-zone-bar-wrap"><div class="hr-zone-bar" style="width:${pct}%;background:${col}"></div></div>
+          <div class="hr-zone-time">${timeStr}</div>
+        </div>`;
+      });
+      zoneBreakdown.innerHTML = html;
+      zoneCard.style.display = "";
+    }
+  }
+
+  // Exercise sets reps chart + table
+  if (exerciseSets.length) {
+    const COLORS = ["#CE93D8","#80CBC4","#FFD54F","#FF8A65","#81C784","#4FC3F7","#F48FB1","#A5D6A7"];
+    const exerciseNames = [...new Set(exerciseSets.map(s => s.exercise || "Unknown"))];
+    const colorMap = {};
+    exerciseNames.forEach((name, i) => colorMap[name] = COLORS[i % COLORS.length]);
+
+    new Chart(document.getElementById("repsChart"), {
+      type: "bar",
+      data: {
+        labels: exerciseSets.map((s, i) => `Set ${s.order ?? i + 1}`),
+        datasets: [{
+          label: "Reps / Time",
+          data: exerciseSets.map(s => s.reps != null ? s.reps : (s.duration_seconds || 0)),
+          backgroundColor: exerciseSets.map(s => (colorMap[s.exercise || "Unknown"]) + "bb"),
+          borderColor: exerciseSets.map(s => colorMap[s.exercise || "Unknown"]),
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: items => exerciseSets[items[0].dataIndex]?.exercise || "Exercise",
+              label: item => {
+                const s = exerciseSets[item.dataIndex];
+                const parts = s.reps != null
+                  ? [`${s.reps} reps`]
+                  : (s.duration_seconds ? [`${s.duration_seconds}s`] : ["—"]);
+                if (s.weight_kg) parts.push(`${(s.weight_kg * 2.20462).toFixed(0)} lb`);
+                return parts.join(" · ");
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: "JetBrains Mono", size: 10 } } },
+          y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: "JetBrains Mono", size: 10 } }, beginAtZero: true },
+        }
+      }
+    });
+
+    document.getElementById("exerciseSetsCount").textContent =
+      `${exerciseNames.length} exercise${exerciseNames.length !== 1 ? "s" : ""}, ${exerciseSets.length} sets`;
+
+    const tbody = document.getElementById("exerciseSetsBody");
+    exerciseSets.forEach((s, i) => {
+      const col = colorMap[s.exercise || "Unknown"];
+      const wtLbs = s.weight_kg ? (s.weight_kg * 2.20462).toFixed(0) + " lb" : "—";
+      const repsOrTime = s.reps != null
+        ? s.reps
+        : (s.duration_seconds ? s.duration_seconds + "s" : "—");
+      tbody.insertAdjacentHTML("beforeend", `<tr>
+        <td class="mono" style="color:${col}">${s.order ?? i + 1}</td>
+        <td>${s.exercise || "—"}</td>
+        <td class="mono">${repsOrTime}</td>
+        <td class="mono">${wtLbs}</td>
+      </tr>`);
+    });
+  }
+
+  // Compare bar
+  function updateCompareBar() {
+    const checked = [...document.querySelectorAll(".compare-check:checked")].map(cb => cb.value);
+    const bar = document.getElementById("compareBar");
+    const link = document.getElementById("compareBarLink");
+    const count = document.getElementById("compareBarCount");
+    if (checked.length > 0) {
+      bar.style.display = "";
+      link.href = `/compare/?ids=${[currentWorkoutId, ...checked].join(",")}`;
+      count.textContent = `${checked.length} workout${checked.length > 1 ? "s" : ""} selected`;
+    } else {
+      bar.style.display = "none";
+    }
+  }
+  document.addEventListener("change", e => {
+    if (e.target.classList.contains("compare-check")) updateCompareBar();
+  });
+
+  // Recent strength sidebar
+  if (recentStrength.length) {
+    const sidebar = document.getElementById("recentStrengthSidebar");
+    const list = document.getElementById("recentStrengthList");
+    let html = "";
+    for (const r of recentStrength) {
+      const date = r.created_at
+        ? new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "—";
+      const dur = r.duration_seconds ? Math.floor(r.duration_seconds / 60) + " min" : null;
+      const effort = r.effort_score ? "Effort " + r.effort_score.toFixed(1) : null;
+      const cal = r.calories ? Math.round(r.calories) + " cal" : null;
+      const stats = [dur, effort, cal].filter(Boolean);
+      html += `
+        <div class="recent-item">
+          <a href="/workout/${r.workout_id}/" class="recent-item-content">
+            <div class="recent-item-date">${date}</div>
+            ${r.title ? `<div class="recent-item-title">${r.title}</div>` : ""}
+            <div class="recent-item-stats">${stats.map(s => `<span>${s}</span>`).join("")}</div>
+          </a>
+          <input type="checkbox" class="compare-check" value="${r.workout_id}" style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0">
+        </div>`;
+    }
+    list.innerHTML = html;
+    sidebar.style.display = "";
+  }
+});
+</script>
+{% endblock %}

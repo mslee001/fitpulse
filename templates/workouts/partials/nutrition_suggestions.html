@@ -1,0 +1,86 @@
+{% if error %}
+<p style="color:var(--text-muted);font-size:0.85rem">{{ error }}</p>
+{% elif suggestions %}
+
+{% if gi_note %}
+<div style="font-size:0.82rem;color:var(--accent-red);margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:color-mix(in srgb, var(--accent-red) 8%, transparent);border-radius:var(--r);border-left:2px solid var(--accent-red)">
+  ⚠ {{ gi_note }}
+</div>
+{% endif %}
+{% if tip %}
+<div style="font-size:0.82rem;color:var(--accent-alt);margin-bottom:1rem;padding:0.5rem 0.75rem;background:color-mix(in srgb, var(--accent-alt) 8%, transparent);border-radius:var(--r);border-left:2px solid var(--accent-alt)">
+  💡 {{ tip }}
+</div>
+{% endif %}
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.75rem">
+  {% for s in suggestions %}
+  <div class="suggestion-card">
+    <div class="suggestion-name">{{ s.name }}</div>
+    <div class="suggestion-macros">
+      <span class="food-macro-chip food-macro-chip--cal">{{ s.calories }} kcal</span>
+      <span class="food-macro-chip food-macro-chip--prot">{{ s.protein_g }}g P</span>
+      <span class="food-macro-chip food-macro-chip--carbs">{{ s.carbs_g }}g C</span>
+      <span class="food-macro-chip food-macro-chip--fat">{{ s.fat_g }}g F</span>
+      {% if s.fiber_g %}<span class="food-macro-chip food-macro-chip--fiber">{{ s.fiber_g }}g Fiber</span>{% endif %}
+    </div>
+    <p class="suggestion-why">{{ s.why }}</p>
+    <div style="display:flex;gap:0.4rem;margin-top:0.5rem">
+      <button type="button"
+              class="btn btn-ghost btn-sm"
+              style="flex:1"
+              onclick="prefillFoodLog('{{ s.name|escapejs }}')">
+        Log this ›
+      </button>
+      <button type="button"
+              class="btn btn-ghost btn-sm suggestion-save-btn"
+              style="font-size:0.75rem;padding:0.3rem 0.6rem"
+              data-name="{{ s.name|escapejs }}"
+              data-cal="{{ s.calories }}"
+              data-prot="{{ s.protein_g }}"
+              data-carbs="{{ s.carbs_g }}"
+              data-fat="{{ s.fat_g }}"
+              data-fiber="{{ s.fiber_g }}"
+              title="Save to Quick Re-log">
+        ★ Save
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+window.prefillFoodLog = function(text) {
+  var ta = document.getElementById('food-textarea');
+  if (ta) {
+    ta.value = text;
+    ta.focus();
+    ta.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+};
+
+document.querySelectorAll('.suggestion-save-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var data = new FormData();
+    data.append('name', btn.dataset.name);
+    data.append('calories', btn.dataset.cal);
+    data.append('protein_g', btn.dataset.prot);
+    data.append('carbs_g', btn.dataset.carbs);
+    data.append('fat_g', btn.dataset.fat);
+    data.append('fiber_g', btn.dataset.fiber);
+    data.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+    fetch('/nutrition/api/save-suggestion/', {method:'POST', body:data})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (j.ok) {
+          btn.textContent = '✓ Saved';
+          btn.disabled = true;
+        }
+      });
+  });
+});
+</script>
+
+{% else %}
+<p style="color:var(--text-dim);font-size:0.85rem">No suggestions available right now.</p>
+{% endif %}

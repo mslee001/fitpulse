@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}History — Cadence{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">WORKOUT HISTORY</h1>
+  <p class="page-sub">{{ total }} workouts — filter, sort, and select to compare</p>
+</div>
+
+<div class="discipline-pills">
+  <button class="discipline-pill{% if not filters.discipline %} active{% endif %}"
+          data-slug="" onclick="setDiscipline('')">All</button>
+  {% for slug, display, color in discipline_pills %}
+  <button class="discipline-pill{% if filters.discipline == slug %} active{% endif %}"
+          data-slug="{{ slug }}" style="--pill-color:{{ color }}"
+          onclick="setDiscipline('{{ slug }}')">{{ display }}</button>
+  {% endfor %}
+</div>
+
+<div class="history-layout">
+
+  <!-- Filter sidebar -->
+  <aside class="filter-panel">
+    <div class="filter-title">FILTERS</div>
+    <form id="filter-form"
+          hx-get="{% url 'history' %}"
+          hx-target="#workout-list"
+          hx-push-url="true"
+          hx-trigger="change, submit">
+
+      <div class="filter-group">
+        <label class="filter-label">Search</label>
+        <input type="search" name="q" class="filter-input" placeholder="Class name…"
+               value="{{ filters.q }}"
+               hx-get="{% url 'history' %}"
+               hx-target="#workout-list"
+               hx-push-url="true"
+               hx-include="#filter-form"
+               hx-trigger="input changed delay:400ms">
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Discipline</label>
+        <select name="discipline" class="filter-select">
+          <option value="">All</option>
+          {% for slug, display in disciplines %}
+          <option value="{{ slug }}" {% if filters.discipline == slug %}selected{% endif %}>
+            {{ display|default:slug|title }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Duration</label>
+        <select name="duration" class="filter-select">
+          <option value="">Any length</option>
+          {% for d in durations %}
+          <option value="{{ d }}" {% if filters.duration == d|stringformat:"s" %}selected{% endif %}>
+            {{ d }} min
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Instructor</label>
+        <select name="instructor" class="filter-select">
+          <option value="">Any instructor</option>
+          {% for name in instructors %}
+          <option value="{{ name }}" {% if filters.instructor == name %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Sort by</label>
+        <select name="sort" class="filter-select">
+          <option value="-created_at" {% if filters.sort == "-created_at" %}selected{% endif %}>Newest first</option>
+          <option value="created_at" {% if filters.sort == "created_at" %}selected{% endif %}>Oldest first</option>
+          <option value="-output_watts" {% if filters.sort == "-output_watts" %}selected{% endif %}>Highest output</option>
+          <option value="-avg_cadence" {% if filters.sort == "-avg_cadence" %}selected{% endif %}>Highest cadence</option>
+          <option value="-calories" {% if filters.sort == "-calories" %}selected{% endif %}>Most calories</option>
+        </select>
+      </div>
+
+      {% if filters.date_from %}
+      <div class="filter-group">
+        <label class="filter-label">Date Range</label>
+        <div class="filter-date-badge">
+          {{ filters.date_from }}{% if filters.date_to %} – {{ filters.date_to }}{% endif %}
+        </div>
+        <input type="hidden" name="date_from" value="{{ filters.date_from }}">
+        {% if filters.date_to %}<input type="hidden" name="date_to" value="{{ filters.date_to }}">{% endif %}
+      </div>
+      {% endif %}
+
+      <button type="button" class="btn btn-ghost btn-full"
+              onclick="window.location='{% url 'history' %}'">
+        Clear filters
+      </button>
+    </form>
+
+    <!-- Compare button — shown when checkboxes are selected -->
+    <div id="compare-bar" class="compare-bar" style="display:none">
+      <div class="compare-count"><span id="compare-count-num">0</span> selected</div>
+      <a id="compare-link" href="{% url 'compare' %}" class="btn btn-accent btn-full">
+        Compare →
+      </a>
+    </div>
+  </aside>
+
+  <!-- Workout list -->
+  <div id="workout-list">
+    {% include "workouts/partials/workout_list.html" %}
+  </div>
+
+</div>
+
+<script>
+  function setDiscipline(slug) {
+    const select = document.querySelector('select[name="discipline"]');
+    select.value = slug;
+    // Sync active state on pills
+    document.querySelectorAll('.discipline-pill').forEach(btn => {
+      const btnSlug = btn.dataset.slug;
+      btn.classList.toggle('active', btnSlug === slug);
+    });
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Track checked workouts and update the compare button
+  const compareBar = document.getElementById('compare-bar');
+  const compareCountEl = document.getElementById('compare-count-num');
+  const compareLink = document.getElementById('compare-link');
+  const selected = new Set();
+
+  document.addEventListener('change', e => {
+    if (!e.target.matches('.workout-checkbox')) return;
+    const id = e.target.dataset.id;
+    e.target.checked ? selected.add(id) : selected.delete(id);
+    compareCountEl.textContent = selected.size;
+    compareBar.style.display = selected.size >= 2 ? 'block' : 'none';
+    compareLink.href = `{% url 'compare' %}?ids=${[...selected].join(',')}`;
+  });
+</script>
+{% endblock %}

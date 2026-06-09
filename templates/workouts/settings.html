@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Settings — Cadence{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h1 class="page-title">Settings</h1>
+      <p class="page-sub">Personal preferences and performance benchmarks</p>
+    </div>
+  </div>
+</div>
+
+<div style="max-width:540px">
+
+  <!-- FTP Card -->
+  <div class="chart-card">
+    <div class="chart-header">
+      <h3 class="chart-title">FUNCTIONAL THRESHOLD POWER</h3>
+    </div>
+
+    <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1.25rem">
+      FTP is used to calculate power zone bands on cycling workouts. Set it to the watts you can sustain for one hour. Each cycling workout stores the FTP that was active at the time, so historical charts remain accurate even as your FTP improves.
+    </p>
+
+    {% if current_ftp %}
+    <div style="display:flex;align-items:baseline;gap:0.5rem;margin-bottom:1.25rem">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:2rem;font-weight:600;color:var(--text)">{{ current_ftp }}</span>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:1rem;color:var(--text-muted);font-weight:700;letter-spacing:0.05em">W</span>
+      {% if ftp_updated_at %}
+      <span style="font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-dim);margin-left:0.5rem">updated {{ ftp_updated_at|date:"M j, Y" }}</span>
+      {% endif %}
+    </div>
+    {% else %}
+    <p style="font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;color:var(--text-dim);letter-spacing:0.05em;margin-bottom:1.25rem">No FTP set — power zone bands will not appear on cycling workouts.</p>
+    {% endif %}
+
+    <form method="post" action="{% url 'set_ftp' %}" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{% url 'settings' %}">
+      <input
+        type="number"
+        name="ftp"
+        value="{{ current_ftp|default:'' }}"
+        placeholder="Enter watts"
+        min="50"
+        max="600"
+        style="width:130px;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.9rem;padding:0.4rem 0.65rem;border-radius:4px;appearance:textfield;-moz-appearance:textfield"
+      >
+      <button type="submit" class="btn btn-accent">{% if current_ftp %}Update FTP{% else %}Set FTP{% endif %}</button>
+      {% if current_ftp %}
+      <button type="submit" name="ftp" value="" class="btn btn-ghost" style="font-size:0.75rem">Clear</button>
+      {% endif %}
+    </form>
+
+    <!-- FTP history reference -->
+    <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">FTP HISTORY (APPLIED TO WORKOUTS)</div>
+      <table style="width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:0.75rem">
+        <thead>
+          <tr>
+            <th style="text-align:left;color:var(--text-dim);font-weight:400;padding:0.2rem 0.5rem 0.2rem 0">Effective date</th>
+            <th style="text-align:right;color:var(--text-dim);font-weight:400;padding:0.2rem 0">FTP</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Dec 14, 2024 →</td>
+            <td style="text-align:right;color:var(--text)">163 W</td>
+          </tr>
+          <tr>
+            <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Sep 21, 2024 →</td>
+            <td style="text-align:right;color:var(--text)">161 W</td>
+          </tr>
+          <tr>
+            <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Jul 21, 2024 →</td>
+            <td style="text-align:right;color:var(--text)">143 W</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- Athlete Profile Card -->
+  <div class="chart-card" style="margin-top:1.5rem">
+    <div class="chart-header">
+      <h3 class="chart-title">AI COACHING PROFILE</h3>
+    </div>
+    <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1.5rem">
+      These fields personalise AI insights, next-workout recommendations, and meal suggestions. All fields are optional — leave blank for generic output.
+    </p>
+
+    <form method="post" action="{% url 'set_athlete_profile' %}">
+      {% csrf_token %}
+
+      <!-- Experience levels -->
+      <div style="margin-bottom:1.25rem">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">EXPERIENCE LEVEL</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem">
+          {% with sel_style="width:100%;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.82rem;padding:0.4rem 0.5rem;border-radius:4px" %}
+          <div>
+            <label style="display:block;font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Running</label>
+            <select name="running_experience" style="{{ sel_style }}">
+              <option value="">— not set —</option>
+              {% for val, display in experience_choices %}
+              <option value="{{ val }}" {% if athlete.running_experience == val %}selected{% endif %}>{{ display }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Cycling</label>
+            <select name="cycling_experience" style="{{ sel_style }}">
+              <option value="">— not set —</option>
+              {% for val, display in experience_choices %}
+              <option value="{{ val }}" {% if athlete.cycling_experience == val %}selected{% endif %}>{{ display }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Strength</label>
+            <select name="strength_experience" style="{{ sel_style }}">
+              <option value="">— not set —</option>
+              {% for val, display in experience_choices %}
+              <option value="{{ val }}" {% if athlete.strength_experience == val %}selected{% endif %}>{{ display }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endwith %}
+        </div>
+      </div>
+
+      <!-- Coaching tone -->
+      <div style="margin-bottom:1.25rem">
+        <label style="display:block;font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.5rem">COACHING TONE</label>
+        <select name="coaching_tone" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;padding:0.4rem 0.6rem;border-radius:4px;min-width:200px">
+          {% for val, display in tone_choices %}
+          <option value="{{ val }}" {% if athlete.coaching_tone == val %}selected{% endif %}>{{ display }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Training focus -->
+      <div style="margin-bottom:1.25rem">
+        <label style="display:block;font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.5rem">CURRENT TRAINING FOCUS</label>
+        <textarea name="training_focus" rows="2" placeholder="e.g. building running base, training for a 10K, strength recomp" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.training_focus }}</textarea>
+      </div>
+
+      <!-- Rehab keywords -->
+      <div style="margin-bottom:1.25rem">
+        <label style="display:block;font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem">PT / REHAB KEYWORDS</label>
+        <p style="font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-dim);margin:0 0 0.5rem">Comma-separated. Workout titles containing any of these are tagged as PT/rehab and excluded from training-load reasoning.</p>
+        <input type="text" name="rehab_keywords" value="{{ athlete.rehab_keywords|join:', ' }}" placeholder="e.g. shoulder pt, physical therapy, rehab" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;padding:0.4rem 0.65rem;border-radius:4px">
+      </div>
+
+      <!-- Health context override -->
+      <div style="margin-bottom:1.5rem">
+        <label style="display:block;font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem">HEALTH CONTEXT (OPTIONAL OVERRIDE)</label>
+        <p style="font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-dim);margin:0 0 0.5rem">Free-form context injected into AI health and nutrition prompts. Leave blank to derive context from your tracked Interventions automatically.</p>
+        <textarea name="health_context_override" rows="3" placeholder="e.g. managing weight loss on a GLP-1 medication, building muscle, perimenopausal" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.health_context_override }}</textarea>
+      </div>
+
+      <button type="submit" class="btn btn-accent">Save Profile</button>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

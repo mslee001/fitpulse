@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}Interventions — Cadence{% endblock %}
+{% block nav_body_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h1 class="page-title">Interventions</h1>
+      <p class="page-sub">Track medications, supplements, and other interventions</p>
+    </div>
+    <button class="btn btn-accent" onclick="document.getElementById('add-iv-panel').style.display='block';this.style.display='none'">+ Add Intervention</button>
+  </div>
+</div>
+
+<!-- Add Intervention Form (hidden by default) -->
+<div class="add-form-card" id="add-iv-panel" style="display:none;margin-bottom:1.5rem">
+  <div class="chart-header" style="margin-bottom:1rem">
+    <h3 class="chart-title">ADD INTERVENTION</h3>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('add-iv-panel').style.display='none';document.querySelector('[onclick*=add-iv-panel]').style.display=''">Cancel</button>
+  </div>
+  <form method="post" action="{% url 'interventions' %}">
+    {% csrf_token %}
+    <div class="add-form-grid">
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Name *</label>
+        <input name="name" class="form-input" placeholder="e.g. Tirzepatide" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category *</label>
+        <select name="category" class="form-select">
+          {% for val, label in category_choices %}
+          <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Initial Dose (optional)</label>
+        <input name="initial_dose" class="form-input" placeholder="e.g. 5mg weekly">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Start Date *</label>
+        <input name="start_date" type="date" class="form-input" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">End Date (optional)</label>
+        <input name="end_date" type="date" class="form-input">
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Expected Effects</label>
+        <input name="expected_effects" class="form-input" placeholder="What effects do you expect?">
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" class="form-textarea" placeholder="Additional notes…"></textarea>
+      </div>
+    </div>
+    <div style="margin-top:1rem">
+      <button type="submit" class="btn btn-accent">Add Intervention</button>
+    </div>
+  </form>
+</div>
+
+<!-- Active Interventions -->
+{% if active_interventions %}
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">ACTIVE</h3>
+    <span class="chart-sub">{{ active_interventions|length }} active</span>
+  </div>
+  <div>
+    {% for iv in active_interventions %}
+    <div class="iv-item">
+      <div class="iv-item-main">
+        <div class="iv-item-info">
+          <div>
+            <span class="cat-badge cat-{{ iv.category }}">{{ iv.category }}</span>
+            &nbsp;<a href="{% url 'intervention_detail' iv.pk %}" class="iv-item-name">{{ iv.name }}</a>
+            {% if iv.current_dose %}
+            <span class="iv-item-dose"> &mdash; {{ iv.current_dose.dose }}</span>
+            {% endif %}
+          </div>
+          <div class="iv-item-meta">
+            Started {{ iv.start_date }} &middot; {{ iv.duration_days }} days
+            {% if iv.dose_summary %} &middot; <span style="color:var(--text-dim)">{{ iv.dose_summary }}</span>{% endif %}
+            {% if iv.expected_effects %} &middot; {{ iv.expected_effects|truncatechars:50 }}{% endif %}
+          </div>
+        </div>
+        <div class="iv-item-actions">
+          <button class="btn btn-ghost btn-sm" onclick="toggleQuickDose({{ iv.pk }})">Change Dose</button>
+          <form method="post" action="{% url 'intervention_end' iv.pk %}" style="margin:0">
+            {% csrf_token %}
+            <button class="btn btn-ghost btn-sm" type="submit">End</button>
+          </form>
+          <form method="post" action="{% url 'intervention_delete' iv.pk %}" style="margin:0"
+            onsubmit="return confirm('Delete {{ iv.name }}?')">
+            {% csrf_token %}
+            <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete</button>
+          </form>
+        </div>
+      </div>
+      <!-- Quick dose change panel -->
+      <div id="quick-dose-{{ iv.pk }}" class="quick-dose-panel" style="display:none">
+        <form method="post" action="{% url 'intervention_quick_dose' iv.pk %}" style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
+          {% csrf_token %}
+          <div class="form-group" style="margin:0;flex:1;min-width:140px">
+            <label class="form-label">New Dose</label>
+            <input name="dose" class="form-input" placeholder="e.g. 10mg" required>
+          </div>
+          <div class="form-group" style="margin:0;min-width:140px">
+            <label class="form-label">Effective Date</label>
+            <input name="start_date" type="date" class="form-input" value="{% now 'Y-m-d' %}">
+          </div>
+          <div style="display:flex;gap:0.5rem">
+            <button type="submit" class="btn btn-accent btn-sm">Apply</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleQuickDose({{ iv.pk }})">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Ended Interventions -->
+{% if ended_interventions %}
+<div class="chart-card" style="margin-top:1.5rem">
+  <div class="chart-header">
+    <h3 class="chart-title">ENDED</h3>
+    <span class="chart-sub">{{ ended_interventions|length }} completed</span>
+  </div>
+  <div>
+    {% for iv in ended_interventions %}
+    <div class="iv-item">
+      <div class="iv-item-main">
+        <div class="iv-item-info">
+          <div style="opacity:0.75">
+            <span class="cat-badge cat-{{ iv.category }}">{{ iv.category }}</span>
+            &nbsp;<a href="{% url 'intervention_detail' iv.pk %}" class="iv-item-name">{{ iv.name }}</a>
+            {% if iv.dose_summary %}
+            <span class="iv-item-dose"> &mdash; {{ iv.dose_summary }}</span>
+            {% endif %}
+          </div>
+          <div class="iv-item-meta">{{ iv.start_date }} → {{ iv.end_date }} &middot; {{ iv.duration_days }} days</div>
+        </div>
+        <div class="iv-item-actions">
+          <form method="post" action="{% url 'intervention_end' iv.pk %}" style="margin:0">
+            {% csrf_token %}
+            <button class="btn btn-ghost btn-sm" type="submit">Re-open</button>
+          </form>
+          <form method="post" action="{% url 'intervention_delete' iv.pk %}" style="margin:0"
+            onsubmit="return confirm('Delete {{ iv.name }}?')">
+            {% csrf_token %}
+            <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if not active_interventions and not ended_interventions %}
+<div class="chart-card">
+  <p style="color:var(--text-muted);text-align:center;padding:2rem">No interventions yet. Click <strong>+ Add Intervention</strong> above.</p>
+</div>
+{% endif %}
+
+<script>
+function toggleQuickDose(pk) {
+  const el = document.getElementById('quick-dose-' + pk);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+</script>
+{% endblock %}

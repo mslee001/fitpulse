@@ -1,0 +1,21 @@
+{% load workout_filters %}
+{% if error %}
+<div class="insights-error">{{ error }}</div>
+{% elif pending %}
+<div class="insights-pending"
+  hx-get="{% url 'analytics_check_insights' %}"
+  hx-trigger="load, every 15s"
+  hx-target="#insights-content"
+  hx-swap="innerHTML">
+  <span class="insights-pending-dot"></span>
+  Batch submitted — Claude Haiku is analyzing your data. This usually takes a few minutes.
+  <span class="insights-pending-check">Checking automatically every 15s...</span>
+</div>
+{% else %}
+<div style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">
+  {{ insights|format_nutrition_insights }}
+</div>
+{% if generated_at %}
+<div class="insights-meta">Generated {{ generated_at|timesince }} ago &middot; powered by Claude Sonnet (batch)</div>
+{% endif %}
+{% endif %}

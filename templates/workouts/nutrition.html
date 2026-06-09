@@ -1,0 +1,594 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+
+{% block title %}Nutrition — Cadence{% endblock %}
+{% block nav_nutrition_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem">
+  <div>
+    <h1 class="page-title">NUTRITION</h1>
+    <p class="page-sub">
+      {% if is_today %}Today{% else %}{{ page_date|date:"l, N j, Y" }}{% endif %}
+      &nbsp;·&nbsp;
+      <a href="{% url 'nutrition_targets' %}" style="color:var(--text-muted);font-size:0.85rem">Edit targets ›</a>
+      &nbsp;·&nbsp;
+      <a href="{% url 'nutrition_analytics' %}" style="color:var(--text-muted);font-size:0.85rem">Analytics ›</a>
+    </p>
+  </div>
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem">
+    <a href="?date={{ prev_date }}" class="btn btn-ghost btn-sm">‹ Prev</a>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.9rem;font-weight:700;color:var(--text-muted);padding:0 0.25rem">
+      {{ page_date|date:"M j" }}
+    </span>
+    {% if not is_today %}
+    <a href="?date={{ next_date }}" class="btn btn-ghost btn-sm">Next ›</a>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Streak indicators ── #}
+{% if streaks %}
+<div style="display:flex;gap:0.75rem;margin-bottom:1.5rem;flex-wrap:wrap">
+  {% if streaks.logging_days >= 2 %}
+  <div class="streak-badge">
+    <span class="streak-icon">🔥</span>
+    Logged <strong>{{ streaks.logging_days }} days</strong> in a row
+  </div>
+  {% endif %}
+  {% if streaks.protein_days >= 2 %}
+  <div class="streak-badge streak-badge--green">
+    <span class="streak-icon">💪</span>
+    Protein target <strong>{{ streaks.protein_days }} days</strong> in a row
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ── Hunger check widget (today only) ── #}
+{% if is_today %}
+<div class="card" style="margin-bottom:1.5rem" id="hunger-widget">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
+    <div class="section-title" style="margin-bottom:0">HOW HUNGRY ARE YOU RIGHT NOW?</div>
+    <span id="hunger-context-label" style="font-size:0.72rem;color:var(--text-dim)"></span>
+  </div>
+  <div style="display:flex;gap:0.3rem;flex-wrap:wrap" id="hunger-btns">
+    {% for i in "1234567890" %}{% with n=forloop.counter %}
+    <button type="button"
+            class="btn btn-ghost btn-sm hunger-num-btn"
+            data-level="{{ n }}"
+            style="min-width:2.4rem;font-size:0.82rem">{{ n }}</button>
+    {% endwith %}{% endfor %}
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-dim);margin-top:0.25rem;padding:0 0.15rem">
+    <span>1 = no hunger</span><span>10 = ravenous</span>
+  </div>
+  <div id="hunger-feedback" style="font-size:0.8rem;color:var(--text-muted);margin-top:0.6rem;min-height:1.2rem"></div>
+</div>
+{% endif %}
+
+{# ── Yesterday recap (shown only when today has no entries) ── #}
+{% if yesterday_recap %}
+<div class="card" style="margin-bottom:2rem;border-color:var(--border-accent)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+    <div class="section-title" style="margin-bottom:0">YESTERDAY — {{ yesterday_recap.date|date:"l, M j" }}</div>
+    <a href="?date={{ yesterday_recap.date|date:'Y-m-d' }}" class="btn btn-ghost btn-sm" style="font-size:0.75rem">View ›</a>
+  </div>
+  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.88rem">
+    <div>
+      <span style="color:var(--text-muted)">Calories</span>
+      <span style="margin-left:0.4rem;font-weight:700;color:{% if yesterday_recap.cal_ok %}var(--accent-green){% else %}var(--accent){% endif %}">{{ yesterday_recap.cal }}</span>
+      {% if yesterday_recap.cal_target %}<span style="color:var(--text-dim)"> / {{ yesterday_recap.cal_target }}</span>{% endif %}
+    </div>
+    <div>
+      <span style="color:var(--text-muted)">Protein</span>
+      <span style="margin-left:0.4rem;font-weight:700;color:{% if yesterday_recap.prot_ok %}var(--accent-green){% else %}var(--accent){% endif %}">{{ yesterday_recap.protein_g }}g</span>
+      {% if yesterday_recap.prot_target %}<span style="color:var(--text-dim)"> / {{ yesterday_recap.prot_target }}g</span>{% endif %}
+    </div>
+    <div>
+      <span style="color:var(--text-muted)">Fiber</span>
+      <span style="margin-left:0.4rem;font-weight:700;color:{% if yesterday_recap.fiber_ok %}var(--accent-green){% else %}var(--text-muted){% endif %}">{{ yesterday_recap.fiber_g }}g</span>
+    </div>
+    {% if yesterday_recap.top_protein_source %}
+    <div style="color:var(--text-dim)">
+      Top protein: <span style="color:var(--text-muted)">{{ yesterday_recap.top_protein_source }}</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if not targets %}
+<div class="card" style="border-color:var(--accent);margin-bottom:2rem">
+  <p style="color:var(--text-muted);margin-bottom:0.75rem">No macro targets set yet. Set up your profile to get personalized targets.</p>
+  <a href="{% url 'nutrition_targets' %}" class="btn btn-accent btn-sm">Set Up Targets</a>
+</div>
+{% endif %}
+
+{# ── Macro totals ── #}
+{% if targets %}
+<div class="card" style="margin-bottom:2rem">
+  <div class="section-title" style="margin-bottom:1.25rem">TODAY'S MACROS</div>
+
+  {% with cal_consumed=totals.cal|default:0 cal_target=targets.calories|default:0 %}
+  {% with prot_consumed=totals.prot|default:0 prot_target=targets.protein_g|default:0 %}
+  {% with carbs_consumed=totals.carbs|default:0 carbs_target=targets.carbs_g|default:0 %}
+  {% with fat_consumed=totals.fat|default:0 fat_target=targets.fat_g|default:0 %}
+  {% with fiber_consumed=totals.fiber|default:0 fiber_target=targets.fiber_g|default:0 %}
+
+  <div class="macro-rows">
+
+    {# Calories #}
+    <div class="macro-row">
+      <div class="macro-row-header">
+        <span class="macro-label">Calories</span>
+        <span class="macro-row-leader"></span>
+        <span class="macro-row-right">
+          <span class="macro-value">{{ cal_consumed|floatformat:0 }}<span class="macro-sep"> / {{ cal_target }}</span></span>
+          {% if remaining.cal %}<span class="macro-rem"> · {{ remaining.cal|floatformat:0 }} left</span>{% endif %}
+        </span>
+      </div>
+      {% if cal_target %}
+      <div class="macro-bar-wrap">
+        <div class="macro-bar-fill macro-bar--cal" style="width:{% widthratio cal_consumed cal_target 100 %}%"></div>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Protein #}
+    <div class="macro-row{% if remaining.prot %} macro-row--warn{% endif %}">
+      <div class="macro-row-header">
+        <span class="macro-label">Protein <span class="macro-unit">g</span></span>
+        <span class="macro-row-leader"></span>
+        <span class="macro-row-right">
+          <span class="macro-value">{{ prot_consumed|floatformat:0 }}<span class="macro-sep"> / {{ prot_target }}</span></span>
+          {% if remaining.prot %}<span class="macro-rem macro-rem--warn"> · {{ remaining.prot|floatformat:0 }}g left ⚡</span>
+          {% elif prot_target and prot_consumed >= prot_target %}<span class="macro-rem" style="color:var(--accent-green)"> · target hit ✓</span>{% endif %}
+        </span>
+      </div>
+      {% if prot_target %}
+      <div class="macro-bar-wrap">
+        <div class="macro-bar-fill macro-bar--protein" style="width:{% widthratio prot_consumed prot_target 100 %}%"></div>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Carbs #}
+    <div class="macro-row">
+      <div class="macro-row-header">
+        <span class="macro-label">Carbs <span class="macro-unit">g</span></span>
+        <span class="macro-row-leader"></span>
+        <span class="macro-row-right">
+          <span class="macro-value">{{ carbs_consumed|floatformat:0 }}<span class="macro-sep"> / {{ carbs_target }}</span></span>
+        </span>
+      </div>
+      {% if carbs_target %}
+      <div class="macro-bar-wrap">
+        <div class="macro-bar-fill macro-bar--carbs" style="width:{% widthratio carbs_consumed carbs_target 100 %}%"></div>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Fat #}
+    <div class="macro-row">
+      <div class="macro-row-header">
+        <span class="macro-label">Fat <span class="macro-unit">g</span></span>
+        <span class="macro-row-leader"></span>
+        <span class="macro-row-right">
+          <span class="macro-value">{{ fat_consumed|floatformat:0 }}<span class="macro-sep"> / {{ fat_target }}</span></span>
+        </span>
+      </div>
+      {% if fat_target %}
+      <div class="macro-bar-wrap">
+        <div class="macro-bar-fill macro-bar--fat" style="width:{% widthratio fat_consumed fat_target 100 %}%"></div>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Fiber #}
+    <div class="macro-row">
+      <div class="macro-row-header">
+        <span class="macro-label">Fiber <span class="macro-unit">g</span> <span class="macro-flag">GLP-1</span></span>
+        <span class="macro-row-leader"></span>
+        <span class="macro-row-right">
+          <span class="macro-value">{{ fiber_consumed|floatformat:1 }}<span class="macro-sep"> / {{ fiber_target }}</span></span>
+          {% if remaining.fiber %}<span class="macro-rem"> · {{ remaining.fiber|floatformat:1 }}g left</span>{% endif %}
+        </span>
+      </div>
+      {% if fiber_target %}
+      <div class="macro-bar-wrap">
+        <div class="macro-bar-fill macro-bar--fiber" style="width:{% widthratio fiber_consumed fiber_target 100 %}%"></div>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  {% endwith %}{% endwith %}{% endwith %}{% endwith %}{% endwith %}
+</div>
+{% endif %}
+
+{# ── Log Food ── #}
+<div class="card" style="margin-bottom:2rem">
+  <div class="section-title" style="margin-bottom:1rem">LOG FOOD</div>
+  <form method="post" action="{% url 'nutrition_parse' %}"
+        hx-post="{% url 'nutrition_parse' %}"
+        hx-target="#parse-result"
+        hx-swap="innerHTML"
+        hx-encoding="multipart/form-data"
+        enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="date" value="{{ page_date|date:'Y-m-d' }}">
+    <textarea name="raw_text" id="food-textarea"
+      placeholder="Describe what you ate — e.g. '2 scrambled eggs, sourdough toast with butter, black coffee'"
+      rows="3"
+      style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.75rem;font-family:'Barlow',sans-serif;font-size:0.95rem;resize:vertical;margin-bottom:0.75rem"
+    ></textarea>
+
+    <!-- Label image upload area -->
+    <div id="label-upload-area" style="margin-bottom:0.75rem">
+      <input type="file" name="label_image" id="label-image-input" accept="image/*" style="display:none">
+      <div id="label-upload-btn-row" style="display:flex;align-items:center;gap:0.5rem">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('label-image-input').click()">
+          Upload nutrition label
+        </button>
+        <span style="font-size:0.8rem;color:var(--text-dim)">optional — attach a photo of a nutrition facts panel</span>
+      </div>
+      <div id="label-preview-row" style="display:none;margin-top:0.6rem;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+        <div style="position:relative;flex-shrink:0">
+          <img id="label-preview-img" src="" alt="Label preview"
+            style="max-height:120px;max-width:160px;border-radius:var(--r);border:1px solid var(--border);object-fit:contain">
+          <button type="button" onclick="clearLabelImage()"
+            style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--accent-red);color:#fff;border:none;cursor:pointer;font-size:0.7rem;line-height:1;display:flex;align-items:center;justify-content:center">✕</button>
+        </div>
+        <div style="flex:1;min-width:180px">
+          <label class="form-label" style="font-size:0.75rem;margin-bottom:0.35rem;display:block">How much did you have?</label>
+          <input type="text" name="serving_note" id="serving-note-input"
+            placeholder='e.g. "I had the whole bag" or "half a serving"'
+            style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.65rem;font-family:'Barlow',sans-serif;font-size:0.875rem">
+          <div style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.3rem" id="serving-chips">
+            <button type="button" class="serving-chip" onclick="setServingNote('1 serving')">1 serving</button>
+            <button type="button" class="serving-chip" onclick="setServingNote('I had all of this')">Whole package</button>
+            <button type="button" class="serving-chip" onclick="setServingNote('half of this')">Half</button>
+            <button type="button" class="serving-chip" onclick="setServingNote('2 servings')">2 servings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+      <select name="meal" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.75rem;font-family:'Barlow',sans-serif;font-size:0.85rem">
+        <option value="">Meal (auto)</option>
+        {% for val,label in meal_choices %}
+        <option value="{{ val }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-accent btn-sm">
+        Parse
+      </button>
+      <span id="parse-spinner" class="htmx-indicator" style="color:var(--accent);font-size:0.8rem">Parsing…</span>
+    </div>
+  </form>
+  <div id="parse-result" style="margin-top:1.25rem"></div>
+</div>
+
+<style>
+.serving-chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.serving-chip:hover { background: var(--bg-card); color: var(--text); }
+.serving-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+
+<script>
+function showLabelPreview(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('label-preview-img').src = e.target.result;
+    document.getElementById('label-preview-row').style.display = 'flex';
+    document.getElementById('label-upload-btn-row').style.display = 'none';
+    document.getElementById('food-textarea').placeholder = 'Optional: add any extra context about this food';
+  };
+  reader.readAsDataURL(file);
+}
+
+document.getElementById('label-image-input').addEventListener('change', function() {
+  if (this.files[0]) showLabelPreview(this.files[0]);
+});
+
+document.getElementById('food-textarea').addEventListener('paste', function(e) {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      const inp = document.getElementById('label-image-input');
+      inp.files = dt.files;
+      showLabelPreview(file);
+      break;
+    }
+  }
+});
+
+function clearLabelImage() {
+  const inp = document.getElementById('label-image-input');
+  inp.value = '';
+  document.getElementById('label-preview-row').style.display = 'none';
+  document.getElementById('label-upload-btn-row').style.display = 'flex';
+  document.getElementById('serving-note-input').value = '';
+  document.getElementById('food-textarea').placeholder = "Describe what you ate — e.g. '2 scrambled eggs, sourdough toast with butter, black coffee'";
+  document.querySelectorAll('.serving-chip').forEach(c => c.classList.remove('active'));
+}
+
+function setServingNote(text) {
+  document.getElementById('serving-note-input').value = text;
+  document.querySelectorAll('.serving-chip').forEach(c => {
+    c.classList.toggle('active', c.textContent.trim() === text || c.getAttribute('onclick').includes(text));
+  });
+}
+</script>
+
+{# ── Today's entries ── #}
+{% if entries %}
+<div class="card" style="margin-bottom:2rem">
+  <div class="section-title" style="margin-bottom:1rem">TODAY'S LOG</div>
+  <div class="food-log-table-wrap">
+    <table class="food-log-table">
+      <thead>
+        <tr>
+          <th class="col-fav"></th>
+          <th class="col-meal">Meal</th>
+          <th class="col-desc">Food</th>
+          <th class="col-num col-cal">Cal</th>
+          <th class="col-num col-prot">Protein</th>
+          <th class="col-num col-carbs">Carbs</th>
+          <th class="col-num col-fat">Fat</th>
+          <th class="col-num col-fiber">Fiber</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+        {% include "workouts/partials/nutrition_entry_row.html" with entry=entry %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div style="color:var(--text-dim);font-size:0.85rem;margin-bottom:2rem;padding:1rem;text-align:center;border:1px dashed var(--border);border-radius:var(--r)">
+  Nothing logged yet{% if not is_today %} for {{ page_date|date:"M j" }}{% endif %}.
+</div>
+{% endif %}
+
+{# ── Meal suggestions ── #}
+<div class="card" style="margin-bottom:2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+    <div class="section-title" style="margin-bottom:0">WHAT SHOULD I EAT?</div>
+    <button class="btn btn-ghost btn-sm"
+            hx-get="{% url 'nutrition_suggest' %}?date={{ page_date|date:'Y-m-d' }}"
+            hx-target="#suggestions-area"
+            hx-swap="innerHTML"
+            hx-indicator="#suggest-spinner">
+      💡 Get ideas
+      <span id="suggest-spinner" class="htmx-indicator" style="font-size:0.75rem;margin-left:0.25rem">…</span>
+    </button>
+  </div>
+  <div id="suggestions-area">
+    <p style="color:var(--text-dim);font-size:0.85rem">Based on your remaining macros for the day.</p>
+  </div>
+</div>
+
+{# ── Saved meals ── #}
+{% if saved_meals %}
+<div class="card" style="margin-bottom:2rem">
+  <div class="section-title" style="margin-bottom:1rem">QUICK RE-LOG</div>
+  <div style="display:flex;flex-wrap:wrap;gap:0.5rem">
+    {% for sm in saved_meals %}
+    <div class="saved-meal-wrap">
+      <form method="post" action="{% url 'nutrition_relog' sm.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ page_date|date:'Y-m-d' }}">
+        <button type="submit" class="saved-meal-pill" title="{{ sm.calories|floatformat:0 }} kcal · {{ sm.protein_g|floatformat:0 }}g P">
+          {{ sm.name }}
+          <span style="font-size:0.7rem;opacity:0.65;margin-left:0.3rem">{{ sm.protein_g|floatformat:0 }}g P</span>
+        </button>
+      </form>
+      <form method="post" action="{% url 'nutrition_delete_meal' sm.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="saved-meal-delete" title="Remove saved meal">×</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  <p style="color:var(--text-dim);font-size:0.75rem;margin-top:0.75rem">
+    Click a saved meal to log it for today. Star ★ any entry to save it here.
+  </p>
+</div>
+{% endif %}
+
+{# ── Most satisfying meals ── #}
+{% if satisfying_meals %}
+<div class="card" style="margin-bottom:2rem">
+  <div class="section-title" style="margin-bottom:0.25rem">MOST SATISFYING MEALS</div>
+  <p style="color:var(--text-dim);font-size:0.78rem;margin-bottom:1rem">Meals you've rated as filling (fullness ≥ 7) after eating.</p>
+  <div style="display:flex;flex-direction:column;gap:0.5rem">
+    {% for item in satisfying_meals %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0.75rem;background:var(--bg-raised);border-radius:var(--r);gap:0.75rem">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:0.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ item.name }}</div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-top:0.2rem">
+          Filled you up {{ item.satisfying_count }}× &middot; logged {{ item.times_logged }}×
+        </div>
+      </div>
+      <div style="display:flex;gap:0.4rem;flex-shrink:0">
+        <span class="food-macro-chip food-macro-chip--cal">{{ item.calories }} kcal</span>
+        <span class="food-macro-chip food-macro-chip--prot">{{ item.protein_g|floatformat:0 }}g P</span>
+      </div>
+      <form method="post" action="{% url 'nutrition_relog' item.meal.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ page_date|date:'Y-m-d' }}">
+        <button type="submit" class="btn btn-ghost btn-sm">Log ›</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── This week ── #}
+{% if weekly and weekly.days_logged > 0 %}
+<div class="card" style="margin-bottom:2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+    <div class="section-title" style="margin-bottom:0">THIS WEEK</div>
+    <span style="color:var(--text-dim);font-size:0.8rem">{{ weekly.days_logged }}/7 days logged</span>
+  </div>
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;font-family:'Barlow Condensed',sans-serif">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:0.3rem 0.5rem 0.3rem 0;color:var(--text-dim);font-weight:600;white-space:nowrap;width:4rem"></th>
+          {% for day in weekly.days %}
+          <th style="text-align:center;padding:0.3rem 0.4rem;color:{% if day.logged %}var(--text-muted){% else %}var(--text-dim){% endif %};font-weight:600;white-space:nowrap">{{ day.weekday }}</th>
+          {% endfor %}
+          <th style="text-align:center;padding:0.3rem 0.4rem;color:var(--text-muted);font-weight:700;white-space:nowrap">Avg</th>
+          {% if targets %}
+          <th style="text-align:center;padding:0.3rem 0.4rem;color:var(--text-dim);font-weight:600;white-space:nowrap">Hit</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+
+        {# Calories row #}
+        <tr>
+          <td style="padding:0.35rem 0.5rem 0.35rem 0;color:var(--text-muted);font-weight:600;white-space:nowrap">Cal</td>
+          {% for day in weekly.days %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;
+            {% if not day.logged %}color:var(--text-dim)
+            {% elif day.cal_ok %}color:var(--accent-green);font-weight:700
+            {% elif day.cal %}color:var(--text-muted)
+            {% else %}color:var(--text-dim){% endif %}">
+            {% if day.cal %}{{ day.cal }}{% else %}—{% endif %}
+          </td>
+          {% endfor %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;font-weight:700;white-space:nowrap;
+            {% if weekly.days_hit_cal is not None and weekly.days_hit_cal < 4 %}color:var(--accent){% else %}color:var(--text-muted){% endif %}">
+            {% if weekly.avg_cal %}{{ weekly.avg_cal }}{% if weekly.days_hit_cal is not None and weekly.days_hit_cal < 4 %} ⚠{% endif %}{% else %}—{% endif %}
+          </td>
+          {% if targets %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;color:
+            {% if weekly.days_hit_cal is not None %}{% if weekly.days_hit_cal >= 5 %}var(--accent-green){% elif weekly.days_hit_cal >= 3 %}var(--text-muted){% else %}var(--accent){% endif %}{% else %}var(--text-dim){% endif %}">
+            {% if weekly.days_hit_cal is not None %}{{ weekly.days_hit_cal }}/7{% else %}—{% endif %}
+          </td>
+          {% endif %}
+        </tr>
+
+        {# Protein row #}
+        <tr>
+          <td style="padding:0.35rem 0.5rem 0.35rem 0;color:var(--text-muted);font-weight:600;white-space:nowrap">Protein</td>
+          {% for day in weekly.days %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;
+            {% if not day.logged %}color:var(--text-dim)
+            {% elif day.prot_ok %}color:var(--accent-green);font-weight:700
+            {% elif day.protein_g %}color:var(--text-muted)
+            {% else %}color:var(--text-dim){% endif %}">
+            {% if day.protein_g %}{{ day.protein_g }}g{% else %}—{% endif %}
+          </td>
+          {% endfor %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;font-weight:700;white-space:nowrap;
+            {% if weekly.days_hit_protein is not None and weekly.days_hit_protein < 4 %}color:var(--accent){% else %}color:var(--text-muted){% endif %}">
+            {% if weekly.avg_protein_g %}{{ weekly.avg_protein_g }}g{% if weekly.days_hit_protein is not None and weekly.days_hit_protein < 4 %} ⚠{% endif %}{% else %}—{% endif %}
+          </td>
+          {% if targets %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;color:
+            {% if weekly.days_hit_protein is not None %}{% if weekly.days_hit_protein >= 5 %}var(--accent-green){% elif weekly.days_hit_protein >= 3 %}var(--text-muted){% else %}var(--accent){% endif %}{% else %}var(--text-dim){% endif %}">
+            {% if weekly.days_hit_protein is not None %}{{ weekly.days_hit_protein }}/7{% else %}—{% endif %}
+          </td>
+          {% endif %}
+        </tr>
+
+        {# Fiber row #}
+        <tr>
+          <td style="padding:0.35rem 0.5rem 0.35rem 0;color:var(--text-muted);font-weight:600;white-space:nowrap">Fiber</td>
+          {% for day in weekly.days %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;
+            {% if not day.logged %}color:var(--text-dim)
+            {% elif day.fiber_ok %}color:var(--accent-green);font-weight:700
+            {% elif day.fiber_g %}color:var(--text-muted)
+            {% else %}color:var(--text-dim){% endif %}">
+            {% if day.fiber_g %}{{ day.fiber_g }}g{% else %}—{% endif %}
+          </td>
+          {% endfor %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;font-weight:700;white-space:nowrap;
+            {% if weekly.days_hit_fiber is not None and weekly.days_hit_fiber < 4 %}color:var(--accent){% else %}color:var(--text-muted){% endif %}">
+            {% if weekly.avg_fiber_g %}{{ weekly.avg_fiber_g }}g{% if weekly.days_hit_fiber is not None and weekly.days_hit_fiber < 4 %} ⚠{% endif %}{% else %}—{% endif %}
+          </td>
+          {% if targets %}
+          <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;color:
+            {% if weekly.days_hit_fiber is not None %}{% if weekly.days_hit_fiber >= 5 %}var(--accent-green){% elif weekly.days_hit_fiber >= 3 %}var(--text-muted){% else %}var(--accent){% endif %}{% else %}var(--text-dim){% endif %}">
+            {% if weekly.days_hit_fiber is not None %}{{ weekly.days_hit_fiber }}/7{% else %}—{% endif %}
+          </td>
+          {% endif %}
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+  // Auto-detect context from time of day
+  var hour = new Date().getHours();
+  var ctx = hour < 10 ? 'morning' : (hour >= 19 ? 'evening' : 'random');
+  var ctxLabels = {morning: 'Morning', pre_meal: 'Pre-meal', post_meal: 'Post-meal', evening: 'Evening', random: 'Random check'};
+  var ctxEl = document.getElementById('hunger-context-label');
+  if (ctxEl) ctxEl.textContent = ctxLabels[ctx] || '';
+
+  document.querySelectorAll('.hunger-num-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var level = btn.dataset.level;
+      document.querySelectorAll('.hunger-num-btn').forEach(b => b.classList.remove('btn-accent'));
+      btn.classList.add('btn-accent');
+
+      var data = new FormData();
+      data.append('hunger_level', level);
+      data.append('context', ctx);
+      data.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]') ? document.querySelector('[name=csrfmiddlewaretoken]').value : '{{ csrf_token }}');
+
+      fetch('{% url "hunger_log" %}', { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(function(j) {
+          var fb = document.getElementById('hunger-feedback');
+          if (j.ok) {
+            var msg = 'Logged: ' + level + '/10';
+            if (j.avg_morning != null) {
+              msg += ' · 7-day avg morning: ' + j.avg_morning;
+              if (j.avg_morning <= 3) msg += ' (low — GLP-1 working)';
+              else if (j.avg_morning >= 7) msg += ' (high — may signal dose tolerance)';
+            }
+            fb.textContent = msg;
+            fb.style.color = 'var(--accent-green)';
+          } else {
+            fb.textContent = j.error || 'Error logging.';
+            fb.style.color = 'var(--accent-red)';
+          }
+        });
+    });
+  });
+})();
+</script>
+
+{% endblock %}

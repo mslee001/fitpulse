@@ -1,0 +1,6 @@
+{% load workout_filters %}
+{% if insights %}
+{{ insights|format_nutrition_insights }}
+{% else %}
+<p style="color:var(--text-dim);font-size:0.85rem">Click <strong>↺ Refresh</strong> to generate AI insights for this period.</p>
+{% endif %}

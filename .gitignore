@@ -1,0 +1,29 @@
+# Environment & secrets
+.env
+
+# Database
+db.sqlite3
+
+# Python
+venv/
+venv_py39_backup/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Django
+*.log
+local_settings.py
+staticfiles/
+
+# Garmin auth (stored outside repo in ~/.garminconnect/ but just in case)
+.garminconnect/
+
+# API response examples / data exports / scratch files
+json_response_examples/
+*_export.json
+
+# macOS
+.DS_Store

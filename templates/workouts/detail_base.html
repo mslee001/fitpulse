@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}{{ workout.title }} — Cadence{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <a href="{% url 'history' %}" class="back-link">← History</a>
+  <div class="page-header-row">
+    <div>
+      <div class="discipline-tag">{% block discipline_tag %}{{ workout.fitness_discipline_display|default:"Workout" }}{% endblock %}</div>
+      <h1 class="page-title">{% block page_title %}{{ workout.title|default:"Workout" }}{% endblock %}</h1>
+      <p class="page-sub">
+        {{ workout.created_at|date:"l, F j, Y · g:i A" }}
+        {% if workout.instructor_name %} · {{ workout.instructor_name }}{% endif %}
+        {% if workout.duration_minutes %} · {{ workout.duration_minutes }} min{% endif %}
+      </p>
+    </div>
+    {% if workout.class_image_url %}
+    <div class="detail-hero-img" style="background-image:url('{{ workout.class_image_url }}')"></div>
+    {% elif workout.source == "garmin" and workout.discipline %}
+    <div class="detail-hero-img garmin-default-img garmin-default-img--{{ workout.discipline }}">{{ workout.discipline|garmin_emoji }}</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="detail-layout">
+  <div class="detail-main">
+
+    <!-- PR banner -->
+    {% if workout_detail.is_pr %}
+    <div class="pr-banner">
+      <div class="pr-banner-icon">🏆</div>
+      <div>
+        <div class="pr-banner-text">Personal Record</div>
+        {% block pr_sub %}{% endblock %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Class info (description + difficulty) -->
+    {% if workout_detail.class_description or workout_detail.difficulty_estimate %}
+    <div class="class-info-card">
+      {% if workout_detail.class_description %}
+      <div class="class-description">{{ workout_detail.class_description }}</div>
+      {% endif %}
+      {% if workout_detail.difficulty_estimate %}
+      <div class="class-difficulty">
+        <span class="difficulty-label">Difficulty</span>
+        <div class="difficulty-pips">
+          {% for filled in workout_detail.difficulty_estimate|difficulty_pips %}
+          <div class="difficulty-pip{% if filled %} difficulty-pip--filled{% endif %}"></div>
+          {% endfor %}
+        </div>
+        <span class="difficulty-num">{{ workout_detail.difficulty_estimate|floatformat:1 }} / 10</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% block detail_main %}{% endblock %}
+
+  </div>
+
+  <aside class="detail-sidebar">
+    {% if workout_detail.leaderboard_rank and workout_detail.total_leaderboard_users %}
+    <div class="sidebar-title">LEADERBOARD</div>
+    <div class="leaderboard-card">
+      <div>
+        <div class="leaderboard-rank-num">#{{ workout_detail.leaderboard_rank }}</div>
+        <div class="leaderboard-rank-of">of {{ workout_detail.total_leaderboard_users }}</div>
+      </div>
+      <div class="leaderboard-pct-bar">
+        <div class="leaderboard-pct-fill" style="width:{{ workout.leaderboard_pct|floatformat:0 }}%"></div>
+      </div>
+      <div class="leaderboard-pct-label">beat {{ workout.leaderboard_pct|floatformat:0 }}%</div>
+    </div>
+    {% if workout_detail.strava_id %}
+    <div style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--text-dim);padding:0 0.1rem 1rem">Strava #{{ workout_detail.strava_id }}</div>
+    {% endif %}
+    {% endif %}
+
+    {% if class_history %}
+    <div class="sidebar-title">PREVIOUS ATTEMPTS</div>
+    <div class="sidebar-scroll-list">
+    {% for w in class_history %}
+    <div class="history-item">
+      <a href="{% url 'workout_detail' w.workout_id %}" class="history-item-content">
+        <div class="history-item-date">{{ w.created_at|date:"M j, Y" }}</div>
+        <div class="history-item-stats">
+          {% block history_item_stats %}{% endblock %}
+        </div>
+      </a>
+      <input type="checkbox" class="compare-check" value="{{ w.workout_id }}" style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0">
+    </div>
+    {% endfor %}
+    </div>
+    {% if workout.ride_id %}
+    <a href="{% url 'class_history' workout.ride_id %}" class="btn btn-ghost btn-full" style="margin-top:1rem">
+      Full class history →
+    </a>
+    {% elif garmin_activity_url %}
+    <a href="{{ garmin_activity_url }}" class="btn btn-ghost btn-full" style="margin-top:1rem">
+      Full activity history →
+    </a>
+    {% endif %}
+    {% endif %}
+    <a href="{{ workout.external_url }}" class="btn btn-ghost btn-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
+      View on {% if workout.source == "garmin" %}Garmin Connect{% else %}Peloton{% endif %} ↗
+    </a>
+    {% if workout.source == "peloton" and workout.garmin_activity_id %}
+    <a href="https://connect.garmin.com/modern/activity/{{ workout.garmin_activity_id }}" class="btn btn-ghost btn-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
+      View on Garmin Connect ↗
+    </a>
+    {% endif %}
+
+    {% block recent_section %}{% endblock %}
+
+    <div id="compareBar" class="compare-sidebar-bar" style="display:none">
+      <span id="compareBarCount" style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;color:var(--text-muted)">0 selected</span>
+      <a id="compareBarLink" href="#" class="btn btn-accent btn-sm btn-full" style="margin-top:0.5rem">Compare →</a>
+    </div>
+  </aside>
+</div>
+
+{% block detail_scripts %}{% endblock %}
+{% endblock %}

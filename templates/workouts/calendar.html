@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+
+{% block title %}Calendar — Cadence{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Calendar</h1>
+    <p class="page-sub">{{ month_name }}</p>
+  </div>
+  <div style="display:flex;gap:0.5rem;align-items:center;">
+    <a href="{% url 'calendar_month' prev_year prev_month %}" class="btn btn-ghost btn-sm">← Prev</a>
+    <a href="{% url 'calendar' %}" class="btn btn-ghost btn-sm">Today</a>
+    {% if next_year %}
+    <a href="{% url 'calendar_month' next_year next_month %}" class="btn btn-ghost btn-sm">Next →</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="cal-layout">
+
+  <!-- Next Workout Recommendation -->
+  <div class="cal-sidebar">
+    <div class="stat-card">
+      <div class="stat-label" style="display:flex;justify-content:space-between;align-items:center;">
+        Next Workout
+        {% if today_stats.synced_at %}
+        <form method="post" action="{% url 'next_workout_refresh' %}" style="margin:0">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:0.2rem 0.5rem;">
+            {% if next_workout_rec %}Refresh{% else %}Get Rec{% endif %}
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      {% if next_workout_rec %}
+        <div style="margin-top:0.75rem">{{ next_workout_rec|format_next_workout|safe }}</div>
+      {% elif today_stats.synced_at %}
+        <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">Hit "Get Rec" to generate a recommendation based on today's wellness data.</p>
+      {% else %}
+        <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">Sync Garmin wellness data to get a recommendation.</p>
+      {% endif %}
+    </div>
+
+    {% if today_stats and today_stats.synced_at %}
+    <div class="stat-card" style="margin-top:1rem;">
+      <div class="stat-label">Today's Signals</div>
+      <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem;">
+        {% if today_stats.training_readiness_score %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Readiness</span>
+          <span class="cal-signal-value {% if today_stats.training_readiness_score >= 70 %}cal-sig-green{% elif today_stats.training_readiness_score >= 40 %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
+            {{ today_stats.training_readiness_score }}/100
+          </span>
+        </div>
+        {% endif %}
+        {% if today_stats.hrv_status %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">HRV</span>
+          <span class="cal-signal-value {% if today_stats.hrv_status == 'BALANCED' %}cal-sig-green{% elif today_stats.hrv_status == 'UNBALANCED' %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
+            {{ today_stats.hrv_status_display }}{% if today_stats.hrv_last_night %} · {{ today_stats.hrv_last_night|floatformat:0 }} ms{% endif %}
+          </span>
+        </div>
+        {% endif %}
+        {% if today_stats.sleep_score %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Sleep</span>
+          <span class="cal-signal-value {% if today_stats.sleep_score >= 75 %}cal-sig-green{% elif today_stats.sleep_score >= 50 %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
+            {{ today_stats.sleep_score }}{% if today_stats.sleep_minutes %} · {{ today_stats.sleep_minutes|div:60|floatformat:0 }}h {{ today_stats.sleep_minutes|mod:60 }}m{% endif %}
+          </span>
+        </div>
+        {% endif %}
+        {% if today_stats.body_battery_start is not None %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Body Battery</span>
+          <span class="cal-signal-value">{{ today_stats.body_battery_start }} at wakeup</span>
+        </div>
+        {% endif %}
+        {% if today_stats.training_status %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Training Status</span>
+          <span class="cal-signal-value">{{ today_stats.training_status|title }}</span>
+        </div>
+        {% endif %}
+        {% if today_stats.training_load %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Acute Load</span>
+          <span class="cal-signal-value">{{ today_stats.training_load|floatformat:0 }}</span>
+        </div>
+        {% endif %}
+        {% if today_stats.load_focus_anaerobic or today_stats.load_focus_high_aerobic or today_stats.load_focus_low_aerobic %}
+        <div style="margin-top:0.25rem;">
+          <div class="cal-signal-label" style="margin-bottom:0.35rem;">Load Focus</div>
+          <div class="cal-load-focus">
+            <div class="cal-load-bar">
+              <span class="cal-load-label">Anaerobic</span>
+              <span class="cal-load-val">{{ today_stats.load_focus_anaerobic|floatformat:0|default:"—" }}</span>
+            </div>
+            <div class="cal-load-bar">
+              <span class="cal-load-label">High Aerobic</span>
+              <span class="cal-load-val">{{ today_stats.load_focus_high_aerobic|floatformat:0|default:"—" }}</span>
+            </div>
+            <div class="cal-load-bar">
+              <span class="cal-load-label">Low Aerobic</span>
+              <span class="cal-load-val">{{ today_stats.load_focus_low_aerobic|floatformat:0|default:"—" }}</span>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Calendar Grid -->
+  <div class="cal-grid-wrap">
+    <div class="cal-grid">
+      {% for day_name in "Mon,Tue,Wed,Thu,Fri,Sat,Sun"|split:"," %}
+      <div class="cal-day-header">{{ day_name }}</div>
+      {% endfor %}
+
+      {% for week in grid %}
+        {% for cell in week %}
+          {% if cell is None %}
+          <div class="cal-cell cal-cell--empty"></div>
+          {% else %}
+          <a href="{% url 'day_view' cell.date|date:'Y-m-d' %}"
+             class="cal-cell{% if cell.is_today %} cal-cell--today{% endif %}{% if cell.is_future %} cal-cell--future{% endif %}{% if cell.workouts %} cal-cell--active{% endif %}">
+            <div class="cal-cell-num">{{ cell.date.day }}</div>
+            {% if cell.workouts %}
+            <div class="cal-dots">
+              {% for w in cell.workouts %}
+              <span class="cal-dot" style="background:{{ discipline_colors|get_item:w.discipline|default:'#888' }}" title="{{ w.title }}"></span>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if cell.stats and cell.stats.training_readiness_score %}
+            <div class="cal-readiness {% if cell.stats.training_readiness_score >= 70 %}cal-sig-green{% elif cell.stats.training_readiness_score >= 40 %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
+              {{ cell.stats.training_readiness_score }}
+            </div>
+            {% endif %}
+            {% if cell.nutrition_status %}
+            <div class="cal-nutrition-dot {% if cell.nutrition_status == 'green' %}cal-nutrition-dot--green{% elif cell.nutrition_status == 'yellow' %}cal-nutrition-dot--yellow{% else %}cal-nutrition-dot--logged{% endif %}" title="Nutrition logged"></div>
+            {% endif %}
+          </a>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+
+    <div class="cal-legend">
+      {% for disc, color in legend_colors.items %}
+      <span class="cal-legend-item">
+        <span class="cal-dot" style="background:{{ color }}"></span>
+        {{ disc|title }}
+      </span>
+      {% endfor %}
+      <span class="cal-legend-item">
+        <span class="cal-nutrition-dot cal-nutrition-dot--green" style="display:inline-block;position:relative;margin-right:0.1rem"></span>
+        Nutrition logged
+      </span>
+      <span class="cal-legend-item" style="margin-left:auto;color:var(--text-muted);font-size:0.75rem;">
+        Numbers = training readiness score
+      </span>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+from django.urls import path
+
+from .views import (
+    dashboard, history, workout_detail, class_history, garmin_activity_history, compare,
+    set_ftp, set_athlete_profile, settings_page, analytics_page, calendar_view, day_view,
+    interventions_list, intervention_edit, intervention_end, intervention_delete,
+    intervention_detail, intervention_quick_dose,
+    body_view, intervention_analysis_view, run_analysis_api, save_analysis_api, saved_analysis_detail, saved_analysis_delete,
+    nutrition_page, nutrition_targets_page, nutrition_parse_api, nutrition_log_api,
+    nutrition_delete_api, nutrition_suggest_api, nutrition_save_meal_api,
+    nutrition_relog_api, nutrition_delete_meal_api,
+    nutrition_entry_row_api, nutrition_edit_api, nutrition_analytics_page,
+    nutrition_save_suggestion_api,
+    # Phase 3
+    hunger_log_api, symptoms_page, insights_page, target_accept_api,
+    weekly_review_page,
+    today_page,
+)
+from .sync import (
+    sync_new, sync_all, sync_new_workouts, sync_all_workouts,
+    sync_garmin_new, sync_garmin_all, sync_garmin_wellness,
+    sync_withings_new, sync_withings_all,
+)
+from .ai import (
+    analytics_generate_insights, analytics_check_insights,
+    next_workout_refresh, compare_analysis, body_commentary_refresh,
+    nutrition_insights_refresh, pattern_insights_refresh,
+)
+
+urlpatterns = [
+    path("", today_page, name="today"),
+    path("dashboard/", dashboard, name="dashboard"),
+    path("history/", history, name="history"),
+    path("workout/<str:workout_id>/", workout_detail, name="workout_detail"),
+    path("class/<str:ride_id>/", class_history, name="class_history"),
+    path("garmin-activity/<str:discipline>/", garmin_activity_history, name="garmin_activity_history"),
+    path("compare/", compare, name="compare"),
+    path("api/sync/new/", sync_new, name="sync_new"),
+    path("api/sync/all/", sync_all, name="sync_all"),
+    path("api/sync/peloton/new/", sync_new_workouts, name="sync_new_workouts"),
+    path("api/sync/peloton/all/", sync_all_workouts, name="sync_all_workouts"),
+    path("api/set-ftp/", set_ftp, name="set_ftp"),
+    path("api/set-athlete-profile/", set_athlete_profile, name="set_athlete_profile"),
+    path("settings/", settings_page, name="settings"),
+    path("analytics/", analytics_page, name="analytics"),
+    path("api/analytics/insights/", analytics_generate_insights, name="analytics_generate_insights"),
+    path("api/analytics/check-insights/", analytics_check_insights, name="analytics_check_insights"),
+    path("api/sync/garmin/new/", sync_garmin_new, name="sync_garmin_new"),
+    path("api/sync/garmin/all/", sync_garmin_all, name="sync_garmin_all"),
+    path("api/sync/garmin/wellness/", sync_garmin_wellness, name="sync_garmin_wellness"),
+    path("api/sync/withings/new/", sync_withings_new, name="sync_withings_new"),
+    path("api/sync/withings/all/", sync_withings_all, name="sync_withings_all"),
+    path("api/next-workout/refresh/", next_workout_refresh, name="next_workout_refresh"),
+    path("api/compare/analysis/", compare_analysis, name="compare_analysis"),
+    path("calendar/", calendar_view, name="calendar"),
+    path("calendar/<int:year>/<int:month>/", calendar_view, name="calendar_month"),
+    path("day/<str:date_str>/", day_view, name="day_view"),
+    # Interventions
+    path("interventions/", interventions_list, name="interventions"),
+    path("interventions/<int:pk>/", intervention_detail, name="intervention_detail"),
+    path("interventions/<int:pk>/edit/", intervention_edit, name="intervention_edit"),
+    path("interventions/<int:pk>/end/", intervention_end, name="intervention_end"),
+    path("interventions/<int:pk>/delete/", intervention_delete, name="intervention_delete"),
+    path("interventions/<int:pk>/quick-dose/", intervention_quick_dose, name="intervention_quick_dose"),
+    # Body
+    path("body/", body_view, name="body"),
+    path("api/body/commentary/refresh/", body_commentary_refresh, name="body_commentary_refresh"),
+    # Intervention Analysis
+    path("analysis/", intervention_analysis_view, name="intervention_analysis"),
+    path("api/analysis/run/", run_analysis_api, name="run_analysis"),
+    path("api/analysis/save/", save_analysis_api, name="save_analysis"),
+    path("analysis/<int:pk>/", saved_analysis_detail, name="saved_analysis_detail"),
+    path("analysis/<int:pk>/delete/", saved_analysis_delete, name="saved_analysis_delete"),
+    # Nutrition
+    path("nutrition/", nutrition_page, name="nutrition"),
+    path("nutrition/targets/", nutrition_targets_page, name="nutrition_targets"),
+    path("nutrition/api/parse/", nutrition_parse_api, name="nutrition_parse"),
+    path("nutrition/api/log/", nutrition_log_api, name="nutrition_log"),
+    path("nutrition/api/delete/<int:pk>/", nutrition_delete_api, name="nutrition_delete"),
+    path("nutrition/api/suggest/", nutrition_suggest_api, name="nutrition_suggest"),
+    path("nutrition/api/save-meal/<int:pk>/", nutrition_save_meal_api, name="nutrition_save_meal"),
+    path("nutrition/api/relog/<int:pk>/", nutrition_relog_api, name="nutrition_relog"),
+    path("nutrition/api/delete-meal/<int:pk>/", nutrition_delete_meal_api, name="nutrition_delete_meal"),
+    path("nutrition/api/entry-row/<int:pk>/", nutrition_entry_row_api, name="nutrition_entry_row"),
+    path("nutrition/api/edit/<int:pk>/", nutrition_edit_api, name="nutrition_edit"),
+    path("nutrition/analytics/", nutrition_analytics_page, name="nutrition_analytics"),
+    path("api/nutrition/insights/refresh/", nutrition_insights_refresh, name="nutrition_insights_refresh"),
+    path("nutrition/api/save-suggestion/", nutrition_save_suggestion_api, name="nutrition_save_suggestion"),
+    # Phase 3
+    path("nutrition/api/hunger/log/", hunger_log_api, name="hunger_log"),
+    path("symptoms/", symptoms_page, name="symptoms"),
+    path("insights/", insights_page, name="insights"),
+    path("nutrition/targets/accept/", target_accept_api, name="target_accept"),
+    path("api/insights/refresh/", pattern_insights_refresh, name="pattern_insights_refresh"),
+    # Weekly review
+    path("review/", weekly_review_page, name="weekly_review"),
+]

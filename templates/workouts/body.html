@@ -1,0 +1,585 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}Body Analytics — Cadence{% endblock %}
+{% block nav_body_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h1 class="page-title">BODY ANALYTICS</h1>
+      <p class="page-sub">Weight, body composition, and recovery trends</p>
+    </div>
+  </div>
+</div>
+
+<!-- Range toggles -->
+<div class="range-toggle-row">
+  {% for r, label in ranges %}
+  <a href="?range={{ r }}" class="range-btn {% if range_param == r %}active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<!-- Top stat cards -->
+<div class="body-stats-row">
+  <div class="stat-card stat-card--hero">
+    <div class="stat-label">Current Weight</div>
+    <div class="stat-value">
+      {% if current_weight %}{{ current_weight|floatformat:1 }}<span class="stat-unit">lb</span>
+      {% else %}—{% endif %}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Body Fat %</div>
+    <div class="stat-value">
+      {% if current_fat_pct %}{{ current_fat_pct|floatformat:1 }}<span class="stat-unit">%</span>
+      {% else %}—{% endif %}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Lean Mass</div>
+    <div class="stat-value">
+      {% if current_lean %}{{ current_lean|floatformat:1 }}<span class="stat-unit">lb</span>
+      {% else %}—{% endif %}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">7-Day Δ</div>
+    <div class="stat-value">
+      {% if delta_7d != None %}
+        <span class="{% if delta_7d < 0 %}delta-negative{% elif delta_7d > 0 %}delta-positive{% else %}delta-neutral{% endif %}">
+          {% if delta_7d > 0 %}+{% endif %}{{ delta_7d|floatformat:1 }}<span class="stat-unit">lb</span>
+        </span>
+      {% else %}—{% endif %}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">30-Day Δ</div>
+    <div class="stat-value">
+      {% if delta_30d != None %}
+        <span class="{% if delta_30d < 0 %}delta-negative{% elif delta_30d > 0 %}delta-positive{% else %}delta-neutral{% endif %}">
+          {% if delta_30d > 0 %}+{% endif %}{{ delta_30d|floatformat:1 }}<span class="stat-unit">lb</span>
+        </span>
+      {% else %}—{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Pattern insights teaser -->
+{% if pattern_insight_headline %}
+<div class="chart-card" style="margin-bottom:1.5rem;border-color:var(--accent-alt)">
+  <div class="chart-header">
+    <h3 class="chart-title" style="color:var(--accent-alt)">💡 PATTERN INSIGHT</h3>
+    <a href="{% url 'insights' %}" class="btn btn-ghost btn-sm" style="font-size:0.72rem">View all ›</a>
+  </div>
+  <p style="font-size:0.85rem;color:var(--text-muted);line-height:1.65;margin:0">{{ pattern_insight_headline }}</p>
+</div>
+{% endif %}
+
+<!-- Recent symptoms (last 3 days) -->
+{% if recent_symptoms %}
+<div class="chart-card" style="margin-bottom:1.5rem">
+  <div class="chart-header">
+    <h3 class="chart-title">RECENT SYMPTOMS <span style="font-weight:400;opacity:0.5">(last 3 days)</span></h3>
+    <a href="{% url 'symptoms' %}" class="btn btn-ghost btn-sm" style="font-size:0.72rem">Log ›</a>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:0.4rem">
+    {% for s in recent_symptoms %}
+    <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.83rem">
+      <span style="color:var(--text-dim);font-size:0.72rem;min-width:4.5rem">{{ s.date|date:"M j" }}</span>
+      <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ s.get_symptom_display }}</span>
+      <span style="font-size:0.75rem;color:{% if s.severity == 3 %}var(--accent-red){% elif s.severity == 2 %}var(--accent){% else %}var(--accent-green){% endif %}">
+        {{ s.get_severity_display }}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- AI Commentary -->
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">AI COMMENTARY</h3>
+    <div style="display:flex;align-items:center;gap:0.75rem">
+      <span style="font-size:0.7rem;color:var(--text-dim)" id="commentary-freshness"></span>
+      <button class="btn btn-sm btn-ghost" id="refresh-commentary-btn" onclick="refreshCommentary()">Refresh</button>
+    </div>
+  </div>
+  <div id="commentary-body">
+    {% if commentary %}
+      <div style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">
+        {{ commentary|format_nutrition_insights }}
+      </div>
+    {% else %}
+      <p style="color:var(--text-muted);font-size:0.875rem">No commentary yet — requires ANTHROPIC_API_KEY.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Nutrition summary -->
+{% if nutrition_avg_cal or nutrition_targets %}
+<div class="chart-card" style="margin-bottom:1.5rem">
+  <div class="chart-header">
+    <h3 class="chart-title">NUTRITION <span style="font-weight:400;opacity:0.5">(last 7 days)</span></h3>
+    <a href="{% url 'nutrition' %}" class="btn btn-ghost btn-sm">Log Food ›</a>
+  </div>
+  {% if nutrition_avg_cal %}
+  {% if nutrition_days_tracked < 3 %}
+  <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:0.75rem">
+    Log more days to see trends.
+    <a href="{% url 'nutrition' %}" style="color:var(--accent)">Log food ›</a>
+  </p>
+  {% else %}
+  <div class="nutrition-summary-card">
+    <div class="nutr-stat">
+      <div class="nutr-stat-val" style="color:var(--text)">
+        {{ nutrition_avg_cal }}
+        {% if nutrition_targets.calories %}<span style="font-size:0.9rem;color:var(--text-muted)"> / {{ nutrition_targets.calories }}</span>{% endif %}
+      </div>
+      <div class="nutr-stat-label">Avg kcal / day</div>
+    </div>
+    <div class="nutr-stat">
+      <div class="nutr-stat-val" style="color:{% if nutrition_targets.protein_g and nutrition_avg_prot < nutrition_targets.protein_g %}var(--accent){% else %}var(--accent-green){% endif %}">
+        {{ nutrition_avg_prot }}g
+        {% if nutrition_targets.protein_g %}<span style="font-size:0.9rem;color:var(--text-muted)"> / {{ nutrition_targets.protein_g }}g</span>{% endif %}
+      </div>
+      <div class="nutr-stat-label">Avg protein / day</div>
+    </div>
+    {% if nutrition_avg_fiber %}
+    <div class="nutr-stat">
+      <div class="nutr-stat-val" style="color:{% if nutrition_targets.fiber_g and nutrition_avg_fiber < nutrition_targets.fiber_g %}var(--text-muted){% else %}var(--accent-green){% endif %}">
+        {{ nutrition_avg_fiber }}g
+        {% if nutrition_targets.fiber_g %}<span style="font-size:0.9rem;color:var(--text-muted)"> / {{ nutrition_targets.fiber_g }}g</span>{% endif %}
+      </div>
+      <div class="nutr-stat-label">Avg fiber / day</div>
+    </div>
+    {% endif %}
+  </div>
+  <p style="color:var(--text-dim);font-size:0.75rem;margin-top:0.5rem">
+    {{ nutrition_days_tracked }}/7 days logged.
+    {% if nutrition_targets.protein_g and nutrition_avg_prot < nutrition_targets.protein_g %}
+    <span style="color:var(--accent)">⚡ Protein under target — muscle preservation risk.</span>
+    {% endif %}
+  </p>
+  {% endif %}
+  {% elif nutrition_targets %}
+  <p style="color:var(--text-dim);font-size:0.85rem">No nutrition logged in the last 7 days.
+    <a href="{% url 'nutrition' %}" style="color:var(--accent)">Start tracking ›</a></p>
+  {% else %}
+  <p style="color:var(--text-dim);font-size:0.85rem">
+    <a href="{% url 'nutrition_targets' %}" style="color:var(--accent)">Set up macro targets</a> to track nutrition here.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Active Interventions (context for chart annotations) -->
+{% if active_ivs %}
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">ACTIVE INTERVENTIONS</h3>
+    <a href="{% url 'interventions' %}" class="btn btn-sm btn-ghost">Manage</a>
+  </div>
+  <div>
+    {% for iv in active_ivs %}
+    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+      <span class="cat-badge cat-{{ iv.category }}">{{ iv.category }}</span>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700">{{ iv.name }}</span>
+      {% with cd=iv.current_dose %}{% if cd %}
+      <span style="color:var(--text-muted);font-size:0.85rem">{{ cd.dose }}</span>
+      {% endif %}{% endwith %}
+      <span style="color:var(--text-dim);font-size:0.78rem;margin-left:auto">day {{ iv.duration_days }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Weight Trend Chart -->
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">WEIGHT TREND</h3>
+    <div class="chart-toggles">
+      <button class="btn btn-sm chart-toggle active" id="toggleRoll7" style="--toggle-color:var(--accent)">7-day avg</button>
+      <button class="btn btn-sm chart-toggle active" id="toggleRoll30" style="--toggle-color:var(--accent-alt)">30-day avg</button>
+    </div>
+  </div>
+  <canvas id="weightChart" height="110"></canvas>
+</div>
+
+<!-- Body Composition Chart -->
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">BODY COMPOSITION</h3>
+    <div class="chart-toggles">
+      <button class="btn btn-sm chart-toggle" id="toggleCompMode" onclick="toggleBodyCompMode()">Show %</button>
+    </div>
+  </div>
+  <canvas id="bodyCompChart" height="110"></canvas>
+</div>
+
+<!-- Recovery Chart -->
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">RECOVERY TRENDS</h3>
+    <div class="chart-toggles" id="recoveryToggles">
+      <button class="btn btn-sm chart-toggle active" data-metric="hrv"   style="--toggle-color:#A78BFA">HRV</button>
+      <button class="btn btn-sm chart-toggle"        data-metric="rhr"   style="--toggle-color:#FF3B5C">Resting HR</button>
+      <button class="btn btn-sm chart-toggle"        data-metric="sleep" style="--toggle-color:#B4FF39">Sleep</button>
+      <button class="btn btn-sm chart-toggle"        data-metric="bb"    style="--toggle-color:#00D1FF">Body Battery</button>
+      <button class="btn btn-sm chart-toggle"        data-metric="stress"style="--toggle-color:#FF8A65">Stress</button>
+    </div>
+  </div>
+  <canvas id="recoveryChart" height="110"></canvas>
+</div>
+
+<script>
+const weightData         = {{ weight_data_json|safe }};
+const recoveryData       = {{ recovery_data_json|safe }};
+const interventionAnnot  = {{ interventions_json|safe }};
+const doseAnnot          = {{ dose_annotations_json|safe }};
+
+// ── Chart annotation plugin ───────────────────────────────────────────────
+const interventionLinesPlugin = {
+  id: 'interventionLines',
+  afterDraw(chart) {
+    const ctx = chart.ctx;
+    const xScale = chart.scales.x;
+    const yScale = chart.scales.y;
+    if (!xScale || !yScale) return;
+
+    function drawLine(xVal, fromY, toY, color, dash, lineWidth) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.setLineDash(dash);
+      ctx.moveTo(xVal, fromY);
+      ctx.lineTo(xVal, toY);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawPill(boxX, boxY, boxW, boxH, label, color, fontSize) {
+      ctx.save();
+      ctx.font = `bold ${fontSize}px Barlow Condensed, sans-serif`;
+      ctx.fillStyle = 'rgba(14,14,20,0.92)';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+      ctx.strokeRect(boxX, boxY, boxW, boxH);
+      ctx.fillStyle = color;
+      ctx.fillText(label, boxX + 5, boxY + boxH - 4);
+      ctx.restore();
+    }
+
+    const PILL_PAD   = 5;  // horizontal text padding inside pill
+    const PILL_GAP   = 4;  // min horizontal gap between pills on same level
+    const LEVEL_H    = 20; // vertical step per level
+    const MAX_LEVELS = 6;
+    const midY = yScale.top + (yScale.bottom - yScale.top) / 2;
+
+    // Build items for all annotations — interventions first so they grab level 0
+    const items = [];
+
+    (interventionAnnot || []).forEach(ann => {
+      const xVal = xScale.getPixelForValue(ann.date);
+      if (xVal == null || xVal < xScale.left || xVal > xScale.right) return;
+      const color = ann.color || '#aaa';
+      const label = ann.label.length > 18 ? ann.label.slice(0, 17) + '…' : ann.label;
+      ctx.font = 'bold 10px Barlow Condensed, sans-serif';
+      const boxW = ctx.measureText(label).width + PILL_PAD * 2;
+      items.push({ xVal, color, lineColor: color, label, fontSize: 10, boxW, boxH: 16, isDose: false,
+                   lineFrom: yScale.top, lineTo: yScale.bottom, lineDash: [5, 4], lineW: 1.5 });
+    });
+
+    (doseAnnot || []).forEach(ann => {
+      const xVal = xScale.getPixelForValue(ann.date);
+      if (xVal == null || xVal < xScale.left || xVal > xScale.right) return;
+      const lineColor = (ann.color || '#888') + '99';
+      const pillColor = (ann.color || '#888') + 'cc';
+      ctx.font = 'bold 9px Barlow Condensed, sans-serif';
+      const boxW = ctx.measureText(ann.label).width + PILL_PAD * 2;
+      items.push({ xVal, color: pillColor, lineColor, label: ann.label, fontSize: 9, boxW, boxH: 15, isDose: true,
+                   lineFrom: yScale.top, lineTo: midY, lineDash: [2, 4], lineW: 1 });
+    });
+
+    // Sort by x (interventions already first within same x due to push order)
+    items.sort((a, b) => a.xVal - b.xVal || (a.isDose ? 1 : -1));
+
+    // Sweep-line level assignment: find lowest level with no pixel overlap
+    const levelRightEdge = new Array(MAX_LEVELS).fill(-Infinity);
+    items.forEach(item => {
+      let boxX = item.xVal - item.boxW / 2;
+      boxX = Math.max(xScale.left + 2, Math.min(boxX, xScale.right - item.boxW - 2));
+      let level = 0;
+      while (level < MAX_LEVELS - 1 && levelRightEdge[level] > boxX - PILL_GAP) level++;
+      levelRightEdge[level] = boxX + item.boxW;
+      item.level = level;
+      item.boxX  = boxX;
+    });
+
+    // Draw lines first so pills render on top
+    items.forEach(item => drawLine(item.xVal, item.lineFrom, item.lineTo, item.lineColor, item.lineDash, item.lineW));
+
+    // Draw pills
+    items.forEach(item => {
+      const boxY = yScale.top + 4 + item.level * LEVEL_H;
+      drawPill(item.boxX, boxY, item.boxW, item.boxH, item.label, item.color, item.fontSize);
+    });
+  }
+};
+
+const CT = window.chartTheme || {};
+const gridColor = CT.gridColor || 'rgba(255,255,255,0.05)';
+const tickColor = CT.tickColor || '#888';
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  const dates   = weightData.map(d => d.date);
+  const weights = weightData.map(d => d.weight);
+  const roll7   = weightData.map(d => d.roll7);
+  const roll30  = weightData.map(d => d.roll30);
+  const fatLb   = weightData.map(d => d.fat_mass);
+  const leanLb  = weightData.map(d => d.lean);
+  const fatPct  = weightData.map(d => d.fat_ratio);
+  const rdates  = recoveryData.map(d => d.date);
+
+  // ── Weight chart ─────────────────────────────────────────────────────────
+  const cssVars = getComputedStyle(document.documentElement);
+  const accentColor    = cssVars.getPropertyValue('--accent').trim()     || '#FF6B35';
+  const accentAltColor = cssVars.getPropertyValue('--accent-alt').trim() || '#00D1FF';
+
+  const weightCtx = document.getElementById('weightChart').getContext('2d');
+  const weightChart = new Chart(weightCtx, {
+    type: 'line',
+    plugins: [interventionLinesPlugin],
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label: 'Weight',
+          data: weights,
+          borderColor: 'rgba(255,255,255,0.45)',
+          borderWidth: 1,
+          tension: 0.2,
+          spanGaps: true,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+        },
+        {
+          label: '7-day avg',
+          data: roll7,
+          borderColor: accentColor,
+          borderWidth: 2,
+          tension: 0.4,
+          spanGaps: true,
+          pointRadius: 0,
+        },
+        {
+          label: '30-day avg',
+          data: roll30,
+          borderColor: accentAltColor,
+          borderWidth: 2,
+          borderDash: [6, 3],
+          tension: 0.4,
+          spanGaps: true,
+          pointRadius: 0,
+        },
+      ]
+    },
+    options: {
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: tickColor, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.raw;
+              return v != null ? `${ctx.dataset.label}: ${v.toFixed(1)} lb` : null;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: gridColor },
+          ticks: { color: tickColor, maxTicksLimit: 8, font: { size: 11 } }
+        },
+        y: {
+          grid: { color: gridColor },
+          ticks: { color: tickColor, font: { size: 11 }, callback: v => v.toFixed(0) + ' lb' }
+        }
+      }
+    }
+  });
+
+  // Rolling avg toggle buttons
+  document.getElementById('toggleRoll7').addEventListener('click', function() {
+    this.classList.toggle('active');
+    weightChart.data.datasets[1].hidden = !this.classList.contains('active');
+    weightChart.update();
+  });
+  document.getElementById('toggleRoll30').addEventListener('click', function() {
+    this.classList.toggle('active');
+    weightChart.data.datasets[2].hidden = !this.classList.contains('active');
+    weightChart.update();
+  });
+
+  // ── Body comp chart ───────────────────────────────────────────────────────
+  let showPct = false;
+  const bcCtx = document.getElementById('bodyCompChart').getContext('2d');
+  const bcChart = new Chart(bcCtx, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label: 'Fat Mass',
+          data: fatLb,
+          borderColor: '#FF3B5C',
+          backgroundColor: 'rgba(255,59,92,0.08)',
+          borderWidth: 2, tension: 0.3, spanGaps: true, fill: true, pointRadius: 0,
+        },
+        {
+          label: 'Lean Mass',
+          data: leanLb,
+          borderColor: '#B4FF39',
+          backgroundColor: 'rgba(180,255,57,0.08)',
+          borderWidth: 2, tension: 0.3, spanGaps: true, fill: true, pointRadius: 0,
+        }
+      ]
+    },
+    options: {
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: tickColor, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.raw;
+              return v != null ? `${ctx.dataset.label}: ${v.toFixed(1)} lb` : null;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 8, font: { size: 11 } } },
+        y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 11 }, callback: v => v.toFixed(0) + ' lb' } }
+      }
+    }
+  });
+
+  window.toggleBodyCompMode = function() {
+    showPct = !showPct;
+    const btn = document.getElementById('toggleCompMode');
+    if (showPct) {
+      bcChart.data.datasets[0].data = fatPct;
+      bcChart.data.datasets[0].label = 'Fat %';
+      bcChart.data.datasets[1].data = weightData.map(d => d.lean ? (d.lean / (d.weight || 1)) * 100 : null);
+      bcChart.data.datasets[1].label = 'Lean %';
+      bcChart.options.scales.y.ticks.callback = v => v.toFixed(1) + '%';
+      btn.textContent = 'Show lb';
+      btn.classList.add('active');
+    } else {
+      bcChart.data.datasets[0].data = fatLb;
+      bcChart.data.datasets[0].label = 'Fat Mass';
+      bcChart.data.datasets[1].data = leanLb;
+      bcChart.data.datasets[1].label = 'Lean Mass';
+      bcChart.options.scales.y.ticks.callback = v => v.toFixed(0) + ' lb';
+      btn.textContent = 'Show %';
+      btn.classList.remove('active');
+    }
+    bcChart.update();
+  };
+
+  // ── Recovery chart ────────────────────────────────────────────────────────
+  const recoveryMetrics = {
+    hrv:    { label: 'HRV (last night)', data: recoveryData.map(d => d.hrv),         color: '#A78BFA', unit: ' ms',  bounded: false },
+    rhr:    { label: 'Resting HR',       data: recoveryData.map(d => d.rhr),         color: '#FF3B5C', unit: ' bpm', bounded: false },
+    sleep:  { label: 'Sleep Score',      data: recoveryData.map(d => d.sleep_score), color: '#B4FF39', unit: '',     bounded: true  },
+    bb:     { label: 'Body Battery High',data: recoveryData.map(d => d.bb_high),     color: '#00D1FF', unit: '',     bounded: true  },
+    stress: { label: 'Stress Avg',       data: recoveryData.map(d => d.stress),      color: '#FF8A65', unit: '',     bounded: true  },
+  };
+  let activeRecovery = 'hrv';
+
+  const recCtx = document.getElementById('recoveryChart').getContext('2d');
+  const recInitial = recoveryMetrics.hrv;
+  const recoveryChart = new Chart(recCtx, {
+    type: 'line',
+    data: {
+      labels: rdates,
+      datasets: [{
+        label: recInitial.label,
+        data: recInitial.data,
+        borderColor: recInitial.color,
+        backgroundColor: recInitial.color + '18',
+        borderWidth: 2,
+        tension: 0.3,
+        spanGaps: true,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        fill: true,
+      }]
+    },
+    options: {
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.raw != null
+              ? `${ctx.dataset.label}: ${ctx.raw.toFixed(0)}${recoveryMetrics[activeRecovery].unit}`
+              : null
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 8, font: { size: 11 } } },
+        y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 11 },
+               callback: v => v.toFixed(0) + recInitial.unit } }
+      }
+    }
+  });
+
+  document.getElementById('recoveryToggles').addEventListener('click', e => {
+    const btn = e.target.closest('[data-metric]');
+    if (!btn || btn.dataset.metric === activeRecovery) return;
+    activeRecovery = btn.dataset.metric;
+    const m = recoveryMetrics[activeRecovery];
+    document.querySelectorAll('#recoveryToggles .chart-toggle').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    recoveryChart.data.datasets[0].data            = m.data;
+    recoveryChart.data.datasets[0].label           = m.label;
+    recoveryChart.data.datasets[0].borderColor     = m.color;
+    recoveryChart.data.datasets[0].backgroundColor = m.color + '18';
+    recoveryChart.options.scales.y.ticks.callback  = v => v.toFixed(0) + m.unit;
+    recoveryChart.options.scales.y.min = m.bounded ? 0   : undefined;
+    recoveryChart.options.scales.y.max = m.bounded ? 100 : undefined;
+    recoveryChart.update();
+  });
+});
+
+// ── Commentary refresh ────────────────────────────────────────────────────
+async function refreshCommentary() {
+  const btn = document.getElementById('refresh-commentary-btn');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing…';
+  try {
+    const resp = await fetch("{% url 'body_commentary_refresh' %}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+    });
+    if (resp.ok) location.reload();
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Refresh';
+  }
+}
+</script>
+{% endblock %}

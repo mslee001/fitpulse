@@ -1,0 +1,302 @@
+{% extends "workouts/detail_base.html" %}
+{% load workout_filters %}
+
+{% block discipline_tag %}
+  {% if workout.discipline == "yoga" %}🧘
+  {% elif workout.discipline == "stretching" %}🤸
+  {% elif workout.discipline == "cardio" %}🔥
+  {% elif workout.discipline == "meditation" %}🧠
+  {% else %}{{ workout.fitness_discipline_display|default:"Workout" }}
+  {% endif %}
+{% endblock %}
+{% block page_title %}{{ workout.title|default:"Workout" }}{% endblock %}
+
+{% block detail_main %}
+    <!-- Key metrics -->
+    <div class="metrics-grid">
+      {% if effort_zones.total_effort_points %}
+      <div class="metric-card metric-card--hero effort-pts-card">
+        <div class="metric-label">Effort Points</div>
+        <div class="metric-value effort-pts-value">{{ effort_zones.total_effort_points|floatformat:1 }}</div>
+      </div>
+      {% elif workout_detail.average_effort_score %}
+      <div class="metric-card metric-card--hero effort-pts-card">
+        <div class="metric-label">Effort Score</div>
+        <div class="metric-value effort-pts-value">{{ workout_detail.average_effort_score|floatformat:1 }}</div>
+      </div>
+      {% endif %}
+      {% with cal=perf_summaries.calories %}
+      {% if cal or workout.calories %}
+      <div class="metric-card">
+        <div class="metric-label">Calories</div>
+        <div class="metric-value">
+          {% if cal %}{{ cal.value|floatformat:0 }}{% else %}{{ workout.calories|floatformat:0 }}{% endif %}
+        </div>
+      </div>
+      {% endif %}
+      {% endwith %}
+      {% if workout.heart_rate_avg %}
+      <div class="metric-card">
+        <div class="metric-label">Avg HR</div>
+        <div class="metric-value">{{ workout.heart_rate_avg|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      </div>
+      {% endif %}
+      {% if workout.heart_rate_max %}
+      <div class="metric-card">
+        <div class="metric-label">Max HR</div>
+        <div class="metric-value">{{ workout.heart_rate_max|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Performance chart -->
+    <div class="chart-card" id="perfChartCard">
+      <div class="chart-header">
+        <h3 class="chart-title">PERFORMANCE OVER TIME</h3>
+        <div class="chart-toggles" id="chartToggles"></div>
+      </div>
+      <canvas id="perfChart" height="110"></canvas>
+    </div>
+
+    <!-- HR zone breakdown -->
+    <div class="chart-card" id="hrZoneCard" style="display:none">
+      <div class="chart-header">
+        <h3 class="chart-title">HEART RATE ZONES</h3>
+      </div>
+      <div class="hr-zones" id="hrZoneBreakdown"></div>
+    </div>
+
+    <!-- Muscle groups -->
+    {% if muscle_groups %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">MUSCLES WORKED</h3>
+        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">
+          ● light &nbsp; ●● moderate &nbsp; ●●● high
+        </span>
+      </div>
+      <div class="muscle-group-list">
+        {% for mg in muscle_groups %}
+        <div class="muscle-group-row">
+          <div class="muscle-group-name">{{ mg.display_name }}</div>
+          <div class="muscle-group-bar-wrap">
+            <div class="muscle-group-bar mg-{{ mg.bucket }}" style="width:{{ mg.percentage }}%"></div>
+          </div>
+          <div class="muscle-group-pct">{{ mg.percentage }}%</div>
+          <div class="muscle-group-bucket">
+            {% for i in "123" %}{% if forloop.counter <= mg.bucket %}●{% else %}<span style="opacity:0.2">●</span>{% endif %}{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Achievements -->
+    {% if workout_detail.achievements %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">ACHIEVEMENTS EARNED</h3>
+        <span class="chart-sub">{{ workout_detail.achievements|length }}</span>
+      </div>
+      <div class="achievements-row">
+        {% for a in workout_detail.achievements %}
+        <div class="achievement-badge">
+          {% if a.image_url %}<img src="{{ a.image_url }}" alt="{{ a.name }}">{% endif %}
+          <div class="achievement-badge-text">
+            <div class="achievement-badge-name">{{ a.name }}</div>
+            {% if a.description %}<div class="achievement-badge-desc">{{ a.description }}</div>{% endif %}
+            {% if a.count %}<div class="achievement-badge-count">x{{ a.count }} total</div>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+{% endblock %}
+
+{% block history_item_stats %}
+          {% if w.calories %}<span>{{ w.calories|floatformat:0 }} cal</span>{% endif %}
+          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
+{% endblock %}
+
+{% block detail_scripts %}
+<script>
+const perf = {{ perf|safe }};
+const metrics = perf.metrics_by_slug || {};
+const everyN = perf.every_n || 5;
+const effortZones = {{ effort_zones|safe }};
+const hrZonesDirect = {{ hr_zones_direct|safe }};
+
+const ZONE_COLORS = ["#4FC3F7", "#81C784", "#FFD54F", "#FF8A65", "#E57373"];
+const ZONE_NAMES  = ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"];
+
+const metricConfigs = [
+  { slug: "heart_rate", label: "HR",       color: "#FF3B5C", fmt: v => v != null ? Math.round(v) + " bpm" : "—" },
+  { slug: "output",     label: "OUTPUT",   color: "#CE93D8", fmt: v => v != null ? Math.round(v) + " W" : "—" },
+  { slug: "cadence",    label: "CADENCE",  color: "#FFD54F", fmt: v => v != null ? Math.round(v) + " rpm" : "—" },
+  { slug: "speed",      label: "SPEED",    color: "#80CBC4", fmt: v => v != null ? v.toFixed(1) + " mph" : "—" },
+  { slug: "pace",       label: "PACE",     color: "#A5D6A7", fmt: v => { if (v == null) return "—"; const m = Math.floor(v/60); return m + ":" + String(Math.round(v%60)).padStart(2,"0") + "/mi"; } },
+  { slug: "resistance", label: "RESIST",   color: "#A5B4FC", fmt: v => v != null ? Math.round(v) + "%" : "—" },
+  { slug: "incline",    label: "INCLINE",  color: "#B0BEC5", fmt: v => v != null ? v.toFixed(1) + "%" : "—" },
+];
+
+const available = metricConfigs.filter(c => {
+  const m = metrics[c.slug];
+  return m && m.values && m.values.some(v => v != null);
+});
+
+function makeLabels(n) {
+  return Array.from({ length: n }, (_, i) => {
+    const m = Math.floor(i * everyN / 60);
+    const s = (i * everyN) % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  });
+}
+
+const hrMeta = metrics.heart_rate;
+const hrThresholds = (hrMeta?.zones || []).map((z, i) => {
+  const range = z.range || "";
+  let min = 0, max = Infinity;
+  if (range.startsWith(">=")) {
+    min = parseFloat(range.slice(2)) || 0;
+  } else if (range.startsWith("<")) {
+    max = parseFloat(range.slice(1)) || Infinity;
+  } else {
+    const parts = range.split("-").map(parseFloat);
+    min = isNaN(parts[0]) ? 0 : parts[0];
+    max = isNaN(parts[1]) ? Infinity : parts[1];
+  }
+  return { min, max, color: ZONE_COLORS[i] };
+});
+
+function getHrZoneColor(bpm) {
+  if (!bpm || !hrThresholds.length) return "#FF3B5C";
+  for (const t of hrThresholds) { if (bpm >= t.min && bpm <= t.max) return t.color; }
+  return ZONE_COLORS[ZONE_COLORS.length - 1];
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const { gridColor, tickColor, mainLineWidth } = window.chartTheme;
+
+  if (!available.length) {
+    document.getElementById("perfChartCard").style.display = "none";
+    return;
+  }
+
+  const togglesEl = document.getElementById("chartToggles");
+  const activeSet = new Set([available[0].slug]);
+  let chart = null;
+
+  available.forEach(cfg => {
+    const btn = document.createElement("button");
+    btn.className = "chart-toggle" + (activeSet.has(cfg.slug) ? " active" : "");
+    btn.style.setProperty("--toggle-color", cfg.color);
+    btn.textContent = cfg.label;
+    btn.addEventListener("click", () => {
+      if (activeSet.has(cfg.slug)) {
+        if (activeSet.size === 1) return;
+        activeSet.delete(cfg.slug);
+        btn.classList.remove("active");
+      } else {
+        activeSet.add(cfg.slug);
+        btn.classList.add("active");
+      }
+      buildChart();
+    });
+    togglesEl.appendChild(btn);
+  });
+
+  function buildChart() {
+    const activeCfgs = available.filter(c => activeSet.has(c.slug));
+    if (!activeCfgs.length) return;
+
+    const maxLen = Math.max(...activeCfgs.map(c => metrics[c.slug]?.values?.length || 0));
+    const labels = makeLabels(maxLen);
+
+    const datasets = activeCfgs.map(cfg => {
+      const m = metrics[cfg.slug];
+      const ds = {
+        label: cfg.label,
+        data: m.values,
+        borderColor: cfg.color,
+        borderWidth: mainLineWidth,
+        pointRadius: 0,
+        fill: activeCfgs.length === 1,
+        tension: 0.3,
+        spanGaps: false,
+        _cfg: cfg,
+      };
+      if (cfg.slug === "heart_rate" && hrThresholds.length && activeCfgs.length === 1) {
+        ds.fill = false;
+        ds.backgroundColor = "transparent";
+        ds.segment = { borderColor: ctx => getHrZoneColor(ctx.p0.parsed.y) };
+      }
+      return ds;
+    });
+
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById("perfChart"), {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const cfg = ctx.dataset._cfg;
+                return ` ${cfg?.label || ctx.dataset.label}: ${cfg ? cfg.fmt(ctx.raw) : ctx.raw}`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
+          y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: "JetBrains Mono", size: 10 } } },
+        },
+      },
+    });
+  }
+
+  buildChart();
+
+  document.addEventListener('cadence:themechange', () => { buildChart(); });
+
+  // HR zone breakdown — prefer model fields (hrZonesDirect), fall back to perf graph
+  const zoneSecs = (() => {
+    if (hrZonesDirect) {
+      const arr = ["z1","z2","z3","z4","z5"].map(k => hrZonesDirect[k] || 0);
+      if (arr.some(v => v > 0)) return arr;
+    }
+    const hrd = effortZones?.heart_rate_zone_durations;
+    if (hrd) {
+      const arr = ["heart_rate_z1_duration","heart_rate_z2_duration","heart_rate_z3_duration","heart_rate_z4_duration","heart_rate_z5_duration"].map(k => hrd[k] || 0);
+      if (arr.some(v => v > 0)) return arr;
+    }
+    return null;
+  })();
+  if (zoneSecs) {
+    const total = zoneSecs.reduce((a, b) => a + b, 0);
+    document.getElementById("hrZoneCard").style.display = "";
+    const container = document.getElementById("hrZoneBreakdown");
+    zoneSecs.forEach((secs, i) => {
+      const pct = total > 0 ? ((secs / total) * 100).toFixed(1) : 0;
+      const m = Math.floor(secs / 60), s = secs % 60;
+      const row = document.createElement("div");
+      row.className = "hr-zone-row";
+      row.innerHTML = `
+        <div class="hr-zone-label" style="color:${ZONE_COLORS[i]}">${ZONE_NAMES[i]}</div>
+        <div class="hr-zone-bar-wrap">
+          <div class="hr-zone-bar" style="width:${pct}%;background:${ZONE_COLORS[i]}"></div>
+        </div>
+        <div class="hr-zone-time">${m}:${String(s).padStart(2,"0")}</div>
+        <div class="hr-zone-pct">${pct}%</div>`;
+      container.appendChild(row);
+    });
+  }
+});
+</script>
+{% endblock %}

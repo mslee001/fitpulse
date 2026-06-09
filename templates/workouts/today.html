@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}Today · Cadence{% endblock %}
+{% block nav_today %}active{% endblock %}
+
+{% block content %}
+
+<div class="page-header today-header">
+  <div>
+    <div class="today-date-label">{{ today_date|date:"l" }}</div>
+    <h1 class="page-title">{{ today_date|date:"F j, Y" }}</h1>
+  </div>
+  <div class="today-quick-links">
+    <a href="{% url 'calendar' %}" class="btn btn-ghost btn-sm">Calendar</a>
+    <a href="{% url 'history' %}" class="btn btn-ghost btn-sm">All Workouts</a>
+  </div>
+</div>
+
+<!-- HERO: Readiness + Next workout rec -->
+<section class="today-hero">
+  <div class="today-hero-readiness">
+    {% if daily.training_readiness_score %}
+      <div class="readiness-circle readiness-{{ daily.training_readiness_label|lower|default:'unknown' }}">
+        <div class="readiness-score">{{ daily.training_readiness_score }}</div>
+        <div class="readiness-label">{{ daily.training_readiness_label|default:"—" }}</div>
+      </div>
+      <div class="readiness-meta">
+        <div class="readiness-meta-title">TRAINING READINESS</div>
+        {% if wellness_is_yesterday %}
+        <div class="readiness-meta-sub">From yesterday — today's data not synced yet</div>
+        {% else %}
+        <div class="readiness-meta-sub">Updated this morning</div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="readiness-empty">
+        <div class="readiness-meta-title">TRAINING READINESS</div>
+        <p class="muted">No readiness data yet today. Try syncing Garmin wellness.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="today-hero-recommendation">
+    <div class="card-label">NEXT WORKOUT</div>
+    {% if next_workout_text %}
+      {{ next_workout_text|format_next_workout|safe }}
+    {% else %}
+      <p class="muted">No recommendation yet. Sync Garmin wellness, then refresh from the Calendar page.</p>
+    {% endif %}
+  </div>
+</section>
+
+<!-- WELLNESS row -->
+{% if daily %}
+<section class="today-section">
+  <div class="today-section-header">
+    <h2 class="section-title">WELLNESS</h2>
+    {% if wellness_is_yesterday %}
+    <span class="badge badge-muted">From yesterday</span>
+    {% endif %}
+    <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="section-link">Full day view →</a>
+  </div>
+  <div class="stat-grid">
+    {% if daily.hrv_last_night %}
+    <div class="stat-card">
+      <div class="stat-label">HRV Last Night</div>
+      <div class="stat-value">{{ daily.hrv_last_night }}<span class="stat-unit">ms</span></div>
+      {% if daily.hrv_status %}<div class="stat-sub stat-sub-{{ daily.hrv_status|lower }}">{{ daily.hrv_status }}</div>{% endif %}
+    </div>
+    {% endif %}
+    {% if daily.sleep_score %}
+    <div class="stat-card">
+      <div class="stat-label">Sleep Score</div>
+      <div class="stat-value">{{ daily.sleep_score }}</div>
+      {% if daily.sleep_seconds %}
+      <div class="stat-sub">{{ daily.sleep_seconds|format_duration_hm }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if daily.body_battery_start %}
+    <div class="stat-card">
+      <div class="stat-label">Body Battery</div>
+      <div class="stat-value">{{ daily.body_battery_start }}<span class="stat-unit"> at wakeup</span></div>
+      {% if daily.body_battery_charge %}<div class="stat-sub">+{{ daily.body_battery_charge }} charged overnight</div>{% endif %}
+    </div>
+    {% endif %}
+    {% if daily.resting_hr %}
+    <div class="stat-card">
+      <div class="stat-label">Resting HR</div>
+      <div class="stat-value">{{ daily.resting_hr }}<span class="stat-unit">bpm</span></div>
+    </div>
+    {% endif %}
+    {% if daily.stress_avg %}
+    <div class="stat-card">
+      <div class="stat-label">Stress Avg</div>
+      <div class="stat-value">{{ daily.stress_avg }}</div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<!-- NUTRITION row -->
+{% if nutrition_progress %}
+<section class="today-section">
+  <div class="today-section-header">
+    <h2 class="section-title">NUTRITION TODAY</h2>
+    <a href="{% url 'nutrition' %}" class="section-link">Log food →</a>
+  </div>
+  <div class="nutrition-bars">
+    {% for label, key, color in nutrition_progress|nutrition_rows %}
+    {% with row=nutrition_progress|dict_get:key %}
+    <div class="nut-bar-row">
+      <div class="nut-bar-label">{{ label }}</div>
+      <div class="nut-bar-track">
+        <div class="nut-bar-fill" style="width:{{ row.pct }}%; background:{{ color }}"></div>
+      </div>
+      <div class="nut-bar-value">
+        <span class="mono">{{ row.now|floatformat:0 }}</span>
+        <span class="muted">/ {{ row.target|floatformat:0 }}</span>
+      </div>
+    </div>
+    {% endwith %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- TODAY'S WORKOUTS -->
+<section class="today-section">
+  <div class="today-section-header">
+    <h2 class="section-title">TODAY'S WORKOUTS</h2>
+  </div>
+  {% if todays_workouts %}
+  <div class="today-workouts-list">
+    {% for w in todays_workouts %}
+    <a href="{% url 'workout_detail' w.workout_id %}" class="today-workout-card">
+      <div class="today-workout-type">{{ w.fitness_discipline_display|default:w.discipline|upper }}</div>
+      <div class="today-workout-title">{{ w.title|default:"Workout" }}</div>
+      <div class="today-workout-meta">
+        {{ w.created_at|date:"g:i A" }}
+        {% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}
+        {% if w.heart_rate_avg_best %} · {{ w.heart_rate_avg_best|floatformat:0 }} bpm avg{% endif %}
+        {% if w.effort_points %} · Effort {{ w.effort_points|floatformat:1 }}{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="today-empty">No workouts logged yet today.</div>
+  {% endif %}
+</section>
+
+<!-- ACTIVE INTERVENTIONS -->
+{% if active_interventions %}
+<section class="today-section">
+  <div class="today-section-header">
+    <h2 class="section-title">ACTIVE INTERVENTIONS</h2>
+    <a href="{% url 'interventions' %}" class="section-link">Manage →</a>
+  </div>
+  <div class="today-interventions">
+    {% for i in active_interventions %}
+    <a href="{% url 'intervention_detail' i.pk %}" class="intervention-pill">
+      <span class="intervention-pill-name">{{ i.name }}</span>
+      {% if i.current_dose %}<span class="intervention-pill-dose">{{ i.current_dose.dose }}</span>{% endif %}
+      <span class="intervention-pill-duration">{{ i.duration_days }}d</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- AI DAY ANALYSIS -->
+{% if day_analysis_text %}
+<section class="today-section">
+  <div class="today-section-header">
+    <h2 class="section-title">DAY ANALYSIS</h2>
+  </div>
+  <div class="today-analysis-card">
+    {{ day_analysis_text|format_day_analysis|safe }}
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+{% block title %}{{ intervention.name }} — Cadence{% endblock %}
+{% block nav_body_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <a href="{% url 'interventions' %}" class="back-link">&larr; All Interventions</a>
+      <h1 class="page-title">
+        <span class="cat-badge cat-{{ intervention.category }}">{{ intervention.category }}</span>
+        &nbsp;{{ intervention.name }}
+      </h1>
+      <p class="page-sub">
+        {% if intervention.is_active %}
+          Started {{ intervention.start_date }} &middot; {{ intervention.duration_days }} days active
+        {% else %}
+          {{ intervention.start_date }} → {{ intervention.end_date }} &middot; {{ intervention.duration_days }} days
+        {% endif %}
+        {% if intervention.current_dose %}
+          &middot; Current dose: <strong>{{ intervention.current_dose.dose }}</strong>
+        {% endif %}
+      </p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:flex-start;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('edit-intervention-form').classList.toggle('hidden')">Edit</button>
+      <form method="post" action="{% url 'intervention_end' intervention.pk %}" style="margin:0">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit">
+          {% if intervention.is_active %}End Today{% else %}Re-open{% endif %}
+        </button>
+      </form>
+      <form method="post" action="{% url 'intervention_delete' intervention.pk %}" style="margin:0"
+        onsubmit="return confirm('Delete {{ intervention.name }}?')">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Intervention Form (hidden by default) -->
+<div id="edit-intervention-form" class="chart-card hidden" style="margin-bottom:1.5rem">
+  <div class="chart-header">
+    <h3 class="chart-title">EDIT INTERVENTION</h3>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('edit-intervention-form').classList.add('hidden')">Cancel</button>
+  </div>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="edit_intervention">
+    <div class="add-form-grid">
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Name</label>
+        <input name="name" class="form-input" value="{{ intervention.name }}" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <select name="category" class="form-select">
+          {% for val, label in category_choices %}
+          <option value="{{ val }}" {% if intervention.category == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Start Date</label>
+        <input name="start_date" type="date" class="form-input" value="{{ intervention.start_date|date:'Y-m-d' }}" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">End Date (optional)</label>
+        <input name="end_date" type="date" class="form-input" value="{{ intervention.end_date|date:'Y-m-d' }}">
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Expected Effects</label>
+        <input name="expected_effects" class="form-input" value="{{ intervention.expected_effects }}">
+      </div>
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Notes</label>
+        <textarea name="notes" class="form-textarea">{{ intervention.notes }}</textarea>
+      </div>
+    </div>
+    <div style="margin-top:1rem;display:flex;gap:0.75rem">
+      <button type="submit" class="btn btn-accent">Save Changes</button>
+      <button type="button" class="btn btn-ghost" onclick="document.getElementById('edit-intervention-form').classList.add('hidden')">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<!-- Info cards row -->
+{% if intervention.expected_effects or intervention.notes %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem">
+  {% if intervention.expected_effects %}
+  <div class="chart-card" style="margin-top:0">
+    <div class="chart-header"><h3 class="chart-title">EXPECTED EFFECTS</h3></div>
+    <p style="color:var(--text-muted);font-size:0.9rem;margin:0">{{ intervention.expected_effects }}</p>
+  </div>
+  {% endif %}
+  {% if intervention.notes %}
+  <div class="chart-card" style="margin-top:0">
+    <div class="chart-header"><h3 class="chart-title">NOTES</h3></div>
+    <p style="color:var(--text-muted);font-size:0.9rem;white-space:pre-wrap;margin:0">{{ intervention.notes }}</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Dose Timeline -->
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">DOSE TIMELINE</h3>
+    <button class="btn btn-accent btn-sm" onclick="document.getElementById('add-dose-form').classList.toggle('hidden')">+ Add Dose Change</button>
+  </div>
+
+  <!-- Add dose form -->
+  <div id="add-dose-form" class="{% if not active_dose %}hidden{% endif %}" style="background:var(--bg-raised);border-radius:var(--r);padding:1rem;margin-bottom:1.25rem;border:1px solid var(--border)">
+    <div style="font-size:0.72rem;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;font-weight:700;margin-bottom:0.75rem">NEW DOSE CHANGE</div>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add_dose">
+      <div class="add-form-grid" style="grid-template-columns:repeat(2,1fr)">
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">Dose *</label>
+          <input name="dose" class="form-input" placeholder="e.g. 10mg" required id="new-dose-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Start Date *</label>
+          <input name="start_date" type="date" class="form-input" value="{% now 'Y-m-d' %}" id="new-dose-start" required onchange="updateDosePreview()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date (optional)</label>
+          <input name="end_date" type="date" class="form-input">
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="form-label">Notes (optional)</label>
+          <input name="notes" class="form-input" placeholder="Reason for change, side effects, etc.">
+        </div>
+        {% if active_dose %}
+        <div class="form-group" style="grid-column:span 2">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem;color:var(--text-muted)">
+            <input type="checkbox" name="auto_end_previous" value="1" checked id="auto-end-cb" onchange="updateDosePreview()">
+            Auto-end current dose ({{ active_dose.dose }}) on day before new start
+          </label>
+          <div id="dose-preview" style="font-size:0.8rem;color:var(--accent-alt);margin-top:0.35rem;padding-left:1.4rem"></div>
+        </div>
+        {% endif %}
+      </div>
+      <div style="margin-top:1rem;display:flex;gap:0.75rem">
+        <button type="submit" class="btn btn-accent">Add Dose Change</button>
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-dose-form').classList.add('hidden')">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Dose table -->
+  {% if dose_changes %}
+  <div style="overflow-x:auto">
+    <table class="analysis-table">
+      <thead>
+        <tr>
+          <th>Dose</th>
+          <th>Start</th>
+          <th>End</th>
+          <th style="text-align:right">Days</th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for dc in dose_changes %}
+        <tr id="dc-row-{{ dc.pk }}">
+          <td style="font-weight:600;color:var(--text)">{{ dc.dose }}</td>
+          <td>{{ dc.start_date }}</td>
+          <td>{% if dc.end_date %}{{ dc.end_date }}{% else %}<span style="color:var(--accent-green)">ongoing</span>{% endif %}</td>
+          <td style="text-align:right;color:var(--text-muted)">{{ dc.duration_days }}</td>
+          <td style="color:var(--text-muted);font-size:0.8rem">{{ dc.notes }}</td>
+          <td>
+            <div style="display:flex;gap:0.4rem;justify-content:flex-end">
+              <button class="btn btn-ghost btn-sm" onclick="toggleEditDose({{ dc.pk }})">Edit</button>
+              {% if not dc.end_date %}
+              <form method="post" style="margin:0">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="end_dose">
+                <input type="hidden" name="dose_change_id" value="{{ dc.pk }}">
+                <button class="btn btn-ghost btn-sm" type="submit">End Today</button>
+              </form>
+              {% endif %}
+              <form method="post" style="margin:0" onsubmit="return confirm('Delete this dose entry?')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_dose">
+                <input type="hidden" name="dose_change_id" value="{{ dc.pk }}">
+                <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">✕</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <!-- Inline edit row — full width, appears below the dose row -->
+        <tr id="edit-dc-{{ dc.pk }}" class="hidden dose-edit-row">
+          <td colspan="6">
+            <div class="dose-edit-panel">
+              <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="edit_dose">
+                <input type="hidden" name="dose_change_id" value="{{ dc.pk }}">
+                <div style="display:grid;gap:0.75rem;grid-template-columns:1fr 1fr 1fr 1fr">
+                  <div class="form-group" style="grid-column:span 2">
+                    <label class="form-label">Dose</label>
+                    <input name="dose" class="form-input" value="{{ dc.dose }}" required>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Start Date</label>
+                    <input name="start_date" type="date" class="form-input" value="{{ dc.start_date|date:'Y-m-d' }}" required>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">End Date</label>
+                    <input name="end_date" type="date" class="form-input" value="{{ dc.end_date|date:'Y-m-d' }}">
+                  </div>
+                  <div class="form-group" style="grid-column:span 4">
+                    <label class="form-label">Notes</label>
+                    <input name="notes" class="form-input" value="{{ dc.notes }}">
+                  </div>
+                </div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+                  <button type="submit" class="btn btn-accent btn-sm">Save</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="toggleEditDose({{ dc.pk }})">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:var(--text-muted);font-size:0.9rem;padding:0.5rem 0">No dose changes recorded yet. Add one above.</p>
+  {% endif %}
+</div>
+
+<style>
+.hidden { display: none !important; }
+</style>
+
+<script>
+function toggleEditDose(pk) {
+  const el = document.getElementById('edit-dc-' + pk);
+  el.classList.toggle('hidden');
+}
+
+{% if active_dose %}
+const activeDose = "{{ active_dose.dose|escapejs }}";
+
+function updateDosePreview() {
+  const preview = document.getElementById('dose-preview');
+  const autoEnd = document.getElementById('auto-end-cb').checked;
+  const startVal = document.getElementById('new-dose-start').value;
+  if (!preview) return;
+  if (autoEnd && startVal) {
+    const startDate = new Date(startVal + 'T12:00:00');
+    const prevDay = new Date(startDate);
+    prevDay.setDate(prevDay.getDate() - 1);
+    const prevStr = prevDay.toISOString().split('T')[0];
+    preview.textContent = `Will end "${activeDose}" on ${prevStr}`;
+  } else {
+    preview.textContent = '';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', updateDosePreview);
+{% endif %}
+</script>
+{% endblock %}

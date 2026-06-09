@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+
+{% block title %}Symptoms — Cadence{% endblock %}
+{% block nav_body_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">SYMPTOM LOG</h1>
+  <p class="page-sub">Track side effects to identify trigger patterns and correlate with dose changes.</p>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
+
+  {# ── Log form ── #}
+  <div class="card">
+    <div class="section-title" style="margin-bottom:1.25rem">LOG A SYMPTOM</div>
+
+    <div id="symptom-success" style="display:none;color:var(--accent-green);font-size:0.85rem;margin-bottom:1rem">
+      ✓ Logged
+    </div>
+
+    <div style="margin-bottom:1.25rem">
+      <div class="filter-label" style="margin-bottom:0.5rem">SYMPTOM</div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.4rem" id="symptom-chips">
+        {% for val, label in symptom_choices %}
+        <button type="button"
+                class="btn btn-ghost btn-sm symptom-chip"
+                data-value="{{ val }}"
+                style="font-size:0.8rem">{{ label }}</button>
+        {% endfor %}
+      </div>
+      <input type="hidden" id="selected-symptom" value="">
+    </div>
+
+    <div style="margin-bottom:1.25rem">
+      <div class="filter-label" style="margin-bottom:0.5rem">SEVERITY</div>
+      <div style="display:flex;gap:0.5rem">
+        <button type="button" class="btn btn-ghost btn-sm severity-btn" data-value="1" style="flex:1">Mild</button>
+        <button type="button" class="btn btn-ghost btn-sm severity-btn" data-value="2" style="flex:1">Moderate</button>
+        <button type="button" class="btn btn-ghost btn-sm severity-btn" data-value="3" style="flex:1">Severe</button>
+      </div>
+      <input type="hidden" id="selected-severity" value="">
+    </div>
+
+    {% if recent_meals %}
+    <div style="margin-bottom:1.25rem">
+      <label class="filter-label">RELATED MEAL (last 24h, optional)</label>
+      <select id="related-meal" class="filter-select" style="margin-top:0.35rem">
+        <option value="">— none —</option>
+        {% for meal in recent_meals %}
+        <option value="{{ meal.pk }}">{{ meal.get_meal_display|default:"Log" }}: {{ meal.raw_text|truncatechars:50 }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    {% if active_interventions %}
+    <div style="margin-bottom:1.25rem">
+      <label class="filter-label">RELATED MEDICATION (optional)</label>
+      <select id="related-iv" class="filter-select" style="margin-top:0.35rem">
+        <option value="">— none —</option>
+        {% for iv in active_interventions %}
+        <option value="{{ iv.pk }}">{{ iv.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div style="margin-bottom:1.25rem">
+      <label class="filter-label">NOTES (optional)</label>
+      <textarea id="symptom-notes" class="filter-input" rows="2"
+                style="margin-top:0.35rem;resize:vertical"
+                placeholder="e.g. onset timing, what I ate beforehand…"></textarea>
+    </div>
+
+    <button type="button" class="btn btn-accent" style="width:100%" onclick="logSymptom()">
+      Log Symptom
+    </button>
+    <div id="log-status" style="font-size:0.82rem;color:var(--text-muted);margin-top:0.5rem;text-align:center"></div>
+  </div>
+
+  {# ── 30-day summary ── #}
+  <div>
+    {% if summary %}
+    <div class="card" style="margin-bottom:1.5rem">
+      <div class="section-title" style="margin-bottom:1rem">LAST 30 DAYS</div>
+      <div style="display:flex;flex-direction:column;gap:0.4rem">
+        {% for row in summary %}
+        <div style="display:flex;align-items:center;gap:0.75rem;padding:0.35rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
+          <span style="flex:1;font-size:0.85rem;color:var(--text-muted);text-transform:capitalize">{{ row.symptom|title }}</span>
+          <span style="font-size:0.82rem;color:var(--text-dim)">×{{ row.count }}</span>
+          <span style="font-size:0.75rem;padding:0.15rem 0.45rem;border-radius:var(--r);background:
+            {% if row.avg_sev >= 2.5 %}color-mix(in srgb, var(--accent-red) 15%, transparent){% elif row.avg_sev >= 1.5 %}color-mix(in srgb, var(--accent) 12%, transparent){% else %}color-mix(in srgb, var(--accent-green) 12%, transparent){% endif %};
+            color:{% if row.avg_sev >= 2.5 %}var(--accent-red){% elif row.avg_sev >= 1.5 %}var(--accent){% else %}var(--accent-green){% endif %}">
+            {% if row.avg_sev >= 2.5 %}Severe{% elif row.avg_sev >= 1.5 %}Moderate{% else %}Mild{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Recent log #}
+    {% if recent %}
+    <div class="card">
+      <div class="section-title" style="margin-bottom:1rem">RECENT ENTRIES</div>
+      <div style="display:flex;flex-direction:column;gap:0.5rem" id="recent-list">
+        {% for entry in recent|slice:":15" %}
+        <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.83rem;padding:0.3rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
+          <span style="color:var(--text-dim);font-size:0.73rem;white-space:nowrap;min-width:4.5rem">{{ entry.date|date:"M j" }}</span>
+          <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ entry.get_symptom_display }}</span>
+          <span style="font-size:0.75rem;color:{% if entry.severity == 3 %}var(--accent-red){% elif entry.severity == 2 %}var(--accent){% else %}var(--accent-green){% endif %}">
+            {{ entry.get_severity_display }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+var _symptom = '';
+var _severity = '';
+
+document.querySelectorAll('.symptom-chip').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.symptom-chip').forEach(b => b.classList.remove('btn-accent'));
+    btn.classList.add('btn-accent');
+    _symptom = btn.dataset.value;
+  });
+});
+
+document.querySelectorAll('.severity-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.severity-btn').forEach(b => b.classList.remove('btn-accent'));
+    btn.classList.add('btn-accent');
+    _severity = btn.dataset.value;
+  });
+});
+
+function logSymptom() {
+  if (!_symptom) { setStatus('Please select a symptom.', 'var(--accent-red)'); return; }
+  if (!_severity) { setStatus('Please select a severity.', 'var(--accent-red)'); return; }
+
+  var data = new FormData();
+  data.append('symptom', _symptom);
+  data.append('severity', _severity);
+  data.append('notes', document.getElementById('symptom-notes').value);
+  data.append('related_meal_id', (document.getElementById('related-meal') || {value:''}).value);
+  data.append('related_intervention_id', (document.getElementById('related-iv') || {value:''}).value);
+  data.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+  fetch('{% url "symptoms" %}', { method: 'POST', body: data })
+    .then(r => r.json())
+    .then(function(j) {
+      if (j.ok) {
+        setStatus('✓ Logged!', 'var(--accent-green)');
+        // Reset selections
+        document.querySelectorAll('.symptom-chip').forEach(b => b.classList.remove('btn-accent'));
+        document.querySelectorAll('.severity-btn').forEach(b => b.classList.remove('btn-accent'));
+        document.getElementById('symptom-notes').value = '';
+        _symptom = ''; _severity = '';
+        // Reload recent list after 1s
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        setStatus(j.error || 'Error logging.', 'var(--accent-red)');
+      }
+    })
+    .catch(function(e) { setStatus('Error: ' + e.message, 'var(--accent-red)'); });
+}
+
+function setStatus(msg, color) {
+  var el = document.getElementById('log-status');
+  el.textContent = msg;
+  el.style.color = color || 'var(--text-muted)';
+}
+</script>
+{% endblock %}

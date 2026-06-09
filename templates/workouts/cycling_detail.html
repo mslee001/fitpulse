@@ -1,0 +1,768 @@
+{% extends "workouts/detail_base.html" %}
+{% load workout_filters %}
+
+{% block discipline_tag %}🚴 Cycling{% endblock %}
+{% block page_title %}{{ workout.title|default:"Cycling Workout" }}{% endblock %}
+{% block pr_sub %}{% if workout_detail.total_work %}<div class="pr-banner-sub">Total output: {{ workout_detail.total_work|floatformat:0 }} kJ</div>{% endif %}{% endblock %}
+
+{% block detail_main %}
+    <!-- Key metrics -->
+    <div class="metrics-grid">
+      {% if workout_detail.leaderboard_rank and workout_detail.total_leaderboard_users %}
+      <div class="metric-card">
+        <div class="metric-label">Leaderboard</div>
+        <div class="metric-value" style="color:var(--accent-alt)">#{{ workout_detail.leaderboard_rank }}</div>
+        <div class="metric-sub">of {{ workout_detail.total_leaderboard_users }}</div>
+      </div>
+      {% endif %}
+      {% if workout.output_watts %}
+      <div class="metric-card metric-card--hero">
+        <div class="metric-label">Total Output</div>
+        <div class="metric-value">{{ workout.output_watts|format_watts }}<span class="metric-unit"></span></div>
+        {% if type_stats.max_output and type_stats.max_output != workout.output_watts %}
+        <div class="metric-sub">Best: {{ type_stats.max_output|format_watts }}</div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if workout.avg_watts %}
+      <div class="metric-card">
+        <div class="metric-label">Avg Power</div>
+        <div class="metric-value">{{ workout.avg_watts|floatformat:0 }}<span class="metric-unit">W</span></div>
+        {% if type_stats.avg_power %}<div class="metric-sub">Avg: {{ type_stats.avg_power|floatformat:0 }} W</div>{% endif %}
+      </div>
+      {% endif %}
+      {% if ftp %}
+      <div class="metric-card">
+        <div class="metric-label">FTP</div>
+        <div class="metric-value">{{ ftp }}<span class="metric-unit">W</span></div>
+        <div class="metric-sub" style="font-size:0.62rem">at time of ride</div>
+      </div>
+      {% endif %}
+      {% if workout.avg_cadence %}
+      <div class="metric-card">
+        <div class="metric-label">Avg Cadence</div>
+        <div class="metric-value">{{ workout.avg_cadence|floatformat:0 }}<span class="metric-unit">rpm</span></div>
+        {% if type_stats.avg_cadence %}<div class="metric-sub">Avg: {{ type_stats.avg_cadence|floatformat:0 }} rpm</div>{% endif %}
+      </div>
+      {% endif %}
+      {% if workout.avg_resistance %}
+      <div class="metric-card">
+        <div class="metric-label">Avg Resistance</div>
+        <div class="metric-value">{{ workout.avg_resistance|floatformat:0 }}<span class="metric-unit">%</span></div>
+        {% if type_stats.avg_resistance %}<div class="metric-sub">Avg: {{ type_stats.avg_resistance|floatformat:0 }}%</div>{% endif %}
+      </div>
+      {% endif %}
+      {% if effort_zones.total_effort_points %}
+      <div class="metric-card metric-card--hero effort-pts-card">
+        <div class="metric-label">Effort Points</div>
+        <div class="metric-value effort-pts-value">{{ effort_zones.total_effort_points|floatformat:1 }}</div>
+      </div>
+      {% endif %}
+      {% with dist=perf_summaries.distance %}
+      {% if dist or workout.distance %}
+      <div class="metric-card">
+        <div class="metric-label">Distance</div>
+        <div class="metric-value">
+          {% if dist %}{{ dist.value|floatformat:2 }}{% else %}{{ workout.distance|floatformat:2 }}{% endif %}<span class="metric-unit">mi</span>
+        </div>
+      </div>
+      {% endif %}
+      {% endwith %}
+      {% if workout.avg_speed %}
+      <div class="metric-card">
+        <div class="metric-label">Avg Speed</div>
+        <div class="metric-value">{{ workout.avg_speed|floatformat:1 }}<span class="metric-unit">mph</span></div>
+      </div>
+      {% endif %}
+      {% if workout.heart_rate_avg %}
+      <div class="metric-card">
+        <div class="metric-label">Avg HR</div>
+        <div class="metric-value">{{ workout.heart_rate_avg|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      </div>
+      {% endif %}
+      {% if workout.heart_rate_max %}
+      <div class="metric-card">
+        <div class="metric-label">Max HR</div>
+        <div class="metric-value">{{ workout.heart_rate_max|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      </div>
+      {% endif %}
+      {% if workout.calories %}
+      <div class="metric-card">
+        <div class="metric-label">Calories</div>
+        <div class="metric-value">{{ workout.calories|floatformat:0 }}</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Performance chart -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">PERFORMANCE OVER TIME</h3>
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+          {% if ftp %}
+          <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim)">FTP <span style="color:var(--text-muted)">{{ ftp }} W</span></span>
+          {% else %}
+          <a href="{% url 'settings' %}" style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-decoration:none">Set FTP →</a>
+          {% endif %}
+          <div class="chart-toggles" id="chartToggles"></div>
+          <button id="resetZoomBtn" class="btn btn-sm btn-ghost" style="display:none">Reset zoom</button>
+        </div>
+      </div>
+      <canvas id="perfChart" height="110"></canvas>
+      <div id="metricSummary" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;" id="metricSummaryInner"></div>
+      </div>
+    </div>
+
+    <!-- HR zone breakdown -->
+    <div class="chart-card" id="hrZoneCard" style="display:none">
+      <div class="chart-header">
+        <h3 class="chart-title">HEART RATE ZONES</h3>
+      </div>
+      <div class="hr-zones" id="hrZoneBreakdown"></div>
+      <div id="hrZoneRanges"></div>
+    </div>
+
+    <!-- Power zone breakdown -->
+    <div class="chart-card" id="powerZoneCard" style="display:none">
+      <div class="chart-header">
+        <h3 class="chart-title">POWER ZONES</h3>
+      </div>
+      <div class="hr-zones" id="powerZoneBreakdown"></div>
+    </div>
+
+    <!-- Muscle groups worked -->
+    {% if muscle_groups %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">MUSCLES WORKED</h3>
+        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">
+          ● light &nbsp; ●● moderate &nbsp; ●●● high
+        </span>
+      </div>
+      <div class="muscle-group-list">
+        {% for mg in muscle_groups %}
+        <div class="muscle-group-row">
+          <div class="muscle-group-name">{{ mg.display_name }}</div>
+          <div class="muscle-group-bar-wrap">
+            <div class="muscle-group-bar mg-{{ mg.bucket }}" style="width:{{ mg.percentage }}%"></div>
+          </div>
+          <div class="muscle-group-pct">{{ mg.percentage }}%</div>
+          <div class="muscle-group-bucket">
+            {% for i in "123" %}{% if forloop.counter <= mg.bucket %}●{% else %}<span style="opacity:0.2">●</span>{% endif %}{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- vs. your averages -->
+    {% if type_stats.count %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">VS. YOUR AVERAGES</h3>
+        <span class="chart-sub">{{ type_stats.count }} other {{ workout.fitness_discipline_display|default:"cycling" }} workout{{ type_stats.count|pluralize }}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table comparison-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>This Workout</th>
+              <th>Your Average</th>
+              <th>Your Best</th>
+            </tr>
+          </thead>
+          <tbody id="vsAveragesBody"></tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Achievements -->
+    {% if workout_detail.achievements %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">ACHIEVEMENTS EARNED</h3>
+        <span class="chart-sub">{{ workout_detail.achievements|length }}</span>
+      </div>
+      <div class="achievements-row">
+        {% for a in workout_detail.achievements %}
+        <div class="achievement-badge">
+          {% if a.image_url %}<img src="{{ a.image_url }}" alt="{{ a.name }}">{% endif %}
+          <div class="achievement-badge-text">
+            <div class="achievement-badge-name">{{ a.name }}</div>
+            {% if a.description %}<div class="achievement-badge-desc">{{ a.description }}</div>{% endif %}
+            {% if a.count %}<div class="achievement-badge-count">x{{ a.count }} total</div>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+{% endblock %}
+
+{% block history_item_stats %}
+          {% if w.output_watts %}<span>{{ w.output_watts|format_watts }}</span>{% endif %}
+          {% if w.avg_cadence %}<span>{{ w.avg_cadence|floatformat:0 }} rpm</span>{% endif %}
+          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
+{% endblock %}
+
+{% block recent_section %}
+    <!-- Recent rides of same discipline, populated by JS -->
+    <div class="recent-section" id="recentRidesSidebar" style="display:none">
+      <div class="sidebar-title">RECENT RIDES</div>
+      <div id="recentRidesList" class="sidebar-scroll-list"></div>
+    </div>
+{% endblock %}
+
+{% block detail_scripts %}
+<script>
+const perf = {{ perf|safe }};
+const metrics = perf.metrics_by_slug || {};
+const everyN = perf.every_n || 5;
+
+const recentRides = {{ recent_rides|safe }};
+const currentWorkoutId = "{{ workout.workout_id }}";
+const typeStats = perf._typeStats || {};
+
+const ftp = {{ ftp|default:"null" }};
+const powerZones = perf.power_zones || [];
+const powerZoneDist = perf.power_zone_distribution || {};
+const PRESHOW_OFFSET = 60;
+
+// Zone boundaries as fractions of FTP, and their midpoints for the target line
+const FTP_ZONE_BOUNDS = [
+  [0,    0.56],  // Z1 Active Recovery
+  [0.56, 0.76],  // Z2 Endurance
+  [0.76, 0.91],  // Z3 Tempo
+  [0.91, 1.06],  // Z4 Threshold
+  [1.06, 1.21],  // Z5 VO2 Max
+  [1.21, 1.50],  // Z6 Anaerobic
+  [1.50, 2.00],  // Z7 Neuromuscular (capped at 2× for display)
+];
+const FTP_ZONE_MIDPOINTS = FTP_ZONE_BOUNDS.map(([lo, hi]) => (lo + hi) / 2);
+
+const POWER_ZONE_NAMES = ["Active Recovery", "Endurance", "Tempo", "Threshold", "VO2 Max", "Anaerobic", "Neuromuscular"];
+const POWER_ZONE_SOLID = [
+  "#B684EF", "#4BA6F0", "#4FBA6F", "#FFC832", "#FF8032", "#FF4B4B", "#DC1E1E",
+];
+
+function buildPowerTargetLine(numPoints) {
+  const line = Array(numPoints).fill(null);
+  if (!ftp || !powerZones.length) return line;
+  for (const pz of powerZones) {
+    const zIdx = (pz.zone || 1) - 1;
+    const watts = FTP_ZONE_MIDPOINTS[zIdx] * ftp;
+    const idxMin = Math.max(0, Math.round((pz.start - PRESHOW_OFFSET) / everyN));
+    const idxMax = Math.min(numPoints - 1, Math.round((pz.end - PRESHOW_OFFSET) / everyN));
+    for (let i = idxMin; i <= idxMax; i++) line[i] = watts;
+  }
+  return line;
+}
+
+const metricConfigs = [
+  { slug: "output",     label: "OUTPUT",     color: "#CE93D8", invert: false, fmt: v => v != null ? Math.round(v) + " W" : "—",   tickFmt: null },
+  { slug: "cadence",    label: "CADENCE",    color: "#FFD54F", invert: false, fmt: v => v != null ? Math.round(v) + " rpm" : "—", tickFmt: null },
+  { slug: "resistance", label: "RESISTANCE", color: "#A5B4FC", invert: false, fmt: v => v != null ? Math.round(v) + "%" : "—",    tickFmt: null },
+  { slug: "heart_rate", label: "HR",         color: "#FF3B5C", invert: false, fmt: v => v != null ? Math.round(v) + " bpm" : "—", tickFmt: null },
+];
+
+const ZONE_COLORS = ["#4FC3F7","#81C784","#FFD54F","#FF8A65","#E57373"];
+const hrMeta = metrics.heart_rate;
+const hrThresholds = (hrMeta?.zones || []).map((z, i) => {
+  const range = z.range || "";
+  let min = 0, max = Infinity;
+  if (range.startsWith(">=")) {
+    min = parseFloat(range.slice(2)) || 0;
+  } else if (range.startsWith("<")) {
+    max = parseFloat(range.slice(1)) || Infinity;
+  } else {
+    const parts = range.split("-").map(parseFloat);
+    min = isNaN(parts[0]) ? 0 : parts[0];
+    max = isNaN(parts[1]) ? Infinity : parts[1];
+  }
+  return { min, max, color: ZONE_COLORS[i] };
+});
+function getHrZoneColor(bpm) {
+  if (!bpm || !hrThresholds.length) return "#FF3B5C";
+  for (const t of hrThresholds) { if (bpm >= t.min && bpm <= t.max) return t.color; }
+  return ZONE_COLORS[ZONE_COLORS.length - 1];
+}
+function normalizeSeries(values, invert = false, sharedMin = null, sharedMax = null) {
+  const valid = values.filter(v => v != null);
+  if (!valid.length) return values;
+  const lo = sharedMin !== null ? sharedMin : Math.min(...valid);
+  const hi = sharedMax !== null ? sharedMax : Math.max(...valid);
+  const range = hi - lo;
+  if (range === 0) return values.map(v => v != null ? 50 : null);
+  return values.map(v => v == null ? null : invert ? ((hi - v) / range) * 100 : ((v - lo) / range) * 100);
+}
+
+function makeLabels(n) {
+  return Array.from({ length: n }, (_, i) => {
+    const m = Math.floor(i * everyN / 60);
+    const s = (i * everyN) % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const { gridColor, tickColor, legendColor, zoneLabelColor, refLineColor, mainLineWidth, refLineWidth } = window.chartTheme;
+
+  const available = metricConfigs.filter(c => {
+    const m = metrics[c.slug];
+    return m && m.values && m.values.some(v => v != null);
+  });
+
+  const togglesEl = document.getElementById("chartToggles");
+  const activeSet = new Set([available[0]?.slug].filter(Boolean));
+  let chart = null;
+
+  function fmtKj(kj) {
+    if (kj == null) return "—";
+    return Math.round(kj) + " kJ";
+  }
+
+  function buildChart() {
+    const activeCfgs = metricConfigs.filter(c => activeSet.has(c.slug));
+    if (!activeCfgs.length) return;
+
+    const uniqueGroups = new Set(activeCfgs.map(c => c.group || c.slug));
+    const multiScale = uniqueGroups.size > 1;
+
+    const groupExtremes = {};
+    for (const cfg of activeCfgs) {
+      const g = cfg.group || cfg.slug;
+      const m = metrics[cfg.slug];
+      if (!m || !m.values) continue;
+      const valid = m.values.filter(v => v != null);
+      if (valid.length) {
+        const min = Math.min(...valid);
+        const max = Math.max(...valid);
+        if (!groupExtremes[g]) {
+          groupExtremes[g] = { min, max };
+        } else {
+          groupExtremes[g].min = Math.min(groupExtremes[g].min, min);
+          groupExtremes[g].max = Math.max(groupExtremes[g].max, max);
+        }
+      }
+    }
+
+    const maxLen = Math.max(...activeCfgs.map(c => metrics[c.slug]?.values?.length || 0));
+
+    const datasets = activeCfgs.map(cfg => {
+      const m = metrics[cfg.slug];
+      if (!m) return null;
+      const rawVals = m.values;
+      const g = cfg.group || cfg.slug;
+      const extremes = groupExtremes[g];
+
+      const dispVals = multiScale
+        ? normalizeSeries(rawVals, cfg.invert, extremes.min, extremes.max)
+        : rawVals;
+
+      const ds = {
+        label: cfg.label,
+        data: dispVals,
+        borderColor: cfg.color,
+        borderWidth: multiScale ? refLineWidth : mainLineWidth,
+        pointRadius: 0,
+        fill: !multiScale,
+        tension: 0.3,
+        spanGaps: false,
+        _raw: rawVals,
+        _cfg: cfg,
+      };
+      if (cfg.slug === "heart_rate" && hrThresholds.length && !multiScale) {
+        ds.fill = false;
+        ds.backgroundColor = "transparent";
+        ds.segment = {
+          borderColor: ctx => getHrZoneColor(ctx.p0.parsed.y),
+        };
+      }
+      return ds;
+    }).filter(Boolean);
+
+    const primaryCfg = activeCfgs[0];
+
+    // Output reference lines — use avg_watts / max avg_watts (W) to match the live watt scale
+    let hasRefLines = false;
+    if (!multiScale && primaryCfg.slug === "output") {
+      const fmtW = v => v != null ? Math.round(v) + " W" : "—";
+      if (typeStats.avgWatts) {
+        hasRefLines = true;
+        datasets.push({
+          label: `Your avg power (${fmtW(typeStats.avgWatts)})`,
+          data: Array(maxLen).fill(typeStats.avgWatts),
+          borderColor: refLineColor,
+          backgroundColor: "transparent",
+          borderWidth: refLineWidth,
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false,
+          _raw: Array(maxLen).fill(typeStats.avgWatts),
+          _cfg: { ...primaryCfg, label: "Your avg power", fmt: fmtW },
+        });
+      }
+      if (typeStats.maxWatts) {
+        hasRefLines = true;
+        datasets.push({
+          label: `Your best avg power (${fmtW(typeStats.maxWatts)})`,
+          data: Array(maxLen).fill(typeStats.maxWatts),
+          borderColor: "rgba(255,200,0,0.45)",
+          backgroundColor: "transparent",
+          borderWidth: refLineWidth,
+          borderDash: [4, 3],
+          pointRadius: 0,
+          fill: false,
+          _raw: Array(maxLen).fill(typeStats.maxWatts),
+          _cfg: { ...primaryCfg, label: "Your best avg power", fmt: fmtW },
+        });
+      }
+    }
+
+    // Horizontal power zone bands (Y-axis, FTP-based) + target line
+    let annotations = {};
+    const isOutputActive = activeSet.has("output");
+    let yAxisMin = undefined;
+    let yAxisMax = undefined;
+    if (isOutputActive && !multiScale && ftp) {
+      const outputVals = (metrics.output?.values || []).filter(v => v != null);
+      const dataMax = outputVals.length ? Math.max(...outputVals) : 0;
+      yAxisMin = 0;
+      yAxisMax = Math.max(2.0 * ftp, dataMax * 1.15);
+
+      const _zo = [0.30,0.30,0.30,0.35,0.35,0.35,0.40];
+      const POWER_ZONE_COLORS = [
+        `rgba(182,132,239,${_zo[0]})`,`rgba(75,166,240,${_zo[1]})`,`rgba(79,186,111,${_zo[2]})`,
+        `rgba(255,200,50,${_zo[3]})`,`rgba(255,128,50,${_zo[4]})`,`rgba(255,75,75,${_zo[5]})`,
+        `rgba(220,30,30,${_zo[6]})`,
+      ];
+
+      FTP_ZONE_BOUNDS.forEach(([lo, hi], i) => {
+        const col = POWER_ZONE_SOLID[i];
+        annotations[`ftpZone${i}`] = {
+          type: "box",
+          yMin: lo * ftp,
+          yMax: Math.min(hi * ftp, yAxisMax),
+          backgroundColor: POWER_ZONE_COLORS[i],
+          borderWidth: 0,
+          drawTime: "beforeDatasetsDraw",
+          label: {
+            display: true,
+            content: `Z${i + 1} ${POWER_ZONE_NAMES[i]}`,
+            color: zoneLabelColor,
+            font: { family: "Barlow Condensed", size: 11, weight: "700" },
+            position: { x: "start", y: "center" },
+            padding: { left: 8 },
+          },
+        };
+      });
+    }
+
+    // Target line from power zone prescriptions
+    if (isOutputActive && !multiScale && ftp && powerZones.length) {
+      const targetLine = buildPowerTargetLine(maxLen);
+      if (targetLine.some(v => v !== null)) {
+        const fmtW = v => v != null ? Math.round(v) + " W" : "—";
+        hasRefLines = true;
+        datasets.push({
+          label: "Target Zone",
+          data: targetLine,
+          borderColor: "#FFD700",
+          backgroundColor: "transparent",
+          borderWidth: mainLineWidth,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          stepped: "after",
+          spanGaps: false,
+          _raw: targetLine,
+          _cfg: { slug: "target_zone", label: "Target Zone", fmt: fmtW },
+        });
+      }
+    }
+
+    if (chart) chart.destroy();
+    document.getElementById("resetZoomBtn").style.display = "none";
+    chart = new Chart(document.getElementById("perfChart"), {
+      type: "line",
+      data: { labels: makeLabels(maxLen), datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: multiScale || hasRefLines, labels: { color: legendColor, font: { family: "Barlow Condensed", size: 11 }, padding: 12 } },
+          annotation: { annotations },
+          zoom: {
+            limits: {
+              x: { min: "original", max: "original", minRange: 12 },
+              y: { min: "original", max: "original", minRange: 10 },
+            },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "xy",
+                    onZoom: () => { document.getElementById("resetZoomBtn").style.display = ""; } },
+            pan:  { enabled: true, mode: "xy",
+                    onPan:  () => { document.getElementById("resetZoomBtn").style.display = ""; } },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const raw = ctx.dataset._raw?.[ctx.dataIndex];
+                const cfg = ctx.dataset._cfg;
+                const fmt = cfg?.fmt;
+                let line = ` ${ctx.dataset.label}: ${fmt ? fmt(raw) : (raw ?? "—")}`;
+                if (cfg?.slug === "cadence" && metrics.speed?.values) {
+                  const spd = metrics.speed.values[ctx.dataIndex];
+                  if (spd != null) line += `  ·  ${spd.toFixed(1)} mph`;
+                }
+                return line;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
+          y: {
+            reverse: false,
+            min: yAxisMin,
+            max: yAxisMax,
+            grid: { color: gridColor },
+            ticks: {
+              color: multiScale ? "transparent" : tickColor,
+              font: { family: "JetBrains Mono", size: 10 },
+            },
+          },
+        }
+      }
+    });
+    updateSummary(activeCfgs);
+  }
+
+  function updateSummary(activeCfgs) {
+    const inner = document.getElementById("metricSummaryInner");
+    const wrap = document.getElementById("metricSummary");
+    let html = "";
+    for (const cfg of activeCfgs) {
+      const m = metrics[cfg.slug];
+      if (!m || (m.average_value == null && m.max_value == null)) continue;
+      html += `<div style="min-width:90px">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.2rem">${cfg.label}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.25rem;font-weight:800;color:${cfg.color}">${cfg.fmt(m.average_value)}</div>
+        ${m.max_value != null ? `<div style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--text-dim)">max ${cfg.fmt(m.max_value)}</div>` : ""}
+      </div>`;
+    }
+    if (html) { inner.innerHTML = html; wrap.style.display = ""; }
+    else wrap.style.display = "none";
+  }
+
+  available.forEach(cfg => {
+    const btn = document.createElement("button");
+    btn.className = "chart-toggle" + (cfg.slug === available[0]?.slug ? " active" : "");
+    btn.dataset.metric = cfg.slug;
+    btn.textContent = cfg.label;
+    btn.style.setProperty("--toggle-color", cfg.color);
+    btn.addEventListener("click", () => {
+      if (activeSet.has(cfg.slug)) {
+        if (activeSet.size > 1) { activeSet.delete(cfg.slug); btn.classList.remove("active"); }
+      } else {
+        activeSet.add(cfg.slug); btn.classList.add("active");
+      }
+      buildChart();
+    });
+    togglesEl.appendChild(btn);
+  });
+
+  if (available.length) buildChart();
+
+  document.getElementById("resetZoomBtn").addEventListener('click', () => {
+    if (chart) chart.resetZoom();
+    document.getElementById("resetZoomBtn").style.display = "none";
+  });
+
+  document.addEventListener('cadence:themechange', () => {
+    if (available.length) buildChart();
+  });
+
+  function buildVsAverages() {
+    const body = document.getElementById("vsAveragesBody");
+    if (!body) return;
+    const summ = perf.summaries || {};
+    const effortZones = perf.effort_zones || {};
+
+    const currOutput = summ.total_output?.value ?? {{ workout.output_watts|default:"null" }};
+    const currWatts = {{ workout.avg_watts|default:"null" }};
+    const currCadence = {{ workout.avg_cadence|default:"null" }};
+    const currResistance = {{ workout.avg_resistance|default:"null" }};
+    const currHR = {{ workout.heart_rate_avg|default:"null" }};
+    const currCal = summ.calories?.value ?? {{ workout.calories|default:"null" }};
+    const currEffort = effortZones.total_effort_points ?? null;
+
+    let rows = "";
+    if (currOutput != null || typeStats.avgOutput) {
+      rows += `<tr>
+        <td>Total Output</td>
+        <td class="mono comp-this">${currOutput != null ? Math.round(currOutput) + " kJ" : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgOutput != null ? Math.round(typeStats.avgOutput) + " kJ" : "—"}</td>
+        <td class="mono comp-best">${typeStats.maxOutput != null ? Math.round(typeStats.maxOutput) + " kJ" : "—"}</td>
+      </tr>`;
+    }
+    if (currWatts != null || typeStats.avgWatts) {
+      rows += `<tr>
+        <td>Avg Power</td>
+        <td class="mono comp-this">${currWatts != null ? Math.round(currWatts) + " W" : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgWatts != null ? Math.round(typeStats.avgWatts) + " W" : "—"}</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    if (currCadence != null || typeStats.avgCadence) {
+      rows += `<tr>
+        <td>Avg Cadence</td>
+        <td class="mono comp-this">${currCadence != null ? Math.round(currCadence) + " rpm" : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgCadence != null ? Math.round(typeStats.avgCadence) + " rpm" : "—"}</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    if (currResistance != null || typeStats.avgResistance) {
+      rows += `<tr>
+        <td>Avg Resistance</td>
+        <td class="mono comp-this">${currResistance != null ? Math.round(currResistance) + "%" : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgResistance != null ? Math.round(typeStats.avgResistance) + "%" : "—"}</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    if (currHR != null || typeStats.avgHR) {
+      rows += `<tr>
+        <td>Avg Heart Rate</td>
+        <td class="mono comp-this">${currHR != null ? Math.round(currHR) + " bpm" : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgHR != null ? Math.round(typeStats.avgHR) + " bpm" : "—"}</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    if (currCal != null || typeStats.avgCalories) {
+      rows += `<tr>
+        <td>Calories</td>
+        <td class="mono comp-this">${currCal != null ? Math.round(currCal) : "—"}</td>
+        <td class="mono comp-avg">${typeStats.avgCalories != null ? Math.round(typeStats.avgCalories) : "—"}</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    if (currEffort != null) {
+      rows += `<tr>
+        <td>Effort Points</td>
+        <td class="mono comp-this">${currEffort.toFixed(1)}</td>
+        <td class="mono comp-avg">—</td>
+        <td class="mono comp-best">—</td>
+      </tr>`;
+    }
+    body.innerHTML = rows;
+  }
+  buildVsAverages();
+
+  function updateCompareBar() {
+    const checked = [...document.querySelectorAll(".compare-check:checked")].map(cb => cb.value);
+    const bar = document.getElementById("compareBar");
+    const link = document.getElementById("compareBarLink");
+    const count = document.getElementById("compareBarCount");
+    if (checked.length > 0) {
+      bar.style.display = "";
+      link.href = `/compare/?ids=${[currentWorkoutId, ...checked].join(",")}`;
+      count.textContent = `${checked.length} workout${checked.length > 1 ? "s" : ""} selected`;
+    } else {
+      bar.style.display = "none";
+    }
+  }
+  document.addEventListener("change", e => {
+    if (e.target.classList.contains("compare-check")) updateCompareBar();
+  });
+
+  const hrZonesEl = document.getElementById("hrZoneRanges");
+  if (hrZonesEl && hrMeta?.zones?.length) {
+    let html = '<div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.5rem">';
+    hrMeta.zones.forEach((z, i) => {
+      const dur = z.duration ? `${Math.floor(z.duration/60)}m ${z.duration%60}s` : "";
+      const col = ZONE_COLORS[i];
+      html += `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:3px;padding:0.1rem 0.5rem">${z.display_name}: ${z.range}${dur ? " · " + dur : ""}</span>`;
+    });
+    html += "</div>";
+    hrZonesEl.innerHTML = html;
+  }
+
+  const zoneCard = document.getElementById("hrZoneCard");
+  const zoneBreakdown = document.getElementById("hrZoneBreakdown");
+  if (zoneCard && zoneBreakdown && hrMeta?.zones?.length) {
+    const zoneNames = ["Warm Up", "Easy", "Aerobic", "Threshold", "Max"];
+    const totalDur = hrMeta.zones.reduce((s, z) => s + (z.duration || 0), 0);
+    if (totalDur > 0) {
+      let html = "";
+      hrMeta.zones.forEach((z, i) => {
+        const dur = z.duration || 0;
+        const pct = Math.round((dur / totalDur) * 100);
+        const col = ZONE_COLORS[i];
+        const timeStr = dur ? `${Math.floor(dur/60)}m ${String(dur%60).padStart(2,"0")}s` : "—";
+        html += `<div class="hr-zone-row">
+          <div class="hr-zone-label" style="color:${col}">Z${i+1} ${zoneNames[i] || ""}</div>
+          <div class="hr-zone-bar-wrap"><div class="hr-zone-bar" style="width:${pct}%;background:${col}"></div></div>
+          <div class="hr-zone-time">${timeStr}</div>
+        </div>`;
+      });
+      zoneBreakdown.innerHTML = html;
+      zoneCard.style.display = "";
+    }
+  }
+
+  // Power zone breakdown card
+  const powerZoneCard = document.getElementById("powerZoneCard");
+  const powerZoneBreakdown = document.getElementById("powerZoneBreakdown");
+  if (powerZoneCard && powerZoneBreakdown && Object.keys(powerZoneDist).length) {
+    const totalSec = Object.values(powerZoneDist).reduce((s, v) => s + (v || 0), 0);
+    if (totalSec > 0) {
+      let html = "";
+      Object.entries(powerZoneDist)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .forEach(([zone, sec]) => {
+          const zIdx = Number(zone) - 1;
+          const col = POWER_ZONE_SOLID[zIdx] || "#888";
+          const pct = Math.round((sec / totalSec) * 100);
+          const timeStr = sec ? `${Math.floor(sec/60)}m ${String(sec%60).padStart(2,"0")}s` : "—";
+          html += `<div class="hr-zone-row">
+            <div class="hr-zone-label" style="color:${col}">Z${zone} ${POWER_ZONE_NAMES[zIdx] || ""}</div>
+            <div class="hr-zone-bar-wrap"><div class="hr-zone-bar" style="width:${pct}%;background:${col}"></div></div>
+            <div class="hr-zone-time">${timeStr}</div>
+          </div>`;
+        });
+      powerZoneBreakdown.innerHTML = html;
+      powerZoneCard.style.display = "";
+    }
+  }
+
+  // Recent rides sidebar
+  if (recentRides.length) {
+    const sidebar = document.getElementById("recentRidesSidebar");
+    const list = document.getElementById("recentRidesList");
+    let html = "";
+    for (const r of recentRides) {
+      const date = r.created_at
+        ? new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "—";
+      const output = r.output_watts != null ? Math.round(r.output_watts) + " kJ" : null;
+      const cadence = r.avg_cadence != null ? Math.round(r.avg_cadence) + " rpm" : null;
+      const hr = r.heart_rate_avg ? Math.round(r.heart_rate_avg) + " bpm" : null;
+      const stats = [output, cadence, hr].filter(Boolean);
+      html += `
+        <div class="recent-item">
+          <a href="/workout/${r.workout_id}/" class="recent-item-content">
+            <div class="recent-item-date">${date}</div>
+            ${r.title ? `<div class="recent-item-title">${r.title}</div>` : ""}
+            <div class="recent-item-stats">${stats.map(s => `<span>${s}</span>`).join("")}</div>
+          </a>
+          <input type="checkbox" class="compare-check" value="${r.workout_id}" style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0">
+        </div>`;
+    }
+    list.innerHTML = html;
+    sidebar.style.display = "";
+  }
+});
+</script>
+{% endblock %}

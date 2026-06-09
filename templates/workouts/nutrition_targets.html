@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% load workout_filters %}
+
+{% block title %}Macro Targets — Cadence{% endblock %}
+{% block nav_nutrition_group %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <a href="{% url 'nutrition' %}" class="back-link">‹ Back to Nutrition</a>
+  <h1 class="page-title">MACRO TARGETS</h1>
+  <p class="page-sub">Computed from your stats. Review every 2–3 weeks as weight changes. These are estimates, not medical advice.</p>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
+
+  {# ── Profile form ── #}
+  <div class="card">
+    <div class="section-title" style="margin-bottom:1.25rem">YOUR PROFILE</div>
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="targets-form-grid">
+        <div class="form-group">
+          <label class="filter-label">Height (cm)</label>
+          <input type="number" name="height_cm" class="filter-input"
+                 value="{{ profile.height_cm|default_if_none:'' }}" placeholder="165" step="0.5">
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Age</label>
+          <input type="number" name="age" class="filter-input"
+                 value="{{ profile.age|default_if_none:'' }}" placeholder="40" min="18" max="100">
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Biological sex</label>
+          <select name="biological_sex" class="filter-select">
+            <option value="female" {% if profile.biological_sex == "female" %}selected{% endif %}>Female</option>
+            <option value="male"   {% if profile.biological_sex == "male"   %}selected{% endif %}>Male</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Activity level</label>
+          <select name="activity_level" class="filter-select">
+            {% for val,label in activ_choices %}
+            <option value="{{ val }}" {% if profile.activity_level == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Goal</label>
+          <select name="goal" class="filter-select">
+            <option value="loss"     {% if profile.goal == "loss"     %}selected{% endif %}>Weight loss</option>
+            <option value="maintain" {% if profile.goal == "maintain" %}selected{% endif %}>Maintain</option>
+            <option value="gain"     {% if profile.goal == "gain"     %}selected{% endif %}>Muscle gain</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Deficit / surplus %</label>
+          <input type="number" name="deficit_pct" class="filter-input"
+                 value="{{ profile.deficit_pct|default:'20' }}" min="5" max="40" step="1">
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label class="filter-label">Protein g / kg lean mass</label>
+          <input type="number" name="protein_g_per_kg_lean" class="filter-input"
+                 value="{{ profile.protein_g_per_kg_lean|default:'2.2' }}" min="1.0" max="3.5" step="0.1">
+          <small style="color:var(--text-dim);font-size:0.75rem">2.2 g/kg is conservative-high for muscle preservation in a deficit</small>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin:1.5rem 0 1rem">MANUAL OVERRIDES <span style="font-weight:400;text-transform:none;letter-spacing:0;font-family:'Barlow',sans-serif;font-size:0.75rem">(leave blank to use computed)</span></div>
+      <div class="targets-form-grid">
+        <div class="form-group">
+          <label class="filter-label">Calories</label>
+          <input type="number" name="manual_calories" class="filter-input"
+                 value="{{ profile.manual_calories|default_if_none:'' }}" placeholder="auto">
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Protein g</label>
+          <input type="number" name="manual_protein_g" class="filter-input"
+                 value="{{ profile.manual_protein_g|default_if_none:'' }}" placeholder="auto">
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Carbs g</label>
+          <input type="number" name="manual_carbs_g" class="filter-input"
+                 value="{{ profile.manual_carbs_g|default_if_none:'' }}" placeholder="auto">
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Fat g</label>
+          <input type="number" name="manual_fat_g" class="filter-input"
+                 value="{{ profile.manual_fat_g|default_if_none:'' }}" placeholder="auto">
+        </div>
+        <div class="form-group">
+          <label class="filter-label">Fiber g</label>
+          <input type="number" name="manual_fiber_g" class="filter-input"
+                 value="{{ profile.manual_fiber_g|default_if_none:'' }}" placeholder="auto">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-accent" style="margin-top:1.5rem;width:100%">Save &amp; Recalculate</button>
+    </form>
+  </div>
+
+  {# ── Computed targets ── #}
+  <div>
+    {% if targets %}
+
+    {# Warnings #}
+    {% if "deficit_too_aggressive" in targets.warnings %}
+    <div class="card" style="border-color:var(--accent-red);margin-bottom:1rem">
+      <strong style="color:var(--accent-red)">⚠ Deficit capped at {{ targets.calorie_floor }} kcal floor</strong>
+      <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem">
+        Your selected deficit would go below the safe minimum. Targets are set to the {{ targets.calorie_floor }} kcal floor.
+      </p>
+    </div>
+    {% endif %}
+    {% if "no_lean_mass_data" in targets.warnings %}
+    <div class="card" style="border-color:var(--accent);margin-bottom:1rem">
+      <strong style="color:var(--accent)">Protein estimated from total weight</strong>
+      <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem">
+        No lean mass data from Withings — protein is estimated at 1.6 g/kg bodyweight instead of per lean mass. Sync Withings for a more precise target.
+      </p>
+    </div>
+    {% endif %}
+    {% if "no_body_data" in targets.warnings %}
+    <div class="card" style="border-color:var(--border-accent);margin-bottom:1rem">
+      <p style="color:var(--text-muted);font-size:0.85rem">No weight data found — sync Withings for personalized targets.</p>
+    </div>
+    {% endif %}
+
+    {# Body data source #}
+    {% if targets.weight_lb %}
+    <div class="card" style="margin-bottom:1rem;padding:0.75rem 1.25rem">
+      <div style="font-size:0.78rem;color:var(--text-muted)">
+        Based on latest Withings weigh-in{% if targets.weight_date %} ({{ targets.weight_date }}){% endif %}
+      </div>
+      <div style="display:flex;gap:2rem;margin-top:0.35rem">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700">
+          {{ targets.weight_lb }} lb
+          {% if targets.lean_mass_lb %}<span style="color:var(--text-muted);font-weight:400;font-size:0.85rem"> · {{ targets.lean_mass_lb }} lb lean</span>{% endif %}
+        </span>
+      </div>
+    </div>
+    {% endif %}
+
+    {# BMR / TDEE intermediates #}
+    {% if targets.bmr %}
+    <div class="card" style="margin-bottom:1rem;padding:0.75rem 1.25rem">
+      <div class="section-title" style="margin-bottom:0.5rem">CALCULATED</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+        <div>
+          <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">BMR</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.4rem;font-weight:700">{{ targets.bmr }}</div>
+        </div>
+        <div>
+          <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">TDEE ({{ targets.activity_level }})</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.4rem;font-weight:700">{{ targets.tdee }}</div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Daily targets #}
+    <div class="card">
+      <div class="section-title" style="margin-bottom:1.25rem">DAILY TARGETS{% if targets.has_manual_overrides %} <span style="color:var(--accent);font-size:0.7rem">some manual</span>{% endif %}</div>
+
+      <div class="targets-display-grid">
+        <div class="target-item target-item--cal">
+          <div class="target-label">Calories</div>
+          <div class="target-value">{{ targets.calories|default:"—" }}</div>
+          {% if targets.has_manual_overrides and targets.computed_calories and targets.calories != targets.computed_calories %}
+          <div class="target-computed">computed: {{ targets.computed_calories }}</div>
+          {% endif %}
+        </div>
+        <div class="target-item target-item--prot">
+          <div class="target-label">Protein</div>
+          <div class="target-value">{{ targets.protein_g|default:"—" }}<span class="target-unit">g</span></div>
+          {% if targets.has_manual_overrides and targets.computed_protein_g and targets.protein_g != targets.computed_protein_g %}
+          <div class="target-computed">computed: {{ targets.computed_protein_g }}g</div>
+          {% endif %}
+        </div>
+        <div class="target-item target-item--carbs">
+          <div class="target-label">Carbs</div>
+          <div class="target-value">{{ targets.carbs_g|default:"—" }}<span class="target-unit">g</span></div>
+        </div>
+        <div class="target-item target-item--fat">
+          <div class="target-label">Fat</div>
+          <div class="target-value">{{ targets.fat_g|default:"—" }}<span class="target-unit">g</span></div>
+        </div>
+        <div class="target-item target-item--fiber">
+          <div class="target-label">Fiber <span class="macro-flag">GLP-1</span></div>
+          <div class="target-value">{{ targets.fiber_g|default:"—" }}<span class="target-unit">g</span></div>
+        </div>
+      </div>
+
+      {% if targets.protein_g and targets.calories %}
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);font-size:0.78rem;color:var(--text-muted)">
+        Protein = {{ targets.protein_g }}g × 4 = {{ targets.protein_g|floatformat:0 }}×4 kcal
+        ({% widthratio targets.protein_g|default:0 targets.calories|default:1 400 %}% of calories)
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card" style="margin-top:1rem;padding:0.75rem 1.25rem;border-color:var(--border)">
+      <p style="color:var(--text-dim);font-size:0.8rem;line-height:1.5">
+        These are estimates for personal tracking, not medical advice.
+        Targets work best when adjusted based on your actual weight trend every 2–3 weeks.
+        If weight is dropping faster than expected, increase calories by 50–100 kcal/day before cutting protein.
+      </p>
+    </div>
+
+    {# ── Target Fit Check ── #}
+    {% if fit %}
+    <div class="card" style="margin-top:1.5rem;{% if fit.status == 'on_track' %}border-color:var(--accent-green){% elif fit.status in 'under_responding,over_responding' %}border-color:var(--accent){% endif %}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
+        <div class="section-title" style="margin-bottom:0">TARGET FIT — LAST 14 DAYS</div>
+        <span style="font-size:0.75rem;font-weight:700;
+          color:{% if fit.status == 'on_track' %}var(--accent-green){% elif fit.status == 'insufficient_data' or fit.status == 'no_weight' or fit.status == 'no_target' %}var(--text-dim){% else %}var(--accent){% endif %}">
+          {% if fit.status == 'on_track' %}✓ On Track
+          {% elif fit.status == 'under_responding' %}Under-responding
+          {% elif fit.status == 'over_responding' %}Over-responding
+          {% elif fit.status == 'insufficient_data' %}Insufficient data
+          {% elif fit.status == 'no_weight' %}No weight data
+          {% else %}—{% endif %}
+        </span>
+      </div>
+
+      {% if fit.actual_trend_lb_per_week is not None %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem">
+        <div>
+          <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Expected trend</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.3rem;font-weight:700">
+            {% if fit.expected_trend_lb_per_week >= 0 %}+{% endif %}{{ fit.expected_trend_lb_per_week }} lb/wk
+          </div>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Actual trend</div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.3rem;font-weight:700;
+            color:{% if fit.status == 'on_track' %}var(--accent-green){% elif fit.status != 'insufficient_data' %}var(--accent){% else %}var(--text){% endif %}">
+            {% if fit.actual_trend_lb_per_week >= 0 %}+{% endif %}{{ fit.actual_trend_lb_per_week }} lb/wk
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.6;margin-bottom:0.75rem">{{ fit.reasoning }}</p>
+
+      {% if fit.suggested_calorie_adjustment != 0 and fit.new_suggested_calories %}
+      <div style="background:color-mix(in srgb, var(--accent) 8%, transparent);border-radius:var(--r);padding:0.75rem 1rem;margin-bottom:0.75rem">
+        <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.5rem">
+          Suggested: <strong style="color:var(--text)">
+            {% if fit.suggested_calorie_adjustment > 0 %}+{% endif %}{{ fit.suggested_calorie_adjustment }} kcal/day
+          </strong>
+          → new target <strong style="color:var(--accent)">{{ fit.new_suggested_calories }} kcal</strong>
+        </div>
+        <div style="display:flex;gap:0.5rem">
+          <button type="button"
+                  id="accept-btn"
+                  class="btn btn-accent btn-sm"
+                  onclick="acceptAdjustment({{ fit.new_suggested_calories }}, '{{ fit.reasoning|escapejs }}')">
+            Accept
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()">
+            Decline
+          </button>
+        </div>
+        <div id="accept-status" style="font-size:0.78rem;color:var(--text-muted);margin-top:0.4rem"></div>
+      </div>
+      {% endif %}
+
+      {% if fit.confidence %}
+      <div style="font-size:0.7rem;color:var(--text-dim)">
+        Confidence: {{ fit.confidence }} · {{ fit.logging_days }}/14 days logged
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# ── Adjustment history ── #}
+    {% if adjustments %}
+    <div class="card" style="margin-top:1rem">
+      <div class="section-title" style="margin-bottom:0.75rem">ADJUSTMENT HISTORY</div>
+      <div style="display:flex;flex-direction:column;gap:0.4rem">
+        {% for adj in adjustments %}
+        <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.82rem;{% if not forloop.first %}padding-top:0.4rem;border-top:1px solid var(--border);{% endif %}">
+          <span style="color:var(--text-dim);font-size:0.72rem;min-width:5rem">{{ adj.timestamp|date:"M j, Y" }}</span>
+          <span style="color:var(--text-muted)">{{ adj.previous_calories }} → <strong style="color:var(--text)">{{ adj.new_calories }}</strong> kcal</span>
+          <span style="color:var(--text-dim);font-size:0.72rem">
+            {% if adj.new_calories > adj.previous_calories %}+{% endif %}{{ adj.new_calories|add:adj.previous_calories|add:"-"|add:adj.previous_calories }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="card">
+      <p style="color:var(--text-muted)">Fill in your profile to see computed targets.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+function acceptAdjustment(newCal, reason) {
+  var btn = document.getElementById('accept-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  var data = new FormData();
+  data.append('new_calories', newCal);
+  data.append('reason', reason);
+  data.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+  fetch('{% url "target_accept" %}', { method: 'POST', body: data })
+    .then(r => r.json())
+    .then(function(j) {
+      if (j.ok) {
+        document.getElementById('accept-status').textContent = '✓ Updated to ' + j.new_calories + ' kcal. Reloading…';
+        document.getElementById('accept-status').style.color = 'var(--accent-green)';
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Accept';
+        document.getElementById('accept-status').textContent = j.error || 'Error.';
+      }
+    });
+}
+</script>
+{% endblock %}

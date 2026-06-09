@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>{% load workout_filters %}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Cadence{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'css/main.css' %}">
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <script src="https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" defer></script>
+  <script defer>
+    window._applyChartTheme = function() {
+      if (typeof Chart !== 'undefined') {
+        Chart.defaults.color = 'rgba(255,255,255,0.95)';
+      }
+      window.chartTheme = {
+        gridColor:      'rgba(255,255,255,0.05)',
+        tickColor:      '#888',
+        legendColor:    '#aaa',
+        zoneLabelColor: 'rgba(255,255,255,0.95)',
+        refLineColor:   'rgba(255,255,255,0.30)',
+        mainLineWidth:  2,
+        refLineWidth:   1.5,
+      };
+    };
+    window._applyChartTheme();
+  </script>
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="{% url 'today' %}" class="nav-logo">
+      <span class="nav-logo-mark">◈</span>
+      <span>CA<strong>DENCE</strong></span>
+    </a>
+
+    <div class="nav-links">
+      <a href="{% url 'today' %}" class="nav-link {% block nav_today %}{% endblock %}">Today</a>
+
+      <!-- TRAINING -->
+      <div class="nav-group {% block nav_training %}{% endblock %}">
+        <a href="{% url 'history' %}" class="nav-link nav-group-toggle">Training <span class="caret">▾</span></a>
+        <div class="nav-dropdown">
+          <a class="nav-dropdown-item" href="{% url 'dashboard' %}">Dashboard</a>
+          <a class="nav-dropdown-item" href="{% url 'history' %}">Workouts</a>
+          <a class="nav-dropdown-item" href="{% url 'compare' %}">Compare</a>
+          <a class="nav-dropdown-item" href="{% url 'calendar' %}">Calendar</a>
+          <a class="nav-dropdown-item" href="{% url 'analytics' %}">Analytics</a>
+          <div class="nav-dropdown-divider"></div>
+          <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'settings' %}">FTP Settings</a>
+        </div>
+      </div>
+
+      <!-- BODY -->
+      <div class="nav-group {% block nav_body_group %}{% endblock %}">
+        <a href="{% url 'body' %}" class="nav-link nav-group-toggle">Body <span class="caret">▾</span></a>
+        <div class="nav-dropdown">
+          <a class="nav-dropdown-item" href="{% url 'interventions' %}">Interventions</a>
+          <a class="nav-dropdown-item" href="{% url 'symptoms' %}">Symptoms</a>
+          <a class="nav-dropdown-item" href="{% url 'body' %}">Analytics</a>
+        </div>
+      </div>
+
+      <!-- NUTRITION -->
+      <div class="nav-group {% block nav_nutrition_group %}{% endblock %}">
+        <a href="{% url 'nutrition' %}" class="nav-link nav-group-toggle">Nutrition <span class="caret">▾</span></a>
+        <div class="nav-dropdown">
+          <a class="nav-dropdown-item" href="{% url 'nutrition' %}">Today's Log</a>
+          <!-- <a class="nav-dropdown-item" href="{% url 'nutrition_targets' %}">Targets</a> -->
+          <a class="nav-dropdown-item" href="{% url 'nutrition_analytics' %}">Analytics</a>
+          <div class="nav-dropdown-divider"></div>
+          <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'nutrition_targets' %}">Macro Settings</a>
+
+        </div>
+      </div>
+
+      <!-- INSIGHTS -->
+      <div class="nav-group {% block nav_insights_group %}{% endblock %}">
+        <a href="{% url 'insights' %}" class="nav-link nav-group-toggle">Insights <span class="caret">▾</span></a>
+        <div class="nav-dropdown">
+          <a class="nav-dropdown-item" href="{% url 'insights' %}">Pattern Insights</a>
+          <a class="nav-dropdown-item" href="{% url 'weekly_review' %}">Weekly Review</a>
+          <a class="nav-dropdown-item" href="{% url 'intervention_analysis' %}">Intervention Analysis</a>
+        </div>
+      </div>
+    </div>
+
+    <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">☀</button>
+
+    <div class="sync-menu">
+      <button class="btn btn-sm btn-accent" onclick="this.closest('.sync-menu').classList.toggle('open')">
+        ↻ Sync ▾
+      </button>
+      <div class="sync-dropdown">
+        {% last_synced as ls %}{% if ls %}
+        <div class="sync-option-label">Last synced: {{ ls|date:"M j, Y g:i A" }}</div>
+        <div class="sync-divider"></div>
+        {% endif %}
+        <a class="sync-option" href="{% url 'sync_new' %}" target="_blank">
+          <strong>Sync New</strong>
+          <span>New Peloton &amp; Garmin + today's wellness</span>
+        </a>
+        <a class="sync-option sync-option--danger" href="{% url 'sync_all' %}" target="_blank">
+          <strong>Sync All</strong>
+          <span>Full backfill — slow</span>
+        </a>
+        <div class="sync-divider"></div>
+        <a class="sync-option" href="{% url 'sync_withings_new' %}" target="_blank">
+          <strong>Withings Sync New</strong>
+          <span>Sync new Withings body weight data</span>
+        </a>
+        <a class="sync-option sync-option--danger" href="{% url 'sync_withings_all' %}" target="_blank">
+          <strong>Withings Sync All</strong>
+          <span>Full backfill — slow</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.sync-menu')) {
+        document.querySelectorAll('.sync-menu.open').forEach(m => m.classList.remove('open'));
+      }
+    });
+
+    (function() {
+      var btn = document.getElementById('theme-toggle');
+      function applyTheme(t) {
+        document.documentElement.setAttribute('data-theme', t);
+        localStorage.setItem('theme', t);
+        btn.textContent = t === 'dark' ? '☀' : '☾';
+        btn.title = t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+        if (typeof window._applyChartTheme === 'function') window._applyChartTheme();
+        document.dispatchEvent(new CustomEvent('cadence:themechange'));
+      }
+      applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+      btn.addEventListener('click', function() {
+        var current = document.documentElement.getAttribute('data-theme') || 'dark';
+        applyTheme(current === 'dark' ? 'light' : 'dark');
+      });
+    })();
+  </script>
+</body>
+</html>

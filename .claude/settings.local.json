@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"sync\" /Users/megan/peloton_dashboard --include=\"*.py\" --include=\"*.html\" --include=\"*.js\" ! -path \"*/venv/*\")",
+      "Bash(python3 -c ' *)",
+      "WebFetch(domain:pzpack.com)",
+      "Bash(curl -s \"https://pzpack.com/assets/index-CY-xQowM.js\")",
+      "Bash(LC_ALL=C grep -oE \"not affiliated.{0,300}\")",
+      "Bash(LC_ALL=C grep -oE \"terms of service.{0,500}\")",
+      "Bash(LC_ALL=C grep -oE \"Terms of.{0,500}\")",
+      "Bash(LC_ALL=C grep -oE \"Privacy Policy.{0,1000}\")",
+      "Bash(LC_ALL=C grep -oE \"Our Story.{0,2000}\")",
+      "Bash(LC_ALL=C grep -oE \"Peloton OAuth.{0,500}\")",
+      "Bash(LC_ALL=C grep -oE \"Connect.{0,50}Peloton.{0,500}\")",
+      "Bash(LC_ALL=C grep -oE \"Reconnect.{0,500}Peloton.{0,200}\")",
+      "Bash(pip list *)",
+      "Bash(python3.11 --version)",
+      "Bash(python3.12 --version)",
+      "Bash(python3.13 --version)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(python3.14 -m venv venv_new)",
+      "Bash(venv/bin/python3 manage.py check)",
+      "Bash(venv/bin/python3 -c \"from workouts.models import CachedWorkout; print\\('from_api:', CachedWorkout.from_api\\); print\\('from_garmin:', CachedWorkout.from_garmin\\)\")",
+      "Bash(venv/bin/python3 manage.py shell -c \"from workouts.models import CachedWorkout; print\\('from_api:', CachedWorkout.from_api\\); print\\('from_garmin:', CachedWorkout.from_garmin\\)\")",
+      "Bash(venv/bin/python3 manage.py shell -c ' *)",
+      "Bash(venv/bin/python3 manage.py migrate)",
+      "Bash(venv/bin/python3 manage.py shell -c \"from workouts.models import Intervention; print\\('Intervention count:', Intervention.objects.count\\(\\)\\)\")",
+      "Bash(venv/bin/python3 manage.py analyze_intervention --start 2026-04-03 --label \"Tirz 2 start\" --window 28)",
+      "Bash(echo \"Exit code: $?\")"
+    ]
+  }
+}

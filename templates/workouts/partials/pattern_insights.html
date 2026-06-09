@@ -1,0 +1,6 @@
+{% load workout_filters %}
+{% if insights %}
+{{ insights|format_nutrition_insights }}
+{% else %}
+<p style="color:var(--text-dim);font-size:0.85rem">Click <strong>↺ Generate</strong> to run a deep pattern analysis across your last 60 days of data.</p>
+{% endif %}
