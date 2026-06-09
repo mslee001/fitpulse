@@ -130,6 +130,42 @@ Note: `db.sqlite3` is not in the repo — each machine starts with an empty data
 
 ---
 
+## Demo Mode
+
+A seed command generates a fully populated demo database with 90 days of realistic fake data — no Peloton/Garmin/Withings account needed.
+
+**What's included:**
+- 44 workouts across cycling, running, strength, and yoga with realistic metrics, HR zones, and running form data
+- 91 days of Garmin wellness data (weight trending down, HRV, sleep, body battery, stress, training readiness)
+- 2 interventions: Semaglutide with a 3-step dose escalation history, and Creatine
+- 30 days of food log entries with macro breakdowns, 5 saved meals, hunger checks, and symptom logs
+- Pre-loaded AI insights, body commentary, nutrition insights, pattern insights, and a weekly review
+
+**Create and seed the demo database:**
+
+```bash
+DB_FILE=demo.sqlite3 venv/bin/python3 manage.py migrate
+DB_FILE=demo.sqlite3 venv/bin/python3 manage.py seed_demo
+```
+
+**Start the server in demo mode:**
+
+```bash
+DB_FILE=demo.sqlite3 venv/bin/python3 manage.py runserver
+```
+
+**Switch back to your live data:**
+
+```bash
+venv/bin/python3 manage.py runserver
+```
+
+The `DB_FILE` environment variable controls which SQLite file is used. When omitted, it defaults to `db.sqlite3` (your real data). The two databases are completely independent — switching between them is instant and non-destructive.
+
+To reset the demo database at any time, just re-run `seed_demo` against it (it clears all data first).
+
+---
+
 ## Syncing Data
 
 All data is stored in a local SQLite cache. Nothing is fetched in real time for page views — sync first, then browse.
