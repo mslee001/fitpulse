@@ -223,6 +223,16 @@ print(f'Total miles walked: {total:.1f}')
 "
 ```
 
+### Delete a workout by ID
+```bash
+py -c "
+import django; django.setup()
+from workouts.models import CachedWorkout
+deleted, _ = CachedWorkout.objects.filter(workout_id='WORKOUT_ID_HERE').delete()
+print(f'Deleted {deleted} record(s)')
+"
+```
+
 ### Recompute nutrition totals (e.g. after backfill)
 ```bash
 py -c "

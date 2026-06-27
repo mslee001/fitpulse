@@ -4,12 +4,12 @@
 {% elif pending %}
 <div class="insights-pending"
   hx-get="{% url 'analytics_check_insights' %}"
-  hx-trigger="load, every 15s"
+  hx-trigger="load, every 30s"
   hx-target="#insights-content"
   hx-swap="innerHTML">
   <span class="insights-pending-dot"></span>
   Batch submitted — Claude Haiku is analyzing your data. This usually takes a few minutes.
-  <span class="insights-pending-check">Checking automatically every 15s...</span>
+  <span class="insights-pending-check">Checking automatically every 30s...</span>
 </div>
 {% else %}
 <div style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">

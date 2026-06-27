@@ -4,12 +4,12 @@
 {% elif pending %}
 <div class="insights-pending"
   hx-get="{% url 'pattern_insights_check' %}"
-  hx-trigger="load, every 15s"
+  hx-trigger="load, every 30s"
   hx-target="#insights-area"
   hx-swap="innerHTML">
   <span class="insights-pending-dot"></span>
   Batch submitted — Claude Sonnet is analyzing 60 days of data. This usually takes a few minutes.
-  <span class="insights-pending-check">Checking automatically every 15s...</span>
+  <span class="insights-pending-check">Checking automatically every 30s...</span>
 </div>
 {% elif insights %}
 {{ insights|format_nutrition_insights }}

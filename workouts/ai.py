@@ -26,6 +26,27 @@ from . import llm
 from .models import CachedWorkout, DailyStats, UserSettings, Intervention
 from .prompt_formats import HEADLINE_BULLETS_FORMAT, INTENSITY_ACTIVITY_REASON_FORMAT
 
+# Stricter headline guidance for the day-analysis prompt only.
+# compare_analysis keeps the looser HEADLINE_BULLETS_FORMAT because a comparison
+# headline that summarises the key difference is appropriate there.
+DAY_HEADLINE_BULLETS_FORMAT = """\
+Respond in exactly this format with no extra text before or after:
+
+HEADLINE: <one sentence naming the single most notable thing about this day. \
+This is NOT a summary of the day. Pick the most interesting signal — if it's \
+in nutrition, intervention timing, or a multi-day pattern, lead with that, \
+not with the workout. Avoid filler adjectives ("solid", "good", "great", \
+"nice") and avoid generic framings ("a recovery day", "a training day") \
+unless they're earned by an explicit comparison. The headline must be consistent with the bullets — do not use it to soften or qualify observations that the bullets state directly.>
+• <specific observation referencing actual numbers>
+• <specific observation referencing actual numbers>
+• <specific observation referencing actual numbers>
+
+Max 3 bullets. Each bullet makes one observation and cites a specific metric. \
+Do not open a bullet by restating today's activity before making the point — \
+lead with the observation itself. If the point is a multi-day pattern, \
+state the pattern directly without prefacing it with what happened today."""
+
 logger = logging.getLogger(__name__)
 
 
@@ -762,6 +783,54 @@ def build_insights_system() -> str:
         "When nutrition_last_30_days is present, connect fueling to training: low protein adherence "
         "on weeks with high strength volume is worth flagging; consistent calorie logging alongside "
         "training momentum is a positive habit worth reinforcing. "
+    )
+
+    parts.append(
+        "ANALYSIS RULES — apply to every section: "
+        "Rule 1 — Filler adjectives are banned; grounded interpretation is encouraged. "
+        "Do not use filler adjectives not earned by an explicit comparison or threshold. "
+        "Banned by default: 'solid,' 'good,' 'great,' 'encouraging,' 'excellent,' 'favorable,' "
+        "'strong,' 'healthy,' 'nice,' 'impressive,' 'exceptional,' 'extremely,' 'genuinely.' "
+        "Banned intensifier combinations: 'extremely high,' 'genuinely impressive,' "
+        "'exceptional consistency,' 'solidly aerobic,' 'remarkably consistent.' "
+        "If a metric is notable, name what makes it notable — what threshold it crossed, "
+        "what value it improved from, what comparison anchors the claim. "
+        "You may and should offer interpretation that names a cause, mechanism, or cross-section "
+        "connection, AS LONG AS the interpretation is supported by the data. "
+        "Interpretation like 'improving recovery markers while volume held steady is different from "
+        "improvement during a deload' or 'this protein consistency directly supports the strength "
+        "volume' is exactly the kind of synthesis this analysis exists for. "
+        "Examples — banned: 'extremely high training frequency,' 'genuinely impressive recovery,' "
+        "'solidly aerobic runs,' 'exceptional consistency in the rehab protocol.' "
+        "Allowed: 'training 5.8 days per week — high relative to typical norms and up from 5.5 "
+        "days/week 13 weeks ago'; 'recovery markers improved across all four signals while training "
+        "volume held steady'; 'average pace of 15:38/mi at 1.2% incline, below typical lactate "
+        "threshold pace, indicating aerobic-zone work'; 'Stretch Pectoral logged 79 times in 60 "
+        "days indicates near-daily execution'; 'main risk is that a rigid 6-day pattern leaves "
+        "little room to respond to fatigue signals' (interpretation, no filler). "
+        "Rule 2 — No clinical or medical-advice framings. "
+        "This is fitness data analysis, not a clinical assessment. "
+        "Banned framings: 'healthy range,' 'lower end of a healthy range,' "
+        "'absorbing this training load well,' 'well-tolerated,' 'is exactly right,' "
+        "'progressing appropriately,' 'system is coping well,' 'concerning,' 'needs attention,' "
+        "'appropriate level of.' "
+        "Describe what the data shows. Comparisons to defined benchmarks are allowed and encouraged "
+        "(e.g. 'cadence at 173.7 spm, above the 165 spm running-economy benchmark'). "
+        "Comparisons to vague clinical norms ('within healthy range') are not. "
+        "Forward-looking suggestions: use 'worth watching,' 'would be worth,' 'could extend,' "
+        "'is the exercise with the most room to grow' — not 'should,' 'must,' 'needs to.' "
+        "Rule 3 — Do not infer the user's attitudes, motivations, or mental states. "
+        "The data shows what the user does, not how they feel about what they do. "
+        "Do not write phrases like 'rather than treating them as optional,' 'despite the temptation "
+        "to push harder,' 'given your commitment to consistency,' or similar inferred-intent framings. "
+        "Describe behavior; do not project attitudes onto it. "
+        "Exception: genuinely descriptive labels for observed behavior patterns are fine. "
+        "'A well-grooved routine' describes an observed structural pattern — that is data-traceable "
+        "and allowed. The test: can you point to the data row that supports the statement? "
+        "If yes, allowed. If no, remove it."
+    )
+
+    parts.append(
         "Respond using ## section headers with paragraph text — no bullet points, no intro paragraph."
     )
 
@@ -984,22 +1053,90 @@ def _get_or_generate_day_analysis(day, workouts, stats):
         if intervention_context and "No tracked interventions" not in intervention_context:
             intervention_section = f"\n\nACTIVE INTERVENTIONS\n{intervention_context}"
 
+        # Prior 7-day context — enables multi-day pattern observations
+        prior_start = day - timedelta(days=7)
+        prior_end = day - timedelta(days=1)
+        prior_stats_qs = list(
+            DailyStats.objects.filter(date__gte=prior_start, date__lte=prior_end)
+            .order_by("date")
+        )
+        prior_workout_rows = list(
+            CachedWorkout.objects.filter(
+                created_at__date__gte=prior_start,
+                created_at__date__lte=prior_end,
+            ).order_by("created_at")
+        )
+        prior_workouts_by_date: dict = {}
+        for w in prior_workout_rows:
+            d = tz.localtime(w.created_at).date()
+            prior_workouts_by_date.setdefault(d, []).append(w)
+
+        all_prior_dates = sorted(
+            set(s.date for s in prior_stats_qs) | set(prior_workouts_by_date.keys())
+        )
+        prior_stats_by_date = {s.date: s for s in prior_stats_qs}
+
+        prior_lines = []
+        for d in all_prior_dates:
+            s = prior_stats_by_date.get(d)
+            parts = []
+            if s:
+                if s.training_readiness_score:
+                    parts.append(f"readiness {s.training_readiness_score}")
+                if s.hrv_last_night:
+                    parts.append(f"HRV {s.hrv_last_night:.0f}")
+                if s.sleep_score:
+                    parts.append(f"sleep score {s.sleep_score}")
+                if s.resting_hr:
+                    parts.append(f"RHR {s.resting_hr}")
+            day_wos = prior_workouts_by_date.get(d, [])
+            if day_wos:
+                wo_strs = []
+                for w in day_wos[:3]:
+                    wo_str = f"{w.discipline} {w.duration_minutes}min"
+                    if w.title:
+                        wo_str += f' "{w.title}"'
+                    wo_strs.append(wo_str)
+                if len(day_wos) > 3:
+                    wo_strs.append("...")
+                did_str = ", ".join(wo_strs)
+            else:
+                did_str = "rest"
+            stats_str = ", ".join(parts) if parts else "no wellness data"
+            prior_lines.append(f"{d.strftime('%a %Y-%m-%d')}: {stats_str} | did: {did_str}")
+
+        prior_section = ""
+        if prior_lines:
+            prior_section = "\n\nPRIOR 7 DAYS\n" + "\n".join(prior_lines)
+
         today_note = " Do not comment on missing body battery end-of-day value — it is only recorded after sleep and is not available for the current day." if is_today else ""
         persona = build_persona_block(date_range=(day, day))
         persona_section = f"\n\nABOUT THIS PERSON\n{persona}" if persona else ""
         prompt = f"""Date: {day.strftime('%A, %B %-d, %Y')}
 
 RECOVERY & READINESS
-{chr(10).join(wellness_parts) if wellness_parts else 'No Garmin wellness data available.'}{nutrition_section}{intervention_section}
+{chr(10).join(wellness_parts) if wellness_parts else 'No Garmin wellness data available.'}{nutrition_section}{intervention_section}{prior_section}
 
 WORKOUTS PERFORMED TODAY ({day.strftime('%B %-d, %Y')})
 {chr(10).join(workout_lines)}
 Note: workout titles may contain dates (e.g. "6/5/26") indicating when a routine was created — these are NOT the workout date. All workouts above were performed today.{persona_section}
 
-Analyze how this person performed given their recovery state. {HEADLINE_BULLETS_FORMAT}
-Metrics to cite: pace, HR, effort score, body battery, HRV, nutrition. If nutrition data is present, note connections like "pre-workout protein was strong" or "low carb day may have affected energy". If intervention data is present, note relevant context — e.g. if a supplement was just started, acknowledge it's day 1 and effects won't be immediate; if a medication dose changed recently, note that.{today_note}"""
+Analyze how this person performed given their recovery state AND the trajectory of the last 7 days. Call out multi-day patterns when present — e.g. "third moderate-readiness day in a row", "first easy day after four consecutive training days", "HRV recovering from a dip earlier in the week." Single-day observations are still fine, but prefer pattern-level observations when the data supports them.
 
-        return llm.call(prompt, model=llm.HAIKU, max_tokens=300)
+ANALYSIS RULES
+1. Pattern threshold: A multi-day pattern requires at least 3 consecutive days moving in the same direction, OR the same metric staying in the same range (high/low/moderate) for at least 4 of the last 7 days. A single day's change from the previous day is not a pattern — it is a day-over-day change, and should be described as such.
+2. Cite values for every pattern claim: When making any trend, pattern, or multi-day observation, you MUST include the actual sequence of values inline. Example: "readiness has been 65, 68, 71 over the last three days (rising)" — not "readiness has been climbing." If you cannot show the values that support the pattern, do not make the pattern claim.
+3. No trend-inflation: Do not characterize a single day-over-day change as part of a longer trend unless the longer trend genuinely exists by Rule 1. Do not use phrases like "tracking a pattern of," "continues a trend of," "consistent with declining," or "second consecutive" to describe a single-day change. If the only signal is a one-day change, describe it as a one-day change.
+4. Metrics to cite: pace, HR, effort score, body battery, HRV, nutrition. If nutrition data is present, note connections like "calories were 300 below target" or "low carb day may have affected energy". If intervention data is present, note relevant context — e.g. if a supplement was just started, acknowledge it's day 1 and effects won't be immediate; if a medication dose changed recently, note that.
+5. Meal timing: Do not attribute intentional timing or purpose to logged meals. Do not call a meal a "pre-workout snack," "recovery meal," or similar unless the food name explicitly says so. Describe timing factually instead — e.g. "eaten 90 minutes before the strength session."
+6. No inferred mental states: Do not speculate about the user's emotions, motivations, or what they "might have wanted to do." Stick to what the data shows. Do not characterize effort as "appropriate," "earned," "deserved," or similar — describe what happened, not whether it was the right choice.
+7. Intervention hedging: When connecting a metric to a medication, supplement, or other intervention, hedge appropriately. Use "may," "could," or "is consistent with" unless the data shows a clear before/after change of ≥20% sustained over multiple days. Do not assert causation from a single day's data.
+
+{DAY_HEADLINE_BULLETS_FORMAT}{today_note}"""
+
+        # max_tokens bumped to 400: prior-context enables multi-day pattern bullets
+        # that tend to run slightly longer than single-day observations.
+        return llm.call(prompt, model=llm.HAIKU, max_tokens=400)
 
     # If a workout was synced after the last analysis, force a refresh
     force_regen = False
@@ -1276,7 +1413,7 @@ def compare_analysis(request):
 
     workout_blocks = "\n\n".join(f"WORKOUT {i+1}:\n{_stat(w)}" for i, w in enumerate(workouts))
     persona = build_persona_block()
-    persona_rule = f"\n4. {persona}" if persona else ""
+    persona_rule = f"\n8. {persona}" if persona else ""
 
     prompt = f"""You are analyzing {len(workouts)} Peloton and/or Garmin workouts being compared side by side.
 
@@ -1286,8 +1423,12 @@ Provide a brief, insightful comparison. {HEADLINE_BULLETS_FORMAT}
 
 Rules:
 1. INCLINE/ELEVATION FIRST — MANDATORY: Before drawing any conclusion about HR, efficiency, or fatigue, check whether avg incline or max incline differs between runs. A higher avg incline directly raises HR and slows pace — this is physics, not fitness decline. If inclines differ, the first bullet MUST address this and quantify the impact. Do NOT attribute HR differences to fatigue or mechanics if incline explains it.
-2. Keep each bullet to one to two sentences and reference actual numbers.
-3. Focus on what's interesting or actionable — effort vs output tradeoffs, HR efficiency, pacing strategy, incline-adjusted performance, cross-discipline comparisons.{persona_rule}"""
+2. No developmental claims: You are comparing {len(workouts)} specific workouts. This is not a fitness assessment, a training-adaptation analysis, or a progress check. Do not infer developmental progress, base-building, improved fitness, stronger aerobic capacity, or training adaptation from comparing these workouts — two or three workouts is not enough data to support those claims. You MAY describe how the workouts differ ("this run had lower HR at higher output") and speculate about likely causes (terrain, effort, recovery state, weather, time of day). Banned phrases: "a hallmark of," "stronger aerobic base," "base-building progress," "endurance gains," "improving fitness," "showing development," "indicates training adaptation."
+3. Mechanically-derived metrics are restatements, not independent evidence: Stride length × cadence ≈ speed — at identical cadence, longer stride and faster pace are the same observation in different units, not two separate signals. Output (kJ) scales with intensity × duration — do not cite output and pace/HR as independent signals if duration was the same. Calorie burn tracks HR × duration — do not cite calorie differences as separate evidence when HR and duration have already been cited. At identical duration, output (kJ) and distance are the same observation in different units: more distance in the same time means more work done. Do not cite output and distance as independent evidence for the same claim when the workouts had the same duration — you may note the relationship when it is the point (e.g. "the extra distance translated directly to higher output"), but do not stack them. You MAY comment on any mechanical relationship when it IS the point (e.g. "the speed gain came from longer strides at unchanged cadence, not faster turnover").
+4. Calibrate causal language to the magnitude of the confound: When attributing a performance difference to an environmental confound (incline, weather, terrain, elevation), match the strength of your causal language to how large the confound is relative to the observed effect. Use "directly explains" or "fully accounts for" ONLY when the confound's magnitude is large enough to plausibly account for the full observed difference — a 0.2 percentage-point incline drop does NOT directly explain a 6.8% pace gain; a 4 percentage-point drop could plausibly explain a substantial pace change. Use "partially explains" or "contributes to" when the confound is in the right direction but smaller than the observed effect, leaving a residual. Use "is consistent with" or "aligns with" when direction matches but magnitude is unclear. Before using strong causal language, ask: is the confound large enough to plausibly cause the entire observed difference? If not, use a weaker frame and acknowledge the residual.
+5. Cite values, ban inflation language: For any comparative claim, include the actual values inline — e.g. "pace improved from 16:05 to 15:02" not "pace improved significantly." If you cannot show the values supporting a claim, do not make the claim. Do not use phrases like "a hallmark of," "clear sign of," "indicates a stronger," or "showing improved fitness" to characterize a two-workout comparison. Describe what happened in the specific workouts being compared — stop there.
+6. Keep each bullet to one to two sentences and reference actual numbers.
+7. Focus on what's interesting or actionable — effort vs output tradeoffs, HR efficiency, pacing strategy, incline-adjusted performance, cross-discipline comparisons.{persona_rule}"""
 
     try:
         text = llm.call(prompt, model=llm.HAIKU, max_tokens=450)
@@ -1423,18 +1564,23 @@ HRV: {avg_hrv or 'n/a'} ms | Resting HR: {avg_rhr or 'n/a'} bpm | Sleep score: {
 ACTIVE INTERVENTIONS
 {iv_ctx}
 
-Write the commentary in exactly this structure. Write each section as 2-3 sentences of flowing paragraph text — no bullet points. Use **bold** for emphasis on specific numbers or key observations.
+ANALYSIS RULES
+A. No subjective-effect fabrication: The intervention list shows what medications, supplements, or protocols are being taken. It does NOT show how the user is responding subjectively. Do not claim or infer that any intervention has produced mood changes, anxiety changes, energy changes, mental clarity improvements, tolerability signals, or effectiveness ("coping well," "well-tolerated," "appears to be working," "is helping with X") — none of those are in the data. You may note that an intervention's start date or dose change aligns in time with an observed objective change (weight, HRV, sleep score) — hedged as a possible mechanism, never asserted as causation. Banned phrases: "since starting X you've experienced Y," "X is helping with Y," "your system is coping well," "the medication appears to be working," "well-tolerated."
+B. Filler adjectives are banned; grounded interpretation is encouraged: Do not use filler adjectives not earned by an explicit comparison or threshold. Banned: "solid," "good," "great," "encouraging," "excellent," "favorable," "strong," "healthy," "nice," "impressive." If a metric is notable, name what makes it notable — the value it changed from, the threshold it crossed, or the target it hit. You may and should offer interpretation that names a likely cause, mechanism, or context for what the data shows, AS LONG AS the interpretation is supported by the data in the prompt. Interpretation that names mechanisms ("likely water retention rather than real fat gain," "consistent with a sustained caloric deficit," "matches the timing of the dose increase") is valuable and should appear when the data supports it. The test: can you point to the specific data in the prompt that supports the interpretation? If yes, include it. If you are reaching for an interpretation to fill space, leave it out and just describe the data. Examples — banned: "solid weight loss," "excellent HRV," "healthy plateau." Allowed: "weight loss of 3.4 lb, consistent with a sustained caloric deficit"; "this 0.8 lb weekly gain is small enough to likely reflect water retention rather than real fat gain"; "HRV at 34 ms, above the recent baseline of 28 ms"; "weight has held in a narrow band for 10 days, suggesting the recent loss has stalled."
+C. No clinical framings or directives: Do not use clinical assessments or soft directives. Banned: "monitor closely," "healthy plateau," "your system is coping," "well-tolerated," "appears to be working," "concerning," "needs attention." Reframe directives as observations: "worth watching whether..." instead of "monitor closely." Reframe assessments as data: "weight has held in the X–Y lb range for N days" instead of "healthy plateau."
+
+Write the commentary in exactly this structure. Each section: 1-2 sentences of flowing text, no bullet points. Use **bold** for specific numbers only — not for qualitative assessments.
 
 ## Body Composition
-2-3 sentences on weight and fat/lean mass changes over 7 and 30 days. Reference actual numbers.
+Weight and fat/lean mass changes over 7 and 30 days, referencing the actual values.
 
 ## Recovery
-2-3 sentences on HRV, resting HR, sleep score, and body battery trends. Note any concerning or encouraging signals.
+HRV, resting HR, sleep score, and body battery over the last 7 days, referencing the actual values.
 
 ## To Watch
-1-2 sentence on the most important thing to keep an eye on. Note if any interventions likely explain observed patterns. If nutrition data is available, connect intake to body composition changes."""
+The single most objective signal worth noting — a continued trend, a stall, or a gap between expected and observed. If an intervention's start date or dose change aligns with an objective change in the data above, note the timing and hedge it (e.g. "weight dropped 1.2 lb in the week after the dose increase — possibly related"). If nutrition data is present, connect calorie or protein intake to the body composition data. No directives."""
 
-        return llm.call(prompt, model=llm.HAIKU, max_tokens=400)
+        return llm.call(prompt, model=llm.HAIKU, max_tokens=500)
 
     return cached_settings_field("ai_body_commentary", 24, _gen, force=force)
 
@@ -1944,10 +2090,18 @@ def _build_nutrition_insights_prompt(range_days: int = 30) -> str | None:
     days_hit_prot = _days_hit("protein_g_total", prot_t)
     days_hit_fiber = _days_hit("fiber_g_total", fiber_t, pct=0.85)
 
-    weekday_cals = [s.cal_total for s in stats_qs if s.date.weekday() < 5 and s.cal_total]
-    weekend_cals = [s.cal_total for s in stats_qs if s.date.weekday() >= 5 and s.cal_total]
-    wd_avg = round(sum(weekday_cals) / len(weekday_cals)) if weekday_cals else None
-    we_avg = round(sum(weekend_cals) / len(weekend_cals)) if weekend_cals else None
+    def _wd_we_avg(field):
+        weekday_vals = [getattr(s, field) for s in stats_qs
+                        if s.date.weekday() < 5 and getattr(s, field)]
+        weekend_vals = [getattr(s, field) for s in stats_qs
+                        if s.date.weekday() >= 5 and getattr(s, field)]
+        wd = round(sum(weekday_vals) / len(weekday_vals)) if weekday_vals else None
+        we = round(sum(weekend_vals) / len(weekend_vals)) if weekend_vals else None
+        return wd, we
+
+    wd_cal, we_cal = _wd_we_avg("cal_total")
+    wd_prot, we_prot = _wd_we_avg("protein_g_total")
+    wd_fiber, we_fiber = _wd_we_avg("fiber_g_total")
 
     weight_stats = list(
         DailyStats.objects.filter(date__gte=start, date__lte=today, weight_lb__isnull=False)
@@ -1992,9 +2146,10 @@ def _build_nutrition_insights_prompt(range_days: int = 30) -> str | None:
 - Avg protein: {avg_prot or 'n/a'}g{f' (hit target {days_hit_prot}/{logged} days)' if days_hit_prot is not None else ''}
 - Avg fiber: {avg_fiber or 'n/a'}g{f' (hit target {days_hit_fiber}/{logged} days)' if days_hit_fiber is not None else ''}
 
-DAY OF WEEK PATTERNS:
-- Weekday avg calories: {wd_avg or 'n/a'}
-- Weekend avg calories: {we_avg or 'n/a'}
+WEEKDAY VS WEEKEND (averages where data exists):
+- Calories: weekday {f'{wd_cal} kcal' if wd_cal else 'not enough data'}, weekend {f'{we_cal} kcal' if we_cal else 'not enough data'}
+- Protein: weekday {f'{wd_prot}g' if wd_prot else 'not enough data'}, weekend {f'{we_prot}g' if we_prot else 'not enough data'}
+- Fiber: weekday {f'{wd_fiber}g' if wd_fiber else 'not enough data'}, weekend {f'{we_fiber}g' if we_fiber else 'not enough data'}
 
 TOP FOODS (most logged):
 {top_food_lines}
@@ -2004,6 +2159,11 @@ WEIGHT TREND OVER SAME PERIOD:
 
 ACTIVE INTERVENTIONS:
 {iv_ctx}
+
+ANALYSIS RULES
+1. Filler adjectives are banned; grounded interpretation is encouraged: Do not use filler adjectives not earned by an explicit comparison or threshold. Banned: "solid," "good," "great," "encouraging," "excellent," "favorable," "strong," "healthy," "nice," "impressive." If a metric is notable, name what makes it notable — the value it changed from, the threshold it crossed, or the target it hit. You may and should offer interpretation that names a likely cause, mechanism, or context for what the data shows, AS LONG AS the interpretation is supported by the data in the prompt. Interpretation that names mechanisms ("consistent with a sustained caloric deficit," "matches the timing of the dose increase") is valuable and should appear when the data supports it. Interpretive framings like "essentially a solved problem at 130g average with 23/24 days hitting target" or "the weakest pillar" are allowed — they describe a behavioral pattern, not a filler adjective. The test: can you point to the specific data in the prompt that supports the interpretation? If yes, include it. If you are reaching to fill space, describe the data and stop. Examples — banned: "strong result," "solid calorie adherence." Allowed: "5.7lb loss over 30 days, consistent with sustained adherence"; "21/24 days within calorie target."
+2. Cite the data or hedge harder: When making any claim about a pattern (weekend vs weekday, day-of-week, meal-to-meal, food-specific), cite the actual numbers from the data block. If the data block contains the breakdown, use it. If it does NOT contain the breakdown needed to support the claim, convert the assertion into a hypothesis worth checking. Examples — GOOD: "Weekend calorie average of 2,077 vs 1,856 weekdays is a 221-calorie gap." GOOD (acknowledges data gap): "Worth checking whether weekend fiber also runs lower than weekday fiber." BAD: "Weekends likely also see the fiber dip." BAD: "Dinner appears to be the highest-calorie meal" (no meal-level breakdown in this data). Apply this to any claim where the supporting data could exist but isn't shown in the prompt.
+3. No subjective intervention effects: The intervention list shows what medications or supplements are taken — not how the user is responding subjectively. Do not claim a medication has produced mood changes, anxiety changes, energy changes, mental clarity, tolerability ("coping well," "well-tolerated"), or effectiveness ("appears to be working"). You MAY note that a dose change aligns in time with an observed objective change (weight, calorie pattern), hedged as a possible mechanism. You MAY use generic population-level framing ("some people experience appetite changes during SSRI dose increases") to frame a future-observation note — this differs from claiming a specific effect on this user.
 
 Write the analysis in exactly this structure. Write each section as 2-3 sentences of flowing paragraph text — no bullet points or lists. Use **bold** for emphasis on specific numbers or key points.
 
@@ -2483,6 +2643,7 @@ def _build_weekly_review_prompt(week_start) -> str:
         weight_change_str = f"  Week avg: {current_avg:.1f} lb vs prior week avg {prior_avg:.1f} lb ({diff:+.1f} lb)"
 
     nutrition_rows = []
+    logged_days_data = []
     for d in daily_qs:
         if d.cal_total:
             nutrition_rows.append(
@@ -2490,6 +2651,7 @@ def _build_weekly_review_prompt(week_start) -> str:
                 f"{d.carbs_g_total or 0:.0f}g C, {d.fat_g_total or 0:.0f}g F, "
                 f"{d.fiber_g_total or 0:.0f}g fiber"
             )
+            logged_days_data.append(d)
     nutrition_str = "\n".join(nutrition_rows) if nutrition_rows else "  (no nutrition data logged)"
 
     try:
@@ -2498,9 +2660,26 @@ def _build_weekly_review_prompt(week_start) -> str:
         profile = NutritionProfile.objects.filter(pk=1).first()
         targets = compute_macro_targets(profile) if profile else None
         if targets:
+            cal_t = targets.get("calories")
+            prot_t = targets.get("protein_g")
+            fiber_t = targets.get("fiber_g")
+            n_logged = len(logged_days_data)
+            if n_logged and prot_t:
+                days_hit_cal = sum(1 for d in logged_days_data if d.cal_total and d.cal_total <= cal_t * 1.05) if cal_t else None
+                days_hit_prot = sum(1 for d in logged_days_data if (d.protein_g_total or 0) >= prot_t * 0.9)
+                days_hit_fiber = sum(1 for d in logged_days_data if (d.fiber_g_total or 0) >= (fiber_t or 0) * 0.85) if fiber_t else None
+                adherence_str = (
+                    f"\n  Adherence ({n_logged} days logged): "
+                    + (f"calories ≤target {days_hit_cal}/{n_logged} days, " if days_hit_cal is not None else "")
+                    + f"protein ≥90% of target {days_hit_prot}/{n_logged} days"
+                    + (f", fiber ≥85% of target {days_hit_fiber}/{n_logged} days" if days_hit_fiber is not None else "")
+                )
+            else:
+                adherence_str = ""
             target_str = (
-                f"  Targets: {targets.get('calories', '?'):.0f} kcal, "
-                f"{targets.get('protein_g', '?'):.0f}g P, {targets.get('fiber_g', '?'):.0f}g fiber"
+                f"  Configured targets (use these exact numbers — do not substitute your own): "
+                f"{cal_t:.0f} kcal, {prot_t:.0f}g P, {fiber_t:.0f}g fiber"
+                + adherence_str
             )
         else:
             target_str = "  (targets not configured)"
