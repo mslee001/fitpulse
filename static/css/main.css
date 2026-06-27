@@ -2864,6 +2864,7 @@ a:hover { text-decoration: underline; }
   /* ── Nut bar rows: shrink fixed value column ── */
   .nut-bar-row { grid-template-columns: 80px 1fr auto; }
 
-  /* ── Settings: experience selects stack to single column ── */
+  /* ── Settings: single column on mobile ── */
+  .settings-layout { grid-template-columns: 1fr !important; }
   .experience-grid { grid-template-columns: 1fr !important; }
 }

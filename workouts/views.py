@@ -1148,6 +1148,7 @@ def analytics_page(request):
 # ---------------------------------------------------------------------------
 
 def settings_page(request):
+    from .models import PelotonAuth
     settings_obj = UserSettings.get()
     athlete = AthleteProfile.get()
     return render(request, "workouts/settings.html", {
@@ -1156,7 +1157,25 @@ def settings_page(request):
         "athlete": athlete,
         "experience_choices": AthleteProfile.EXPERIENCE_CHOICES,
         "tone_choices": AthleteProfile.TONE_CHOICES,
+        "peloton_auth": PelotonAuth.get(),
     })
+
+
+@require_POST
+def set_peloton_auth(request):
+    from .models import PelotonAuth
+    session_id = request.POST.get("session_id", "").strip()
+    user_id = request.POST.get("user_id", "").strip()
+    notes = request.POST.get("notes", "").strip()
+    if not session_id or not user_id:
+        messages.error(request, "Both session ID and user ID are required.")
+    else:
+        PelotonAuth.objects.update_or_create(
+            pk=1,
+            defaults={"session_id": session_id, "user_id": user_id, "notes": notes},
+        )
+        messages.success(request, "Peloton credentials updated.")
+    return redirect("settings")
 
 
 @require_POST
@@ -2863,27 +2882,3 @@ def weekly_review_page(request):
     })
 
 
-def peloton_settings(request):
-    from .models import PelotonAuth
-    auth = PelotonAuth.get()
-
-    if request.method == "POST":
-        session_id = request.POST.get("session_id", "").strip()
-        user_id = request.POST.get("user_id", "").strip()
-        notes = request.POST.get("notes", "").strip()
-
-        if not session_id or not user_id:
-            messages.error(request, "Both session ID and user ID are required.")
-        else:
-            PelotonAuth.objects.update_or_create(
-                pk=1,
-                defaults={
-                    "session_id": session_id,
-                    "user_id": user_id,
-                    "notes": notes,
-                },
-            )
-            messages.success(request, "Peloton credentials updated.")
-            return redirect("peloton_settings")
-
-    return render(request, "workouts/peloton_settings.html", {"auth": auth})

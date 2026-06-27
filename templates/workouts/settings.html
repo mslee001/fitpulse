@@ -4,87 +4,152 @@
 
 {% block content %}
 <div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <h1 class="page-title">Settings</h1>
-      <p class="page-sub">Personal preferences and performance benchmarks</p>
-    </div>
-  </div>
+  <h1 class="page-title">SETTINGS</h1>
+  <p class="page-sub">Personal preferences and performance benchmarks</p>
 </div>
 
-<div style="max-width:540px">
+{% if messages %}
+<div style="margin-bottom:1rem">
+  {% for message in messages %}
+  <div class="peloton-msg peloton-msg--{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
 
-  <!-- FTP Card -->
-  <div class="chart-card">
-    <div class="chart-header">
-      <h3 class="chart-title">FUNCTIONAL THRESHOLD POWER</h3>
-    </div>
+<div class="settings-layout" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start">
 
-    <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1.25rem">
-      FTP is used to calculate power zone bands on cycling workouts. Set it to the watts you can sustain for one hour. Each cycling workout stores the FTP that was active at the time, so historical charts remain accurate even as your FTP improves.
-    </p>
+  {# ── Left column: FTP + Peloton ── #}
+  <div style="display:flex;flex-direction:column;gap:1.5rem">
 
-    {% if current_ftp %}
-    <div style="display:flex;align-items:baseline;gap:0.5rem;margin-bottom:1.25rem">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:2rem;font-weight:600;color:var(--text)">{{ current_ftp }}</span>
-      <span style="font-family:'Barlow Condensed',sans-serif;font-size:1rem;color:var(--text-muted);font-weight:700;letter-spacing:0.05em">W</span>
-      {% if ftp_updated_at %}
-      <span style="font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-dim);margin-left:0.5rem">updated {{ ftp_updated_at|date:"M j, Y" }}</span>
-      {% endif %}
-    </div>
-    {% else %}
-    <p style="font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;color:var(--text-dim);letter-spacing:0.05em;margin-bottom:1.25rem">No FTP set — power zone bands will not appear on cycling workouts.</p>
-    {% endif %}
+    <!-- FTP Card -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">FUNCTIONAL THRESHOLD POWER</h3>
+      </div>
 
-    <form method="post" action="{% url 'set_ftp' %}" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{% url 'settings' %}">
-      <input
-        type="number"
-        name="ftp"
-        value="{{ current_ftp|default:'' }}"
-        placeholder="Enter watts"
-        min="50"
-        max="600"
-        style="width:130px;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.9rem;padding:0.4rem 0.65rem;border-radius:4px;appearance:textfield;-moz-appearance:textfield"
-      >
-      <button type="submit" class="btn btn-accent">{% if current_ftp %}Update FTP{% else %}Set FTP{% endif %}</button>
+      <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1.25rem">
+        FTP is used to calculate power zone bands on cycling workouts. Set it to the watts you can sustain for one hour. Each cycling workout stores the FTP that was active at the time, so historical charts remain accurate even as your FTP improves.
+      </p>
+
       {% if current_ftp %}
-      <button type="submit" name="ftp" value="" class="btn btn-ghost" style="font-size:0.75rem">Clear</button>
+      <div style="display:flex;align-items:baseline;gap:0.5rem;margin-bottom:1.25rem">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:2rem;font-weight:600;color:var(--text)">{{ current_ftp }}</span>
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:1rem;color:var(--text-muted);font-weight:700;letter-spacing:0.05em">W</span>
+        {% if ftp_updated_at %}
+        <span style="font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-dim);margin-left:0.5rem">updated {{ ftp_updated_at|date:"M j, Y" }}</span>
+        {% endif %}
+      </div>
+      {% else %}
+      <p style="font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;color:var(--text-dim);letter-spacing:0.05em;margin-bottom:1.25rem">No FTP set — power zone bands will not appear on cycling workouts.</p>
       {% endif %}
-    </form>
 
-    <!-- FTP history reference -->
-    <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">FTP HISTORY (APPLIED TO WORKOUTS)</div>
-      <table style="width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:0.75rem">
-        <thead>
-          <tr>
-            <th style="text-align:left;color:var(--text-dim);font-weight:400;padding:0.2rem 0.5rem 0.2rem 0">Effective date</th>
-            <th style="text-align:right;color:var(--text-dim);font-weight:400;padding:0.2rem 0">FTP</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Dec 14, 2024 →</td>
-            <td style="text-align:right;color:var(--text)">163 W</td>
-          </tr>
-          <tr>
-            <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Sep 21, 2024 →</td>
-            <td style="text-align:right;color:var(--text)">161 W</td>
-          </tr>
-          <tr>
-            <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Jul 21, 2024 →</td>
-            <td style="text-align:right;color:var(--text)">143 W</td>
-          </tr>
-        </tbody>
-      </table>
+      <form method="post" action="{% url 'set_ftp' %}" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'settings' %}">
+        <input
+          type="number"
+          name="ftp"
+          value="{{ current_ftp|default:'' }}"
+          placeholder="Enter watts"
+          min="50"
+          max="600"
+          style="width:130px;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.9rem;padding:0.4rem 0.65rem;border-radius:4px;appearance:textfield;-moz-appearance:textfield"
+        >
+        <button type="submit" class="btn btn-accent">{% if current_ftp %}Update FTP{% else %}Set FTP{% endif %}</button>
+        {% if current_ftp %}
+        <button type="submit" name="ftp" value="" class="btn btn-ghost" style="font-size:0.75rem">Clear</button>
+        {% endif %}
+      </form>
+
+      <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">FTP HISTORY (APPLIED TO WORKOUTS)</div>
+        <table style="width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:0.75rem">
+          <thead>
+            <tr>
+              <th style="text-align:left;color:var(--text-dim);font-weight:400;padding:0.2rem 0.5rem 0.2rem 0">Effective date</th>
+              <th style="text-align:right;color:var(--text-dim);font-weight:400;padding:0.2rem 0">FTP</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Dec 14, 2024 →</td>
+              <td style="text-align:right;color:var(--text)">163 W</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Sep 21, 2024 →</td>
+              <td style="text-align:right;color:var(--text)">161 W</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);padding:0.25rem 0.5rem 0.25rem 0">Jul 21, 2024 →</td>
+              <td style="text-align:right;color:var(--text)">143 W</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
 
+    <!-- Peloton Credentials Card -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">PELOTON SESSION COOKIE</h3>
+      </div>
+      <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1.25rem">
+        Required for Peloton sync. Cookies last weeks to months — rotate here when sync starts returning 403.
+      </p>
 
-  <!-- Athlete Profile Card -->
-  <div class="chart-card" style="margin-top:1.5rem">
+      {% if peloton_auth %}
+      <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:1.25rem;font-size:0.82rem">
+        <div style="display:flex;gap:1rem">
+          <span style="color:var(--text-dim);min-width:90px">Cookie</span>
+          <span style="font-family:'JetBrains Mono',monospace">{{ peloton_auth.masked_session_id }}</span>
+        </div>
+        <div style="display:flex;gap:1rem">
+          <span style="color:var(--text-dim);min-width:90px">User ID</span>
+          <span style="font-family:'JetBrains Mono',monospace">{{ peloton_auth.user_id }}</span>
+        </div>
+        <div style="display:flex;gap:1rem">
+          <span style="color:var(--text-dim);min-width:90px">Updated</span>
+          <span style="color:var(--text-muted)">{{ peloton_auth.last_updated|date:"M j, Y g:i A" }}</span>
+        </div>
+      </div>
+      {% else %}
+      <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1.25rem">No credentials saved yet.</p>
+      {% endif %}
+
+      <details style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+        <summary style="padding:0.55rem 0.85rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--text-muted);text-transform:uppercase;list-style:none;background:var(--bg-raised)">
+          {% if peloton_auth %}Update Cookie{% else %}Add Credentials{% endif %} ▾
+        </summary>
+        <div style="padding:1rem">
+          <p style="font-size:0.78rem;color:var(--text-dim);margin:0 0 0.85rem;line-height:1.5">
+            Open <strong style="color:var(--text-muted)">members.onepeloton.com</strong> in Chrome → DevTools → Application → Cookies → copy <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-raised);padding:1px 4px;border-radius:3px">peloton_session_id</code>
+          </p>
+          <form method="post" action="{% url 'set_peloton_auth' %}" style="display:flex;flex-direction:column;gap:0.75rem">
+            {% csrf_token %}
+            <div class="form-group">
+              <label class="form-label">Session cookie</label>
+              <input type="password" name="session_id" class="form-input" autocomplete="off" placeholder="Paste full cookie value" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">User ID</label>
+              <input type="text" name="user_id" class="form-input"
+                     value="{% if peloton_auth %}{{ peloton_auth.user_id }}{% endif %}"
+                     placeholder="Your Peloton user ID" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Notes (optional)</label>
+              <input type="text" name="notes" class="form-input" placeholder="e.g. extracted from Chrome 2026-06-27">
+            </div>
+            <button type="submit" class="btn btn-accent" style="align-self:flex-start">Save</button>
+          </form>
+        </div>
+      </details>
+    </div>
+
+  </div>{# end left column #}
+
+  {# ── Right column: AI Coaching Profile ── #}
+  <div class="chart-card">
     <div class="chart-header">
       <h3 class="chart-title">AI COACHING PROFILE</h3>
     </div>
