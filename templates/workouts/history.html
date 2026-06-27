@@ -21,8 +21,12 @@
 <div class="history-layout">
 
   <!-- Filter sidebar -->
-  <aside class="filter-panel">
-    <div class="filter-title">FILTERS</div>
+  <aside class="filter-panel" id="filter-panel">
+    <button type="button" class="filter-title filter-toggle" id="filter-toggle" aria-expanded="false">
+      FILTERS
+      <span class="filter-toggle-caret">▾</span>
+    </button>
+    <div class="filter-body" id="filter-body">
     <form id="filter-form"
           hx-get="{% url 'history' %}"
           hx-target="#workout-list"
@@ -109,6 +113,7 @@
         Compare →
       </a>
     </div>
+    </div>{# end filter-body #}
   </aside>
 
   <!-- Workout list -->
@@ -119,6 +124,27 @@
 </div>
 
 <script>
+  // Filter panel toggle (mobile)
+  (function() {
+    var toggle = document.getElementById('filter-toggle');
+    var body   = document.getElementById('filter-body');
+    if (!toggle) return;
+    function isMobile() { return window.innerWidth <= 768; }
+    function applyState(open) {
+      body.style.display = (open || !isMobile()) ? '' : 'none';
+      toggle.setAttribute('aria-expanded', open);
+      toggle.querySelector('.filter-toggle-caret').textContent = open ? '▴' : '▾';
+    }
+    applyState(false);
+    toggle.addEventListener('click', function() {
+      var open = body.style.display === 'none';
+      applyState(open);
+    });
+    window.addEventListener('resize', function() {
+      if (!isMobile()) body.style.display = '';
+    });
+  })();
+
   function setDiscipline(slug) {
     const select = document.querySelector('select[name="discipline"]');
     select.value = slug;
