@@ -1,8 +1,11 @@
 # Environment & secrets
 .env
+.env.local
+*.local
 
 # Database
 db.sqlite3
+db.sqlite3-journal
 
 # Python
 venv/
@@ -12,11 +15,14 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+*.egg-info/
+.python-version
 
 # Django
 *.log
 local_settings.py
 staticfiles/
+media/
 
 # Garmin auth (stored outside repo in ~/.garminconnect/ but just in case)
 .garminconnect/
@@ -24,6 +30,16 @@ staticfiles/
 # API response examples / data exports / scratch files
 json_response_examples/
 *_export.json
+sqlite_backup.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
 
 # macOS
 .DS_Store
+
+# Secrets / tokens
+*.keystore
+*.jks

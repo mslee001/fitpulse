@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="login-wrap">
+  <h1>FitPulse</h1>
+  <form method="post" class="login-form">
+    {% csrf_token %}
+    {% if form.errors %}
+      <div class="login-error">Invalid username or password.</div>
+    {% endif %}
+    <label for="id_username">Username</label>
+    <input type="text" name="username" id="id_username" autocomplete="username" autofocus required>
+    <label for="id_password">Password</label>
+    <input type="password" name="password" id="id_password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+{% endblock %}

@@ -1938,7 +1938,7 @@ def nutrition_page(request):
         fiber=Sum("fiber_g"),
     )
 
-    saved_meals = list(SavedMeal.objects.all()[:12])
+    saved_meals = list(SavedMeal.objects.all()[:25])
     satisfying_meals = get_satisfying_meals(min_occurrences=3, top_n=5)
 
     # Streaks (today-relative only)

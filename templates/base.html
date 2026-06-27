@@ -98,6 +98,13 @@
 
     <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">☀</button>
 
+    {% if user.is_authenticated %}
+    <form method="post" action="{% url 'logout' %}" class="logout-form">
+      {% csrf_token %}
+      <button type="submit" class="logout-btn">Sign out</button>
+    </form>
+    {% endif %}
+
     <div class="sync-menu">
       <button class="btn btn-sm btn-accent" onclick="this.closest('.sync-menu').classList.toggle('open')">
         ↻ Sync ▾

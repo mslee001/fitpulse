@@ -2617,3 +2617,17 @@ a:hover { text-decoration: underline; }
   border-radius: var(--r);
   padding: 1.5rem;
 }
+
+
+/* ── Auth ─────────────────────────────────────────────────── */
+.login-wrap { max-width: 360px; margin: 80px auto; padding: 24px; }
+.login-wrap h1 { text-align: center; margin-bottom: 24px; letter-spacing: 2px; }
+.login-form { display: flex; flex-direction: column; gap: 12px; }
+.login-form label { font-size: 0.85em; opacity: 0.7; }
+.login-form input { padding: 10px; font-size: 1em; }
+.login-form button { padding: 12px; font-size: 1em; margin-top: 12px; cursor: pointer; }
+.login-error { background: rgba(255,80,80,0.1); border: 1px solid rgba(255,80,80,0.4); padding: 10px; border-radius: 4px; font-size: 0.9em; }
+
+.logout-form { display: inline; }
+.logout-btn { background: none; border: none; color: inherit; cursor: pointer; padding: 8px 12px; font-size: 0.9em; opacity: 0.7; }
+.logout-btn:hover { opacity: 1; }
