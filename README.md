@@ -24,7 +24,7 @@ A personal fitness dashboard built with Django. Syncs workout data from Peloton 
 - **Symptom log** — track GI and other side effects with severity; symptoms inform meal suggestions and appear as a summary on the body trends page
 - **Pattern insights** — Claude Sonnet deep-analysis of 60 days of integrated data (weight, recovery, nutrition, hunger, symptoms, workouts, interventions) to surface non-obvious correlations
 - **Weekly review** — AI-generated summary of each completed Mon–Sun week covering weight trend, nutrition adherence, training, and one focus for the next week; archived for all past weeks
-- **Settings** — manage your current FTP; historical FTP tracked per workout for accurate power zone charts
+- **Settings** — manage your current FTP and Peloton session cookie; historical FTP tracked per workout for accurate power zone charts
 
 ---
 
@@ -58,6 +58,8 @@ Peloton's login endpoint is no longer publicly accessible, so authentication is 
 3. Copy the value of `peloton_session_id`
 4. Find your user ID: it appears in the URL when you visit your profile page (`/members/<user_id>/overview`)
 
+After the app is running, enter these values in the **Settings** page (`/settings/`) under "Peloton Credentials". They are stored in the app's database — not in `.env`.
+
 **3. Create a `.env` file**
 
 ```bash
@@ -69,6 +71,8 @@ Then fill in your values. Generate a Django secret key with:
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(50))"
 ```
+
+Note: Peloton credentials (`peloton_session_id` and user ID) are stored in the app's database and managed via the Settings page — they do not go in `.env`.
 
 **4. Run migrations**
 
@@ -98,7 +102,7 @@ If you have a Withings scale and want body composition data:
 venv/bin/python3 manage.py withings_login
 ```
 
-Tokens are saved to `~/.fitpulse/withings_tokens.json` and auto-refresh.
+Tokens are saved to the app's database and auto-refresh.
 
 **7. Start the server**
 
@@ -123,8 +127,9 @@ Then:
 1. Copy `.env.example` to `.env` and fill in your values
 2. Run `venv/bin/python3 manage.py migrate`
 3. Run `venv/bin/python3 manage.py garmin_login` to authenticate Garmin
-4. Run `venv/bin/python3 manage.py withings_login` if using Withings (optional)
-5. Start the server and use **Sync All** from the nav to pull your full history
+4. If using Withings, run `venv/bin/python3 manage.py withings_login` (or `migrate_withings_tokens` if migrating tokens from a previous file-based setup)
+5. Start the server and enter your Peloton credentials via the **Settings** page (`/settings/`)
+6. Use **Sync All** from the nav to pull your full history
 
 Note: `db.sqlite3` is not in the repo — each machine starts with an empty database and needs to sync data fresh.
 
@@ -184,7 +189,7 @@ Use the **Sync** dropdown in the nav:
 1. Run **Sync All** to pull your full history from both Peloton and Garmin
 2. Browse — charts, running form, and wellness data will all be populated
 
-Session cookies expire periodically. When Peloton syncing stops working, grab a fresh `peloton_session_id` from your browser and update `.env`. Garmin tokens auto-refresh.
+Session cookies expire periodically. When Peloton syncing stops working, grab a fresh `peloton_session_id` from your browser and update it via the **Settings** page (`/settings/`). Garmin tokens auto-refresh.
 
 ---
 
@@ -198,6 +203,27 @@ To retroactively correct past workouts after an FTP update, edit `FTP_HISTORY` i
 venv/bin/python3 manage.py backfill_ftp            # apply
 venv/bin/python3 manage.py backfill_ftp --dry-run  # preview without writing
 ```
+
+---
+
+## Automated Daily Sync
+
+`sync_daily` is a management command that runs Garmin activities, Garmin wellness, and Peloton sync in sequence:
+
+```bash
+venv/bin/python3 manage.py sync_daily
+```
+
+Flags:
+- `--skip-peloton` — skip Peloton sync (Garmin only)
+- `--wellness-days N` — days of wellness to sync (default: 2, catches today + yesterday)
+- `--if-stale HOURS` — only sync if last sync was more than N hours ago
+
+On macOS, two launchd plists automate this (stored in `~/Library/LaunchAgents/`, not the repo):
+- `com.fitpulse.sync-daily.plist` — fires at 8:30 AM and 7:00 PM; if the Mac is asleep, launchd catches up on the next wake
+- `com.fitpulse.sync-fallback.plist` — fires every 5 minutes when awake, runs with `--if-stale 8` as a fallback after hibernation
+
+The wrapper script is `scripts/sync_daily.sh`. It sources `.env` and after a successful sync schedules the next one-shot wake via `sudo pmset schedule wake` (requires a sudoers entry for passwordless `pmset`). The last sync time appears in the nav Sync dropdown and the Settings page footer.
 
 ---
 
@@ -228,7 +254,7 @@ The next-workout recommendation only generates after Garmin wellness has synced 
 | Layer | What |
 |---|---|
 | Backend | Django 4.2 |
-| Database | SQLite (local cache) |
+| Database | Neon Postgres (cloud) via dj-database-url; SQLite for demo mode |
 | Frontend | Vanilla JS + HTMX |
 | Charts | Chart.js (CDN) |
 | Styles | Single hand-written CSS file, no framework |

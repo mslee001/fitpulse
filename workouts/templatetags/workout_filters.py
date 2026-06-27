@@ -11,6 +11,12 @@ def last_synced():
     return result.get('synced_at__max')
 
 
+@register.simple_tag
+def last_daily_sync():
+    from workouts.models import UserSettings
+    return UserSettings.objects.filter(pk=1).values_list('last_daily_sync_at', flat=True).first()
+
+
 @register.filter
 def split(value, delimiter=","):
     return value.split(delimiter)

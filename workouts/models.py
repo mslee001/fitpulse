@@ -162,6 +162,7 @@ class UserSettings(models.Model):
     ai_pattern_insights = models.TextField(null=True, blank=True)
     ai_pattern_insights_generated_at = models.DateTimeField(null=True, blank=True)
     ai_pattern_insights_batch_id = models.CharField(max_length=128, null=True, blank=True)
+    last_daily_sync_at = models.DateTimeField(null=True, blank=True)
 
     @classmethod
     def get(cls):

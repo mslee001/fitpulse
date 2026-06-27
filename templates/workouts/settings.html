@@ -231,4 +231,12 @@
   </div>
 
 </div>
+
+<div style="margin-top:2rem;font-size:0.75rem;color:var(--text-dim)">
+  {% if last_daily_sync_at %}
+  Last daily sync: {{ last_daily_sync_at|date:"M j, Y g:i A" }}
+  {% else %}
+  Daily sync has not run yet.
+  {% endif %}
+</div>
 {% endblock %}

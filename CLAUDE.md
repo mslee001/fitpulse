@@ -9,7 +9,7 @@ A Django app (renamed from "Peloton Dashboard") that pulls workout data from Pel
 ```
 peloton_dashboard/       # Django project root (settings.py, urls.py)
 workouts/                # Main app
-  models.py              # CachedWorkout + UserSettings + DailyStats + BodyMeasurement + Intervention + DoseChange + SavedAnalysis + NutritionProfile + FoodEntry + SavedMeal + HungerCheck + SideEffectLog + TargetAdjustment + WeeklyReview; SQLite-backed
+  models.py              # CachedWorkout + UserSettings + DailyStats + BodyMeasurement + Intervention + DoseChange + SavedAnalysis + NutritionProfile + FoodEntry + SavedMeal + HungerCheck + SideEffectLog + TargetAdjustment + WeeklyReview + WithingsAuth + PelotonAuth; SQLite-backed
   views.py               # All HTML-rendering views only
   sync.py                # All sync logic + sync API endpoints (returns JsonResponse)
   ai.py                  # Anthropic API calls, insights generation, day analysis, next-workout rec, body commentary, intervention interpretation, nutrition parsing/suggestions, compare analysis, pattern insights, weekly review
@@ -21,10 +21,16 @@ workouts/                # Main app
     withings_client.py   # WithingsClient — Withings OAuth2 + body measurement API
   templatetags/workout_filters.py
   management/commands/
-    backfill_ftp.py         # Stamp per-workout FTP from historical values
-    garmin_login.py         # One-time interactive Garmin auth
-    withings_login.py       # One-time interactive Withings OAuth flow
-    analyze_intervention.py # Before/after analysis across wellness + body composition
+    backfill_ftp.py              # Stamp per-workout FTP from historical values
+    garmin_login.py              # One-time interactive Garmin auth
+    withings_login.py            # One-time interactive Withings OAuth flow
+    analyze_intervention.py      # Before/after analysis across wellness + body composition
+    sync_daily.py                # Automated daily sync (Peloton + Garmin activities + wellness)
+    migrate_withings_tokens.py   # One-time migration of tokens from file to DB
+    migrate_peloton_creds.py     # One-time migration of creds from .env to DB
+    subscribe_withings_webhook.py  # Subscribe Withings push webhook
+    list_withings_webhooks.py    # List active Withings webhook subscriptions
+    revoke_withings_webhook.py   # Revoke a Withings webhook subscription
 templates/workouts/
   base.html              # Shared layout — nav brand is "FITPULSE"
   dashboard.html         # Overview: total workouts, discipline breakdown
@@ -52,7 +58,7 @@ templates/workouts/
   symptoms.html          # Symptom log: chip-select symptom + severity, recent entries, 30-day summary
   insights.html          # Pattern Insights: Sonnet deep-analysis page with weekly cache + HTMX regenerate
   review.html            # Weekly Review: AI Sonnet review of most recently completed Mon–Sun week; archive of past weeks in collapsible details
-  settings.html          # FTP setting
+  settings.html          # FTP setting + Peloton credentials card (collapsible)
   partials/
     insights.html              # Analytics AI insights partial (HTMX polling target)
     workout_list.html          # Workout list rows partial
@@ -70,9 +76,9 @@ static/css/main.css      # All styles — single flat file, CSS variables
 ## Key Architecture
 
 ### Auth
-- **Peloton**: session cookie (`peloton_session_id`) from browser DevTools. `/auth/login` is dead (403).
+- **Peloton**: session cookie (`peloton_session_id`) from browser DevTools. `/auth/login` is dead (403). Stored in `PelotonAuth` DB model (singleton pk=1). Rotate via `/settings/`. `PelotonAuthError` raised on 403 with link to `/settings/`.
 - **Garmin**: `garminconnect` lib from `zpython-garminconnect-master/`. First-time: `venv/bin/python3 manage.py garmin_login`. Tokens saved to `~/.garminconnect/` and auto-refresh. Never attempt password login from a web request.
-- **Withings**: OAuth 2.0. First-time: `venv/bin/python3 manage.py withings_login`. Tokens saved to `~/.fitpulse/withings_tokens.json` (0o600). Auto-refreshes 5 min before expiry. Credentials in `.env`: `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET`, `WITHINGS_REDIRECT_URI`.
+- **Withings**: OAuth 2.0. First-time: `venv/bin/python3 manage.py withings_login`. Tokens saved to DB (`WithingsAuth` singleton pk=1). Auto-refreshes 5 min before expiry. Credentials in `.env`: `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET`, `WITHINGS_REDIRECT_URI`.
 - **Python**: venv uses Python 3.14 (Homebrew). Always `venv/bin/python3 manage.py ...`.
 
 ### Local Cache (`CachedWorkout`)
@@ -201,6 +207,25 @@ Stores one AI-generated review per completed Mon–Sun calendar week.
 
 **Ordering:** by `-week_start`. Displayed at `/review/` (current week) and in a collapsible archive.
 
+### WithingsAuth Model
+Singleton (pk=1). Stores Withings OAuth tokens in DB instead of a file on disk.
+
+**Fields:** `userid`, `access_token`, `refresh_token`, `token_expires_at` (DateTimeField), `last_subscribed_at`, `last_webhook_received_at`, `webhook_subscription_active` (bool), `updated_at`
+
+**Access:** `WithingsAuth.get()` — returns the singleton or None.
+
+### PelotonAuth Model
+Singleton (pk=1). Stores Peloton session cookie in DB.
+
+**Fields:** `session_id`, `user_id`, `last_updated` (auto_now), `notes`
+
+**Property:** `masked_session_id` — shows `…{last4}` of the session ID.
+
+**Access:** `PelotonAuth.get()` — returns the singleton or None. `PelotonClient` reads from this model; raises `PelotonAuthError` on 403.
+
+### UserSettings (additional field)
+- `last_daily_sync_at` — `DateTimeField(null=True)`. Stamped by the `sync_daily` management command on full success. Used in the nav sync dropdown and settings page footer.
+
 ### BodyMeasurement Model
 Raw per-weigh-in records from Withings. Multiple per day is normal. Deduped by `withings_grpid` (Withings assigns one grpid per step-on session).
 
@@ -226,6 +251,7 @@ directVerticalRatio→vertical_ratio  directGroundContactTime→ground_contact_t
 - Garmin activities: `Garmin Sync New` (`/api/sync/garmin/new/`), `Garmin Sync All` (`/api/sync/garmin/all/`)
 - Garmin wellness: `Garmin Wellness Today` (`/api/sync/garmin/wellness/`), `?date=YYYY-MM-DD`, `?days=N` (max 90)
 - Withings: `Withings Sync New` (`/api/sync/withings/new/`), `Withings Sync All` (`/api/sync/withings/all/`)
+- `POST /api/withings/webhook/` — Withings push webhook. `@csrf_exempt`. Listed in `PUBLIC_PATHS` (no auth required). Called by Withings when body measurements change. Fetches measurements for the notified time window and upserts them. Always returns HTTP 200.
 - All sync types are accessible from the Sync dropdown in the nav.
 
 ### Detail Page Templates
@@ -263,6 +289,9 @@ All Anthropic calls live in `workouts/ai.py`. They use `requests.post` to `https
 - `format_insights` — used by analytics page for bullet-list insights
 - `format_nutrition_insights` — parses `## Header` sections + body/bullets into `.ni-section` / `.ni-header` styled HTML; bullets render as `.insights-item` cards; supports `**bold**` markdown within text; used for nutrition insights, pattern insights, and saved analysis interpretation
 
+**Simple tags** (in `workout_filters.py`):
+- `last_daily_sync` — returns `UserSettings.last_daily_sync_at` (the timestamp of the last successful `sync_daily` run). Used in the nav sync dropdown and settings page footer.
+
 ### Run Detail Page
 `run_detail.html` shows a **RUNNING FORM** card (cadence, stride length, vertical oscillation, vertical ratio, ground contact time) when Garmin data is present. Color-coded against benchmarks (e.g. VO ≤7.5 cm green, >9 cm orange). Form metrics also appear in the VS. YOUR AVERAGES table and as chart toggle overlays.
 
@@ -271,6 +300,7 @@ All Anthropic calls live in `workouts/ai.py`. They use `requests.post` to `https
 
 ### Withings Client
 `WithingsClient` in `workouts/services/withings_client.py`:
+- Tokens read from and written to `WithingsAuth` DB singleton (not `~/.fitpulse/withings_tokens.json`)
 - Measurement types fetched: weight (1), fat free mass (5), fat ratio (6), fat mass (8), muscle mass (76), hydration (77), bone mass (88), pulse wave velocity (91), vascular age (155)
 - Value decoding: `raw_value * 10^unit` — always apply the unit exponent
 - kg → lb conversion: multiply by 2.20462
@@ -346,14 +376,15 @@ Compares DailyStats metrics before vs. after an intervention date. Prints before
 
 ```
 DJANGO_SECRET_KEY=...
-PELOTON_SESSION_ID=...        # From browser cookies
-PELOTON_USER_ID=...
+# PELOTON_SESSION_ID and PELOTON_USER_ID are no longer needed here —
+# Peloton credentials are stored in the DB and managed via /settings/
 ANTHROPIC_API_KEY=...
 GARMIN_EMAIL=...
 GARMIN_PASSWORD=...
 WITHINGS_CLIENT_ID=...
 WITHINGS_CLIENT_SECRET=...
 WITHINGS_REDIRECT_URI=http://localhost:8000/auth/withings/callback/
+WITHINGS_CALLBACK_URL=https://fitpulse-jp2p.onrender.com/api/withings/webhook/  # used by subscribe_withings_webhook
 DJANGO_DEBUG=True
 ```
 
@@ -413,3 +444,9 @@ DJANGO_DEBUG=True
   _run_wellness_sync([date.today()])
   _run_withings_sync_new()
   ```
+- **Rotate Peloton cookie**: `/settings/` → expand "Update Cookie" → paste new `peloton_session_id` value
+- **Migrate Peloton creds from .env to DB (one-time)**: `venv/bin/python3 manage.py migrate_peloton_creds`
+- **Migrate Withings tokens from file to DB (one-time)**: `venv/bin/python3 manage.py migrate_withings_tokens`
+- **Subscribe Withings webhook**: `venv/bin/python3 manage.py subscribe_withings_webhook`
+- **Run daily sync manually**: `venv/bin/python3 manage.py sync_daily`
+- **Run daily sync only if stale**: `venv/bin/python3 manage.py sync_daily --if-stale 8`

@@ -120,8 +120,11 @@
       <div class="sync-dropdown">
         {% last_synced as ls %}{% if ls %}
         <div class="sync-option-label">Last synced: {{ ls|date:"M j, Y g:i A" }}</div>
-        <div class="sync-divider"></div>
         {% endif %}
+        {% last_daily_sync as lds %}{% if lds %}
+        <div class="sync-option-label">Last auto-sync: {{ lds|date:"M j, Y g:i A" }}</div>
+        {% endif %}
+        {% if ls or lds %}<div class="sync-divider"></div>{% endif %}
         <a class="sync-option" href="{% url 'sync_new' %}" target="_blank">
           <strong>Sync New</strong>
           <span>New Peloton &amp; Garmin + today's wellness</span>

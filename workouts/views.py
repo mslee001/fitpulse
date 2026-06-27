@@ -1158,6 +1158,7 @@ def settings_page(request):
         "experience_choices": AthleteProfile.EXPERIENCE_CHOICES,
         "tone_choices": AthleteProfile.TONE_CHOICES,
         "peloton_auth": PelotonAuth.get(),
+        "last_daily_sync_at": settings_obj.last_daily_sync_at,
     })
 
 
