@@ -45,6 +45,8 @@
       <span>FIT<strong>PULSE</strong></span>
     </a>
 
+    <button class="nav-burger" id="nav-burger" aria-label="Open menu" aria-expanded="false">☰</button>
+
     <div class="nav-links">
       <a href="{% url 'today' %}" class="nav-link {% block nav_today %}{% endblock %}">Today</a>
 
@@ -94,6 +96,12 @@
           <a class="nav-dropdown-item" href="{% url 'intervention_analysis' %}">Intervention Analysis</a>
         </div>
       </div>
+      {% if user.is_authenticated %}
+      <form method="post" action="{% url 'logout' %}" class="nav-mobile-signout">
+        {% csrf_token %}
+        <button type="submit">Sign out</button>
+      </form>
+      {% endif %}
     </div>
 
     <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">☀</button>
@@ -145,6 +153,33 @@
         document.querySelectorAll('.sync-menu.open').forEach(m => m.classList.remove('open'));
       }
     });
+
+    (function() {
+      var burger = document.getElementById('nav-burger');
+      var nav = burger && burger.closest('.nav');
+      if (burger) {
+        burger.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var open = nav.classList.toggle('nav-open');
+          burger.textContent = open ? '✕' : '☰';
+          burger.setAttribute('aria-expanded', open);
+        });
+        document.addEventListener('click', function(e) {
+          if (nav.classList.contains('nav-open') && !e.target.closest('.nav')) {
+            nav.classList.remove('nav-open');
+            burger.textContent = '☰';
+            burger.setAttribute('aria-expanded', 'false');
+          }
+        });
+        document.querySelectorAll('.nav-dropdown-item').forEach(function(link) {
+          link.addEventListener('click', function() {
+            nav.classList.remove('nav-open');
+            burger.textContent = '☰';
+            burger.setAttribute('aria-expanded', 'false');
+          });
+        });
+      }
+    })();
 
     (function() {
       var btn = document.getElementById('theme-toggle');
