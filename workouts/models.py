@@ -879,3 +879,37 @@ class WithingsAuth(models.Model):
     def get(cls):
         """Returns the singleton row, or None if not yet seeded."""
         return cls.objects.filter(pk=1).first()
+
+
+class PelotonAuth(models.Model):
+    """
+    Singleton (pk=1). Stores Peloton session credentials in Postgres so both
+    laptop and hosted app can sync. Peloton has no OAuth — the session cookie
+    is extracted manually from browser DevTools and pasted into /settings/peloton/.
+    Cookies last weeks to months; rotate when sync starts returning 403.
+    """
+    session_id = models.CharField(max_length=512, help_text="peloton_session_id cookie")
+    user_id = models.CharField(max_length=64, help_text="Peloton user ID")
+    last_updated = models.DateTimeField(auto_now=True)
+    notes = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional — e.g. 'extracted from Chrome 2026-06-26'",
+    )
+
+    class Meta:
+        verbose_name = "Peloton Auth"
+        verbose_name_plural = "Peloton Auth"
+
+    def __str__(self):
+        return f"PelotonAuth(user_id={self.user_id}, updated={self.last_updated})"
+
+    @classmethod
+    def get(cls):
+        return cls.objects.filter(pk=1).first()
+
+    @property
+    def masked_session_id(self):
+        if not self.session_id or len(self.session_id) < 8:
+            return "(empty)"
+        return f"…{self.session_id[-4:]}"

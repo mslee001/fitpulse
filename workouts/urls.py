@@ -15,6 +15,7 @@ from .views import (
     hunger_log_api, symptoms_page, insights_page, target_accept_api,
     weekly_review_page,
     today_page,
+    peloton_settings,
 )
 from .sync import (
     sync_new, sync_all, sync_new_workouts, sync_all_workouts,
@@ -102,4 +103,6 @@ urlpatterns = [
     path("api/weekly-review/check/", weekly_review_check, name="weekly_review_check"),
     # Withings webhook
     path("api/withings/webhook/", withings_webhook, name="withings_webhook"),
+    # Peloton credentials rotation
+    path("settings/peloton/", peloton_settings, name="peloton_settings"),
 ]

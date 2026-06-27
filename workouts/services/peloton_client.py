@@ -2,27 +2,43 @@
 Peloton API client.
 
 Auth note: The old /auth/login endpoint is dead (403). This client uses the
-session cookie approach — grab `peloton_session_id` from your browser's
-DevTools (Application → Cookies) while logged into members.onepeloton.com,
-and set it in your .env file. Sessions last several days before expiring.
+session cookie approach — credentials are stored in the PelotonAuth DB singleton
+(pk=1). Rotate via /settings/peloton/ when sync starts returning 403.
 """
 
 import requests
 from django.conf import settings
 
 
+class PelotonAuthError(Exception):
+    """Raised when the Peloton session cookie is missing or expired."""
+
+
 class PelotonClient:
     BASE_URL = settings.PELOTON_API_BASE
 
     def __init__(self):
+        from workouts.models import PelotonAuth
+        auth = PelotonAuth.get()
+        if not auth:
+            raise PelotonAuthError(
+                "No PelotonAuth row in DB. "
+                "Run: venv/bin/python3 manage.py migrate_peloton_creds  "
+                "(or paste credentials at /settings/peloton/)"
+            )
         self.session = requests.Session()
-        self.session.cookies.set("peloton_session_id", settings.PELOTON_SESSION_ID)
+        self.session.cookies.set("peloton_session_id", auth.session_id)
         self.session.headers.update({"peloton-platform": "web"})
-        self.user_id = settings.PELOTON_USER_ID
+        self.user_id = auth.user_id
 
     def _get(self, path: str, params: dict = None) -> dict:
         url = f"{self.BASE_URL}{path}"
         response = self.session.get(url, params=params)
+        if response.status_code == 403:
+            raise PelotonAuthError(
+                "Peloton returned 403 — your session cookie has expired. "
+                "Rotate it at /settings/peloton/"
+            )
         response.raise_for_status()
         return response.json()
 
