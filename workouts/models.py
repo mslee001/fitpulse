@@ -848,3 +848,34 @@ class WeeklyReview(models.Model):
     def week_end(self):
         import datetime
         return self.week_start + datetime.timedelta(days=6)
+
+
+class WithingsAuth(models.Model):
+    """
+    Singleton (pk=1). Stores Withings OAuth credentials in Postgres so both
+    laptop and hosted app can sync from the same source of truth.
+    Replaces ~/.fitpulse/withings_tokens.json.
+    """
+    userid = models.CharField(max_length=64)
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    token_expires_at = models.DateTimeField()
+
+    # Webhook observability
+    last_subscribed_at = models.DateTimeField(null=True, blank=True)
+    last_webhook_received_at = models.DateTimeField(null=True, blank=True)
+    webhook_subscription_active = models.BooleanField(default=False)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Withings Auth"
+        verbose_name_plural = "Withings Auth"
+
+    def __str__(self):
+        return f"WithingsAuth(userid={self.userid}, expires={self.token_expires_at})"
+
+    @classmethod
+    def get(cls):
+        """Returns the singleton row, or None if not yet seeded."""
+        return cls.objects.filter(pk=1).first()

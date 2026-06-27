@@ -1,18 +1,16 @@
 """
 WithingsClient — OAuth 2.0 client for the Withings Health API.
 
-Handles token storage, auto-refresh, and body measurement retrieval.
-All requests use the `requests` library (no extra Withings SDK needed).
+Tokens are stored in the WithingsAuth DB singleton (pk=1), shared between
+the laptop and the hosted Render app. Run `migrate_withings_tokens` once to
+seed from the old JSON file, or `withings_login` to do a fresh OAuth flow.
 
-Credentials come from environment variables:
+Credentials from environment variables:
     WITHINGS_CLIENT_ID
     WITHINGS_CLIENT_SECRET
     WITHINGS_REDIRECT_URI
-
-Token file: ~/.fitpulse/withings_tokens.json
 """
 
-import json
 import logging
 import os
 import time
@@ -43,20 +41,53 @@ AUTH_URL = "https://account.withings.com/oauth2_user/authorize2"
 TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2"
 MEASURE_URL = "https://wbsapi.withings.net/measure"
 
-DEFAULT_TOKEN_PATH = os.path.expanduser("~/.fitpulse/withings_tokens.json")
-
 
 class WithingsClient:
-    def __init__(self, token_path=None):
-        self.token_path = token_path or DEFAULT_TOKEN_PATH
+    def __init__(self):
         self.client_id = os.environ.get("WITHINGS_CLIENT_ID", "")
         self.client_secret = os.environ.get("WITHINGS_CLIENT_SECRET", "")
         self.redirect_uri = os.environ.get("WITHINGS_REDIRECT_URI", "")
-
         self._tokens: dict = {}
-        if os.path.exists(self.token_path):
-            with open(self.token_path) as f:
-                self._tokens = json.load(f)
+
+    # ── Token helpers ─────────────────────────────────────────────────────────
+
+    def _load_tokens(self) -> None:
+        """Load tokens from the WithingsAuth DB singleton into self._tokens."""
+        from workouts.models import WithingsAuth
+        auth = WithingsAuth.get()
+        if not auth:
+            raise RuntimeError(
+                "No Withings credentials in DB. "
+                "Run: venv/bin/python3 manage.py migrate_withings_tokens  "
+                "(or withings_login for a fresh OAuth flow)"
+            )
+        self._tokens = {
+            "access_token": auth.access_token,
+            "refresh_token": auth.refresh_token,
+            "expires_at": int(auth.token_expires_at.timestamp()),
+            "userid": auth.userid,
+        }
+
+    def _save_tokens(self) -> None:
+        """Persist tokens to the WithingsAuth DB singleton."""
+        from workouts.models import WithingsAuth
+        expires_at = datetime.fromtimestamp(self._tokens["expires_at"], tz=timezone.utc)
+        WithingsAuth.objects.update_or_create(
+            pk=1,
+            defaults={
+                "userid": str(self._tokens.get("userid", "")),
+                "access_token": self._tokens["access_token"],
+                "refresh_token": self._tokens["refresh_token"],
+                "token_expires_at": expires_at,
+            },
+        )
+
+    def _ensure_token_valid(self) -> None:
+        """Load from DB if needed, then auto-refresh if within 5 minutes of expiry."""
+        if not self._tokens.get("access_token"):
+            self._load_tokens()
+        if time.time() >= self._tokens.get("expires_at", 0) - 300:
+            self.refresh_tokens()
 
     # ── OAuth helpers ─────────────────────────────────────────────────────────
 
@@ -72,7 +103,7 @@ class WithingsClient:
         return AUTH_URL + "?" + urllib.parse.urlencode(params)
 
     def exchange_code(self, code: str) -> dict:
-        """Exchange an authorization code for tokens. Saves tokens to disk."""
+        """Exchange an authorization code for tokens and save to DB."""
         resp = requests.post(TOKEN_URL, data={
             "action": "requesttoken",
             "grant_type": "authorization_code",
@@ -90,7 +121,7 @@ class WithingsClient:
             "access_token": token_data["access_token"],
             "refresh_token": token_data["refresh_token"],
             "expires_at": int(time.time()) + int(token_data.get("expires_in", 10800)),
-            "userid": token_data.get("userid", ""),
+            "userid": str(token_data.get("userid", "")),
         }
         self._save_tokens()
         return self._tokens
@@ -98,7 +129,7 @@ class WithingsClient:
     def refresh_tokens(self) -> None:
         """Refresh the access token using the stored refresh token."""
         if not self._tokens.get("refresh_token"):
-            raise RuntimeError("No refresh token stored. Run: python manage.py withings_login")
+            self._load_tokens()
         resp = requests.post(TOKEN_URL, data={
             "action": "requesttoken",
             "grant_type": "refresh_token",
@@ -117,27 +148,11 @@ class WithingsClient:
         self._save_tokens()
         logger.info("Withings tokens refreshed successfully")
 
-    def _ensure_fresh_token(self) -> None:
-        """Auto-refresh if within 5 minutes of expiry."""
-        expires_at = self._tokens.get("expires_at", 0)
-        if time.time() >= expires_at - 300:
-            self.refresh_tokens()
-
-    def _save_tokens(self) -> None:
-        """Write tokens to disk with restricted permissions."""
-        token_dir = os.path.dirname(self.token_path)
-        os.makedirs(token_dir, mode=0o700, exist_ok=True)
-        with open(self.token_path, "w") as f:
-            json.dump(self._tokens, f, indent=2)
-        os.chmod(self.token_path, 0o600)
-
     # ── API requests ──────────────────────────────────────────────────────────
 
     def _request(self, endpoint: str, params: dict) -> dict:
         """Make an authenticated POST to the Withings API. Retries once on 401."""
-        if not self._tokens.get("access_token"):
-            raise RuntimeError("No Withings access token. Run: python manage.py withings_login")
-        self._ensure_fresh_token()
+        self._ensure_token_valid()
 
         headers = {"Authorization": f"Bearer {self._tokens['access_token']}"}
         for attempt in range(2):
@@ -209,7 +224,7 @@ class WithingsClient:
             elif mtype == MEAS_FAT_FREE:
                 result["fat_free_mass_lb"] = self._to_lb(decoded)
             elif mtype == MEAS_FAT_RATIO:
-                result["fat_ratio_pct"] = round(decoded, 2)  # already a percentage
+                result["fat_ratio_pct"] = round(decoded, 2)
             elif mtype == MEAS_MUSCLE_MASS:
                 result["muscle_mass_lb"] = self._to_lb(decoded)
             elif mtype == MEAS_HYDRATION:
@@ -217,7 +232,7 @@ class WithingsClient:
             elif mtype == MEAS_BONE_MASS:
                 result["bone_mass_lb"] = self._to_lb(decoded)
             elif mtype == MEAS_PULSE_WAVE_VEL:
-                result["pulse_wave_velocity"] = round(decoded, 2)  # m/s, no conversion
+                result["pulse_wave_velocity"] = round(decoded, 2)
             elif mtype == MEAS_VASCULAR_AGE:
                 result["vascular_age"] = int(decoded)
 

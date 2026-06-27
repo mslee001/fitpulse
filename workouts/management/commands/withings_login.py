@@ -76,5 +76,5 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Success! Withings user ID: {tokens.get('userid', 'unknown')}"
         ))
-        self.stdout.write(f"Tokens saved to: {client.token_path}")
+        self.stdout.write("Tokens saved to DB (WithingsAuth singleton).")
         self.stdout.write("You can now use Withings Sync from the nav dropdown.")

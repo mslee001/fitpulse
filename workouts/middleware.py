@@ -7,6 +7,7 @@ PUBLIC_PATHS = (
     "/static/",
     "/api/mobile/",
     "/auth/withings/callback/",
+    "/api/withings/webhook/",
 )
 
 

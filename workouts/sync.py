@@ -926,3 +926,70 @@ def sync_withings_new(request):
 def sync_withings_all(request):
     """POST /api/sync/withings/all/"""
     return JsonResponse(_run_withings_sync_all())
+
+
+# ---------------------------------------------------------------------------
+# Withings webhook endpoint
+# ---------------------------------------------------------------------------
+
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+
+
+@csrf_exempt
+@require_POST
+def withings_webhook(request):
+    """
+    POST /api/withings/webhook/
+
+    Withings notify-then-fetch: the payload carries userid + time window,
+    not measurement values. We fetch the measurements inline and run the
+    normal upsert pipeline.
+
+    Always returns 200 — Withings auto-cancels subscriptions after 20 days
+    of consecutive non-200 responses, so we swallow internal errors here.
+    """
+    from workouts.models import WithingsAuth
+
+    auth = WithingsAuth.get()
+    if not auth:
+        logger.error("Withings webhook received but no WithingsAuth row exists")
+        return HttpResponse(status=200)
+
+    userid = request.POST.get("userid", "")
+    appli = request.POST.get("appli", "")
+    startdate = request.POST.get("startdate")
+    enddate = request.POST.get("enddate")
+
+    if userid != auth.userid:
+        logger.warning(
+            "Withings webhook userid mismatch: got %s, expected %s", userid, auth.userid
+        )
+        return HttpResponse(status=200)
+
+    WithingsAuth.objects.filter(pk=1).update(
+        last_webhook_received_at=tz.now(),
+        webhook_subscription_active=True,
+    )
+
+    try:
+        if appli == "1":  # weight / body composition
+            start = int(startdate) if startdate else None
+            end = int(enddate) if enddate else None
+            client = WithingsClient()
+            measurements = client.get_measurements(start_date=start, end_date=end)
+            if measurements:
+                _upsert_measurements(measurements)
+                dates = list({m["measured_at"].astimezone().date() for m in measurements})
+                _update_daily_stats_for_dates(dates)
+            logger.info(
+                "Withings webhook synced %d measurements for appli=%s",
+                len(measurements), appli,
+            )
+        else:
+            logger.info("Withings webhook for appli=%s — not handled, ignoring", appli)
+    except Exception:
+        logger.exception("Withings webhook sync failed (will retry on next webhook)")
+
+    return HttpResponse(status=200)

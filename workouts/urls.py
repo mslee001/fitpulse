@@ -20,6 +20,7 @@ from .sync import (
     sync_new, sync_all, sync_new_workouts, sync_all_workouts,
     sync_garmin_new, sync_garmin_all, sync_garmin_wellness,
     sync_withings_new, sync_withings_all,
+    withings_webhook,
 )
 from .ai import (
     analytics_generate_insights, analytics_check_insights,
@@ -99,4 +100,6 @@ urlpatterns = [
     # Weekly review
     path("review/", weekly_review_page, name="weekly_review"),
     path("api/weekly-review/check/", weekly_review_check, name="weekly_review_check"),
+    # Withings webhook
+    path("api/withings/webhook/", withings_webhook, name="withings_webhook"),
 ]
