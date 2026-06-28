@@ -484,26 +484,23 @@ function buildChart() {
     let yAxisMin = undefined;
     let yAxisMax = undefined;
     if (isPaceActive && paceZones.length > 0 && !multiScale) {
-      const paceVals = (metrics.pace?.values || []).filter(v => v != null);
-      const targetVals = (metrics.target_pace?.values || []).filter(v => v != null);
-      const dataPaceMin = paceVals.length ? Math.min(...paceVals) : null;
-      const dataPaceMax = paceVals.length ? Math.max(...paceVals) : null;
-      const targetPaceMin = targetVals.length ? Math.min(...targetVals) : null;
-      yAxisMin = targetPaceMin != null ? targetPaceMin - 0.5 : (dataPaceMin != null ? dataPaceMin - 0.5 : undefined);
-      yAxisMax = dataPaceMax != null ? dataPaceMax + 2.0 : undefined;
-
       // Sort by fast_pace ascending so we can snap adjacent boundaries seamlessly
       const sorted = [...paceZones]
         .map((zone, origIdx) => ({ ...zone, origIdx }))
         .sort((a, b) => a.fast_pace - b.fast_pace);
+
+      // Fixed zone-boundary scale for consistency across workouts.
+      // With reverse: true on the axis, yAxisMin (fast pace) → TOP, yAxisMax (slow pace) → BOTTOM.
+      // Start the chart at the Max/Very-Hard boundary so the Max zone shows as a thin strip at the top.
+      // Extend past Recovery's slow_pace so warm-up/cool-down pace clips off the bottom.
+      yAxisMin = sorted.length > 1 ? sorted[1].fast_pace - 0.5 : sorted[0].fast_pace - 0.5;
+      yAxisMax = sorted[sorted.length - 1].slow_pace + 2.0;
+
       sorted.forEach((zone, i) => {
         const isMax = i === 0;
         const isRecovery = i === sorted.length - 1;
-        // Clip Max to just above the target fastest pace; extend Recovery below the actual slowest pace
-        const yMin = isMax ? (targetPaceMin ?? dataPaceMin ?? zone.fast_pace) - 0.5 : zone.fast_pace;
-        const yMax = isRecovery
-          ? (dataPaceMax != null ? dataPaceMax + 2.0 : zone.slow_pace)
-          : sorted[i + 1].fast_pace;
+        const yMin = isMax ? yAxisMin : zone.fast_pace;
+        const yMax = isRecovery ? yAxisMax : sorted[i + 1].fast_pace;
         annotations[`zone${i}`] = {
           type: 'box',
           yScaleID: 'y',

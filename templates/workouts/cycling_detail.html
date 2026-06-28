@@ -429,10 +429,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let yAxisMin = undefined;
     let yAxisMax = undefined;
     if (isOutputActive && !multiScale && ftp) {
-      const outputVals = (metrics.output?.values || []).filter(v => v != null);
-      const dataMax = outputVals.length ? Math.max(...outputVals) : 0;
-      yAxisMin = 0;
-      yAxisMax = Math.max(2.0 * ftp, dataMax * 1.15);
+      yAxisMin = 0;                  // show all of Z1; data at 0W sits at chart edge
+      yAxisMax = 1.65 * ftp;         // Z7 shows as a thin strip above the Z6/Z7 boundary (1.50×)
 
       const _zo = [0.30,0.30,0.30,0.35,0.35,0.35,0.40];
       const POWER_ZONE_COLORS = [
