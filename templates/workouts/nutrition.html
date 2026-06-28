@@ -452,7 +452,7 @@ function setServingNote(text) {
 <div class="card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">THIS WEEK</div>
-    <span style="color:var(--text-dim);font-size:0.8rem">{{ weekly.days_logged }}/7 days logged</span>
+    <span style="color:var(--text-dim);font-size:0.8rem">{{ weekly.days_logged }}/{{ weekly.days|length }} days logged</span>
   </div>
   <div style="overflow-x:auto">
     <table style="width:100%;border-collapse:collapse;font-size:0.82rem;font-family:'Barlow Condensed',sans-serif">
@@ -489,7 +489,7 @@ function setServingNote(text) {
           {% if targets %}
           <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;color:
             {% if weekly.days_hit_cal is not None %}{% if weekly.days_hit_cal >= 5 %}var(--accent-green){% elif weekly.days_hit_cal >= 3 %}var(--text-muted){% else %}var(--accent){% endif %}{% else %}var(--text-dim){% endif %}">
-            {% if weekly.days_hit_cal is not None %}{{ weekly.days_hit_cal }}/7{% else %}—{% endif %}
+            {% if weekly.days_hit_cal is not None %}{{ weekly.days_hit_cal }}/{{ weekly.complete_days }}{% else %}—{% endif %}
           </td>
           {% endif %}
         </tr>
@@ -513,7 +513,7 @@ function setServingNote(text) {
           {% if targets %}
           <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;color:
             {% if weekly.days_hit_protein is not None %}{% if weekly.days_hit_protein >= 5 %}var(--accent-green){% elif weekly.days_hit_protein >= 3 %}var(--text-muted){% else %}var(--accent){% endif %}{% else %}var(--text-dim){% endif %}">
-            {% if weekly.days_hit_protein is not None %}{{ weekly.days_hit_protein }}/7{% else %}—{% endif %}
+            {% if weekly.days_hit_protein is not None %}{{ weekly.days_hit_protein }}/{{ weekly.complete_days }}{% else %}—{% endif %}
           </td>
           {% endif %}
         </tr>
@@ -537,7 +537,7 @@ function setServingNote(text) {
           {% if targets %}
           <td style="text-align:center;padding:0.35rem 0.4rem;white-space:nowrap;color:
             {% if weekly.days_hit_fiber is not None %}{% if weekly.days_hit_fiber >= 5 %}var(--accent-green){% elif weekly.days_hit_fiber >= 3 %}var(--text-muted){% else %}var(--accent){% endif %}{% else %}var(--text-dim){% endif %}">
-            {% if weekly.days_hit_fiber is not None %}{{ weekly.days_hit_fiber }}/7{% else %}—{% endif %}
+            {% if weekly.days_hit_fiber is not None %}{{ weekly.days_hit_fiber }}/{{ weekly.complete_days }}{% else %}—{% endif %}
           </td>
           {% endif %}
         </tr>

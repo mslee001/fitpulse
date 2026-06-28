@@ -261,7 +261,7 @@ def get_weekly_stats(end_date, targets=None):
       avg_cal, avg_protein_g, avg_fiber_g
       days_hit_cal, days_hit_protein, days_hit_fiber (None if no target)
     """
-    days_list = [end_date - timedelta(days=i) for i in range(6, -1, -1)]
+    days_list = [end_date - timedelta(days=i) for i in range(7, -1, -1)]
 
     stats_map = {
         s.date: s
@@ -293,21 +293,25 @@ def get_weekly_stats(end_date, targets=None):
             "fiber_ok": (fiber_v >= fiber_t * 0.85) if (fiber_v and fiber_t) else None,
         })
 
+    today = date.today()
     logged_rows = [r for r in rows if r["logged"]]
     n = len(logged_rows)
+    # Exclude today from averages and hit counts — today's log is incomplete
+    complete_rows = [r for r in logged_rows if r["date"] < today]
 
     def _avg(key):
-        vals = [r[key] for r in logged_rows if r[key] is not None]
+        vals = [r[key] for r in complete_rows if r[key] is not None]
         return round(sum(vals) / len(vals)) if vals else None
 
     def _days_hit(key, target, pct=0.9):
         if not target:
             return None
-        return sum(1 for r in logged_rows if r[key] and r[key] >= target * pct)
+        return sum(1 for r in complete_rows if r[key] and r[key] >= target * pct)
 
     return {
         "days": rows,
         "days_logged": n,
+        "complete_days": len(complete_rows),
         "avg_cal": _avg("cal"),
         "avg_protein_g": _avg("protein_g"),
         "avg_fiber_g": _avg("fiber_g"),
