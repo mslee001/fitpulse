@@ -54,6 +54,22 @@ class Command(BaseCommand):
 
         results = []
 
+        # Peloton first — its timestamps must be in the DB before Garmin dedup runs,
+        # otherwise a workout done today appears in both (Garmin doesn't see it as a duplicate).
+        if not opts["skip_peloton"]:
+            self.stdout.write("[sync_daily] Peloton…")
+            try:
+                r = _run_peloton_sync_new()
+                if "error" in r:
+                    raise RuntimeError(r["error"])
+                summary = f"{r.get('created', 0)} new, {r.get('updated', 0)} updated"
+                results.append(("peloton", "ok"))
+                self.stdout.write(self.style.SUCCESS(f"  ✓ {summary}"))
+            except Exception as e:
+                results.append(("peloton", "fail"))
+                self.stdout.write(self.style.ERROR(f"  ✗ {e}"))
+                logger.exception("Peloton sync failed")
+
         # Garmin activities — new since last sync
         self.stdout.write("[sync_daily] Garmin activities…")
         try:
@@ -84,21 +100,6 @@ class Command(BaseCommand):
             results.append(("garmin_wellness", "fail"))
             self.stdout.write(self.style.ERROR(f"  ✗ {e}"))
             logger.exception("Garmin wellness sync failed")
-
-        # Peloton — optional
-        if not opts["skip_peloton"]:
-            self.stdout.write("[sync_daily] Peloton…")
-            try:
-                r = _run_peloton_sync_new()
-                if "error" in r:
-                    raise RuntimeError(r["error"])
-                summary = f"{r.get('created', 0)} new, {r.get('updated', 0)} updated"
-                results.append(("peloton", "ok"))
-                self.stdout.write(self.style.SUCCESS(f"  ✓ {summary}"))
-            except Exception as e:
-                results.append(("peloton", "fail"))
-                self.stdout.write(self.style.ERROR(f"  ✗ {e}"))
-                logger.exception("Peloton sync failed")
 
         # Summary
         failed = [r[0] for r in results if r[1] == "fail"]

@@ -794,6 +794,7 @@ class SideEffectLog(models.Model):
     timestamp            = models.DateTimeField(auto_now_add=True)
     date                 = models.DateField(db_index=True)
     symptom              = models.CharField(max_length=30, choices=SYMPTOM_CHOICES)
+    other_label          = models.CharField(max_length=100, blank=True, default="")
     severity             = models.IntegerField(choices=SEVERITY_CHOICES)
     related_meal         = models.ForeignKey(
         "FoodEntry", null=True, blank=True, on_delete=models.SET_NULL,
@@ -808,8 +809,14 @@ class SideEffectLog(models.Model):
     class Meta:
         ordering = ["-timestamp"]
 
+    @property
+    def display_name(self):
+        if self.symptom == "other" and self.other_label:
+            return self.other_label
+        return self.get_symptom_display()
+
     def __str__(self):
-        return f"{self.date} {self.get_symptom_display()} ({self.get_severity_display()})"
+        return f"{self.date} {self.display_name} ({self.get_severity_display()})"
 
 
 # ---------------------------------------------------------------------------

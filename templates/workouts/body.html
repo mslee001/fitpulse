@@ -87,7 +87,7 @@
     {% for s in recent_symptoms %}
     <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.83rem">
       <span style="color:var(--text-dim);font-size:0.72rem;min-width:4.5rem">{{ s.date|date:"M j" }}</span>
-      <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ s.get_symptom_display }}</span>
+      <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ s.display_name }}</span>
       <span style="font-size:0.75rem;color:{% if s.severity == 3 %}var(--accent-red){% elif s.severity == 2 %}var(--accent){% else %}var(--accent-green){% endif %}">
         {{ s.get_severity_display }}
       </span>

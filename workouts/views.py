@@ -2491,7 +2491,8 @@ def nutrition_analytics_page(request):
     avg_prot_gap = None
     if prot_t and logged_days:
         under = [prot_t - (s.protein_g_total or 0) for s in stats_qs if (s.protein_g_total or 0) < prot_t * 0.9]
-        avg_prot_gap = round(sum(under) / len(under)) if under else 0
+        if len(under) >= 3:
+            avg_prot_gap = round(sum(under) / len(under))
 
     # Chart data: daily series
     chart_data = [
@@ -2559,7 +2560,6 @@ def nutrition_analytics_page(request):
         _stale = (
             not _s.ai_nutrition_insights_generated_at
             or (datetime.date.today() - _s.ai_nutrition_insights_generated_at.date()).days >= 7
-            or _s.ai_nutrition_insights_range != range_days
         )
         if _stale:
             try:
@@ -2662,6 +2662,7 @@ def symptoms_page(request):
             symptom = request.POST.get("symptom", "").strip()
             severity = int(request.POST.get("severity", 0))
             notes = request.POST.get("notes", "").strip()
+            other_label = request.POST.get("other_label", "").strip()
             meal_pk = request.POST.get("related_meal_id", "")
             iv_pk = request.POST.get("related_intervention_id", "")
 
@@ -2672,6 +2673,7 @@ def symptoms_page(request):
             SideEffectLog.objects.create(
                 date=today,
                 symptom=symptom,
+                other_label=other_label if symptom == "other" else "",
                 severity=severity,
                 notes=notes,
                 related_meal_id=int(meal_pk) if meal_pk else None,

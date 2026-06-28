@@ -75,7 +75,10 @@ def _interventions_context(start_date, end_date) -> str:
         ).order_by("start_date")
         for d in doses:
             d_end = d.end_date.isoformat() if d.end_date else "ongoing"
-            lines.append(f"    • {d.dose} from {d.start_date} to {d_end}")
+            dose_days = (end_date - d.start_date).days + 1 if d.start_date <= end_date else 0
+            dose_weeks = dose_days // 7
+            duration_note = f" ({dose_days} days / week {dose_weeks + 1})" if dose_days > 0 else ""
+            lines.append(f"    • {d.dose} from {d.start_date} to {d_end}{duration_note}")
         if iv.expected_effects:
             lines.append(f"    Expected: {iv.expected_effects}")
     return "\n".join(lines)
@@ -863,7 +866,7 @@ def _submit_insights_batch():
         + json.dumps(summary, indent=2)
         + INSIGHTS_PROMPT_SUFFIX
     )
-    return llm.submit_batch("peloton-insights", prompt, model=llm.SONNET, max_tokens=1024, system=build_insights_system())
+    return llm.submit_batch("peloton-insights", prompt, model=llm.SONNET, max_tokens=1500, system=build_insights_system())
 
 
 def analytics_generate_insights(request):
@@ -2458,16 +2461,17 @@ def _build_pattern_insights_prompt() -> str:
     symptom_rows = list(
         SideEffectLog.objects.filter(date__gte=cutoff_60)
         .annotate(week=TruncWeek("date"))
-        .values("week", "symptom")
+        .values("week", "symptom", "other_label")
         .annotate(count=Count("id"), avg_severity=Avg("severity"))
-        .order_by("week", "symptom")
+        .order_by("week", "symptom", "other_label")
     )
     if symptom_rows:
         by_week: dict = {}
         for r in symptom_rows:
             w = str(_as_date(r["week"]))
+            label = r["other_label"] if r["symptom"] == "other" and r["other_label"] else r["symptom"]
             by_week.setdefault(w, []).append(
-                f"{r['symptom']} ×{r['count']} (avg severity {r['avg_severity']:.1f})"
+                f"{label} ×{r['count']} (avg severity {r['avg_severity']:.1f})"
             )
         for week, symptoms in sorted(by_week.items()):
             symptom_lines.append(f"  Week of {week}: {', '.join(symptoms)}")
@@ -2718,7 +2722,8 @@ def _build_weekly_review_prompt(week_start) -> str:
     symptoms_qs = SideEffectLog.objects.filter(date__gte=week_start, date__lte=week_end)
     symptom_counts: dict = {}
     for s in symptoms_qs:
-        symptom_counts[s.symptom] = symptom_counts.get(s.symptom, 0) + 1
+        key = s.display_name
+        symptom_counts[key] = symptom_counts.get(key, 0) + 1
     symptoms_str = (
         "  " + ", ".join(f"{k} ×{v}" for k, v in sorted(symptom_counts.items(), key=lambda x: -x[1]))
         if symptom_counts else "  (none logged)"

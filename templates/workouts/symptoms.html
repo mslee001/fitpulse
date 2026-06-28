@@ -33,6 +33,12 @@
       <input type="hidden" id="selected-symptom" value="">
     </div>
 
+    <div id="other-label-field" style="display:none;margin-bottom:1.25rem">
+      <label class="filter-label">NAME THIS SYMPTOM</label>
+      <input type="text" id="other-label" class="filter-input" style="margin-top:0.35rem"
+             placeholder="e.g. joint pain, hair loss…" maxlength="100">
+    </div>
+
     <div style="margin-bottom:1.25rem">
       <div class="filter-label" style="margin-bottom:0.5rem">SEVERITY</div>
       <div style="display:flex;gap:0.5rem">
@@ -109,7 +115,7 @@
         {% for entry in recent|slice:":15" %}
         <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.83rem;padding:0.3rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
           <span style="color:var(--text-dim);font-size:0.73rem;white-space:nowrap;min-width:4.5rem">{{ entry.date|date:"M j" }}</span>
-          <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ entry.get_symptom_display }}</span>
+          <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ entry.display_name }}</span>
           <span style="font-size:0.75rem;color:{% if entry.severity == 3 %}var(--accent-red){% elif entry.severity == 2 %}var(--accent){% else %}var(--accent-green){% endif %}">
             {{ entry.get_severity_display }}
           </span>
@@ -130,6 +136,14 @@ document.querySelectorAll('.symptom-chip').forEach(function(btn) {
     document.querySelectorAll('.symptom-chip').forEach(b => b.classList.remove('btn-accent'));
     btn.classList.add('btn-accent');
     _symptom = btn.dataset.value;
+    var otherField = document.getElementById('other-label-field');
+    if (_symptom === 'other') {
+      otherField.style.display = '';
+      document.getElementById('other-label').focus();
+    } else {
+      otherField.style.display = 'none';
+      document.getElementById('other-label').value = '';
+    }
   });
 });
 
@@ -149,6 +163,7 @@ function logSymptom() {
   data.append('symptom', _symptom);
   data.append('severity', _severity);
   data.append('notes', document.getElementById('symptom-notes').value);
+  data.append('other_label', document.getElementById('other-label').value);
   data.append('related_meal_id', (document.getElementById('related-meal') || {value:''}).value);
   data.append('related_intervention_id', (document.getElementById('related-iv') || {value:''}).value);
   data.append('csrfmiddlewaretoken', '{{ csrf_token }}');
@@ -162,6 +177,8 @@ function logSymptom() {
         document.querySelectorAll('.symptom-chip').forEach(b => b.classList.remove('btn-accent'));
         document.querySelectorAll('.severity-btn').forEach(b => b.classList.remove('btn-accent'));
         document.getElementById('symptom-notes').value = '';
+        document.getElementById('other-label').value = '';
+        document.getElementById('other-label-field').style.display = 'none';
         _symptom = ''; _severity = '';
         // Reload recent list after 1s
         setTimeout(() => location.reload(), 1200);
