@@ -866,7 +866,7 @@ def _submit_insights_batch():
         + json.dumps(summary, indent=2)
         + INSIGHTS_PROMPT_SUFFIX
     )
-    return llm.submit_batch("peloton-insights", prompt, model=llm.SONNET, max_tokens=1500, system=build_insights_system())
+    return llm.submit_batch("peloton-insights", prompt, model=llm.SONNET, max_tokens=2000, system=build_insights_system())
 
 
 def analytics_generate_insights(request):
@@ -2190,7 +2190,7 @@ def _submit_nutrition_insights_batch(range_days: int = 30) -> str:
     prompt = _build_nutrition_insights_prompt(range_days)
     if not prompt:
         raise ValueError("No nutrition data logged for the selected period")
-    batch_id = llm.submit_batch("nutrition_insights", prompt, model=llm.SONNET, max_tokens=1400)
+    batch_id = llm.submit_batch("nutrition_insights", prompt, model=llm.SONNET, max_tokens=1800)
     settings = UserSettings.get()
     settings.ai_nutrition_insights_batch_id = batch_id
     settings.ai_nutrition_insights_range = range_days
@@ -2378,7 +2378,7 @@ One paragraph summary of the most notable finding.
 
 Be specific and data-driven. Avoid generic advice."""
 
-        return llm.call(prompt, model=llm.SONNET, max_tokens=1200, timeout=60)
+        return llm.call(prompt, model=llm.SONNET, max_tokens=1600, timeout=60)
     except Exception as e:
         logger.warning("Intervention interpretation failed: %s", e)
         return ""
@@ -2548,7 +2548,7 @@ Be specific and data-driven. Avoid generic advice. Do not recommend medical deci
 def _submit_pattern_insights_batch() -> str:
     """Submit pattern insights to Batch API. Saves batch_id to UserSettings. Returns batch_id."""
     prompt = _build_pattern_insights_prompt()
-    batch_id = llm.submit_batch("pattern_insights", prompt, model=llm.SONNET, max_tokens=1800)
+    batch_id = llm.submit_batch("pattern_insights", prompt, model=llm.SONNET, max_tokens=2400)
     settings = UserSettings.get()
     settings.ai_pattern_insights_batch_id = batch_id
     settings.save(update_fields=["ai_pattern_insights_batch_id"])
@@ -2785,7 +2785,7 @@ def _submit_weekly_review_batch(week_start):
     """Submit weekly review to Batch API. Creates/updates WeeklyReview with batch_id. Returns instance."""
     from .models import WeeklyReview
     prompt = _build_weekly_review_prompt(week_start)
-    batch_id = llm.submit_batch("weekly_review", prompt, model=llm.SONNET, max_tokens=1200)
+    batch_id = llm.submit_batch("weekly_review", prompt, model=llm.SONNET, max_tokens=1600)
     review, _ = WeeklyReview.objects.update_or_create(
         week_start=week_start,
         defaults={"content": "", "ai_model": llm.SONNET, "batch_id": batch_id},

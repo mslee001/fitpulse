@@ -8,7 +8,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 HAIKU  = "claude-haiku-4-5-20251001"
-SONNET = "claude-sonnet-4-6"
+SONNET = "claude-sonnet-5"
 
 _BASE_URL  = "https://api.anthropic.com/v1/messages"
 _BATCH_URL = "https://api.anthropic.com/v1/messages/batches"

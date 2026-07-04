@@ -27,7 +27,7 @@ if [ $SYNC_EXIT -eq 0 ]; then
     sudo /usr/bin/pmset schedule wake "$WAKE_TIME" 2>/dev/null || true
   else
     # Evening run — schedule morning wake for tomorrow at 08:25 (5 min before 8:30 AM job)
-    WAKE_TIME=$(date -v+1d "+%m/%d/%Y 08:29:30")
+    WAKE_TIME=$(date -v+1d "+%m/%d/%Y 07:59:30")
     sudo /usr/bin/pmset schedule wake "$WAKE_TIME" 2>/dev/null || true
   fi
 fi
