@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ program.name }} — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <a href="{% url 'program_list' %}" class="back-link">&larr; Programs</a>
+      <p class="stat-sub">{{ program.get_kind_display }}{% if program.instructor %} &middot; {{ program.instructor }}{% endif %}</p>
+      <h1 class="page-title">{{ program.name }}</h1>
+      <p class="page-sub">
+        {{ run.display_name }}
+        {% if run.is_current %}&middot; <span class="badge badge-accent">Current</span>{% endif %}
+      </p>
+    </div>
+    <div class="page-header-actions">
+      {% if other_runs %}
+      <select class="filter-select" onchange="if(this.value) location.href=this.value;">
+        <option>Switch cycle&hellip;</option>
+        {% for r in other_runs %}
+        <option value="{% url 'program_run' r.pk %}">{{ r.display_name }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+      {% if run.is_current %}
+      <form method="post" action="{% url 'program_complete_run' run.pk %}" style="display:inline"
+            onsubmit="return confirm('Mark this cycle complete? No new completions will attach to it — a new one starts automatically next time you take a matching class.')">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit">Complete</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{% url 'program_start_cycle' program.slug %}" style="display:inline">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit">Start new cycle</button>
+      </form>
+      <form method="post" action="{% url 'program_backfill' program.slug %}" style="display:inline">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit" title="Re-run matching for this program — picks up anything a deleted pass orphaned, or that was never matched">Backfill History</button>
+      </form>
+      <a class="btn btn-ghost btn-sm" href="{% url 'program_progression' run.pk %}">Load progression</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'program_retrospective' run.pk %}">{% if run.is_current %}Preview retrospective{% else %}Retrospective{% endif %}</a>
+      <form method="post" action="{% url 'program_delete_run' run.pk %}" style="display:inline"
+            onsubmit="return confirm('Delete this entire cycle? This permanently removes all {{ rows|length }} passes and {{ totals.workouts }} completions from the tracker (not from your workout history). This cannot be undone.')">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete Cycle</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if messages %}
+<div style="margin-bottom:1.5rem">
+  {% for message in messages %}
+  <div class="peloton-msg peloton-msg--success">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="stat-grid">
+  <div class="stat-card stat-card--hero">
+    <div class="stat-label">Classes done</div>
+    <div class="stat-value">{{ totals.workouts }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total effort pts</div>
+    <div class="stat-value">{{ totals.effort_points }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Weeks</div>
+    <div class="stat-value">{{ rows|length }}</div>
+  </div>
+</div>
+
+<div class="program-grid">
+  {% for row in rows %}
+  <div class="program-week">
+    <div class="program-week-label">
+      <span class="program-week-label-text">
+        Week {{ row.run_week.program_week.number }}
+        {% if row.run_week.program_week.label %}<span class="stat-sub">{{ row.run_week.program_week.label }}</span>{% endif %}
+        <span class="stat-sub">&middot; pass {{ row.run_week.sequence }}</span>
+      </span>
+      <form method="post" action="{% url 'program_delete_week' row.run_week.pk %}"
+            onsubmit="return confirm('Delete pass {{ row.run_week.sequence }}? This removes its completions from the tracker (not from your workout history).')">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)" title="Delete this pass">&times;</button>
+      </form>
+    </div>
+    {% include "workouts/partials/run_week_rating.html" with row=row %}
+    <div class="program-week-cells">
+      {% for cell in row.cells %}
+        {% if cell.entry %}
+          <a class="pcell pcell-done" href="{% url 'workout_detail' cell.entry.workout.workout_id %}">
+            <span class="pcell-check">&check;</span>
+            <span class="pcell-title">{{ cell.slot.title }}</span>
+            <span class="pcell-sub">
+              {{ cell.entry.workout.created_at|date:"M j, Y" }}
+              {% if cell.entry.workout.effort_points %} &middot; {{ cell.entry.workout.effort_points }} pts{% endif %}
+            </span>
+          </a>
+        {% else %}
+          <div class="pcell pcell-todo{% if cell.slot.optional %} pcell-optional{% endif %}">
+            <span class="pcell-title">{{ cell.slot.title }}</span>
+            {% if cell.slot.optional %}<span class="pcell-sub">optional</span>{% endif %}
+          </div>
+        {% endif %}
+      {% endfor %}
+      {% for e in row.loose %}
+        <a class="pcell pcell-done pcell-loose" href="{% url 'workout_detail' e.workout.workout_id %}">
+          <span class="pcell-check">&check;</span>
+          <span class="pcell-title">{{ e.workout.title|default:"Workout" }}</span>
+          <span class="pcell-sub">{{ e.workout.created_at|date:"M j, Y" }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% empty %}
+  <p class="stat-sub">No weeks yet — take a class in this program and sync.</p>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -323,7 +323,10 @@ class GarminClient:
             "avg_pace_seconds": avg_pace_secs,
             "avg_watts": activity.get("avgPower"),
             "avg_cadence": cadence,
-            "elevation_gain": activity.get("elevationGain"),
+            "elevation_gain": (
+                activity.get("elevationGain") * 3.28084
+                if activity.get("elevationGain") is not None else None
+            ),
             "created_at": created_at,
             "source": "garmin",
             "raw_data": activity,
@@ -436,8 +439,11 @@ class GarminClient:
         # Build metricsIndex → (slug, factor) from top-level descriptor list.
         # factor=0 means the field is a timestamp — skip it.
         index_to_slug: dict[int, tuple[str, float]] = {}
+        timestamp_idx = None
         for desc in descriptors:
             key = desc.get("key", "")
+            if key == "directTimestamp":
+                timestamp_idx = desc.get("metricsIndex")
             slug = SLUG_MAP.get(key)
             if not slug:
                 continue
@@ -449,7 +455,7 @@ class GarminClient:
         if not index_to_slug:
             return None
 
-        SAMPLE = 5  # store one point per 5 seconds to match Peloton's resolution
+        SAMPLE = 5  # store one point per 5 raw samples
         slug_values: dict[str, list[float]] = {}
         for i, point in enumerate(metrics_raw):
             if i % SAMPLE != 0:
@@ -457,7 +463,13 @@ class GarminClient:
             vals = point.get("metrics") or []
             for idx, (slug, factor) in index_to_slug.items():
                 if idx < len(vals) and vals[idx] is not None:
-                    v = vals[idx] / factor if factor != 1.0 else vals[idx]
+                    if slug == "incline":
+                        # directElevation values arrive already in meters despite the
+                        # descriptor's factor=100 (empirically confirmed against activity
+                        # summary min/maxElevation) — convert straight to feet, no /factor.
+                        v = vals[idx] * 3.28084
+                    else:
+                        v = vals[idx] / factor if factor != 1.0 else vals[idx]
                     slug_values.setdefault(slug, []).append(v)
 
         metrics_by_slug: dict[str, dict] = {}
@@ -474,10 +486,26 @@ class GarminClient:
         if not metrics_by_slug:
             return None
 
+        # Garmin doesn't always return raw points 1-second apart — long activities are
+        # pre-downsampled server-side, so derive real seconds-per-stored-point from the
+        # actual timestamp span rather than assuming 1s * SAMPLE.
+        every_n = SAMPLE
+        duration = details.get("metricsCount")
+        stored_count = len(range(0, len(metrics_raw), SAMPLE))
+        if timestamp_idx is not None and stored_count > 1:
+            first_vals = metrics_raw[0].get("metrics") or []
+            last_vals = metrics_raw[-1].get("metrics") or []
+            if (timestamp_idx < len(first_vals) and timestamp_idx < len(last_vals)
+                    and first_vals[timestamp_idx] is not None and last_vals[timestamp_idx] is not None):
+                span_sec = (last_vals[timestamp_idx] - first_vals[timestamp_idx]) / 1000.0
+                if span_sec > 0:
+                    every_n = span_sec / (stored_count - 1)
+                    duration = span_sec
+
         return {
             "metrics_by_slug": metrics_by_slug,
-            "duration": details.get("metricsCount"),
-            "every_n": SAMPLE,
+            "duration": duration,
+            "every_n": every_n,
             "source": "garmin",
         }
 
@@ -526,7 +554,10 @@ class GarminClient:
             vals = point.get("metrics") or []
             for idx, (slug, factor) in index_to_slug.items():
                 if idx < len(vals) and vals[idx] is not None:
-                    v = vals[idx] / factor if factor != 1.0 else vals[idx]
+                    if slug == "incline":
+                        v = vals[idx] * 3.28084
+                    else:
+                        v = vals[idx] / factor if factor != 1.0 else vals[idx]
                     slug_values.setdefault(slug, []).append(v)
                 else:
                     slug_values.setdefault(slug, []).append(None)

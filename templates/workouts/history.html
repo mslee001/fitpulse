@@ -113,6 +113,13 @@
         Compare →
       </a>
     </div>
+
+    <!-- Create Program button — shown once at least one workout is checked -->
+    <div id="create-program-bar" style="display:none;margin-top:0.5rem">
+      <a id="create-program-link" href="{% url 'program_new' %}" class="btn btn-ghost btn-full">
+        Create Program →
+      </a>
+    </div>
     </div>{# end filter-body #}
   </aside>
 
@@ -156,10 +163,12 @@
     select.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  // Track checked workouts and update the compare button
+  // Track checked workouts and update the compare / create-program buttons
   const compareBar = document.getElementById('compare-bar');
   const compareCountEl = document.getElementById('compare-count-num');
   const compareLink = document.getElementById('compare-link');
+  const createProgramBar = document.getElementById('create-program-bar');
+  const createProgramLink = document.getElementById('create-program-link');
   const selected = new Set();
 
   document.addEventListener('change', e => {
@@ -169,6 +178,8 @@
     compareCountEl.textContent = selected.size;
     compareBar.style.display = selected.size >= 2 ? 'block' : 'none';
     compareLink.href = `{% url 'compare' %}?ids=${[...selected].join(',')}`;
+    createProgramBar.style.display = selected.size >= 1 ? 'block' : 'none';
+    createProgramLink.href = `{% url 'program_new' %}?ids=${[...selected].join(',')}`;
   });
 </script>
 {% endblock %}

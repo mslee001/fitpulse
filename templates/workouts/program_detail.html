@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ program.name }} — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <a href="{% url 'program_list' %}" class="back-link">&larr; Programs</a>
+      <p class="stat-sub">{{ program.get_kind_display }}{% if program.instructor %} &middot; {{ program.instructor }}{% endif %}</p>
+      <h1 class="page-title">{{ program.name }}</h1>
+    </div>
+    <div class="page-header-actions">
+      <form method="post" action="{% url 'program_backfill' program.slug %}" style="display:inline">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit" title="Re-run matching for this program — picks up anything a deleted pass orphaned, or that was never matched">Backfill History</button>
+      </form>
+      <form method="post" action="{% url 'program_start_cycle' program.slug %}" style="display:inline">
+        {% csrf_token %}
+        <button class="btn btn-accent" type="submit">Start new cycle</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if messages %}
+<div style="margin-bottom:1.5rem">
+  {% for message in messages %}
+  <div class="peloton-msg peloton-msg--success">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">CYCLES</h3>
+  </div>
+  {% for r in runs %}
+  <div class="iv-item">
+    <div class="iv-item-main">
+      <div class="iv-item-info">
+        <a href="{% url 'program_run' r.pk %}" class="iv-item-name">{{ r.display_name }}</a>
+      </div>
+      <div class="iv-item-actions">
+        <form method="post" action="{% url 'program_delete_run' r.pk %}" style="margin:0"
+              onsubmit="return confirm('Delete this entire cycle ({{ r.display_name }})? This permanently removes all its passes and completions from the tracker (not from your workout history). This cannot be undone.')">
+          {% csrf_token %}
+          <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <p class="stat-sub">No cycles yet — take a class in this program and sync.</p>
+  {% endfor %}
+</div>
+{% endblock %}

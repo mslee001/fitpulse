@@ -30,6 +30,11 @@ from .ai import (
     pattern_insights_refresh, pattern_insights_check,
     weekly_review_check,
 )
+from .program_views import (
+    program_list, program_new, program_detail, program_run, program_start_cycle, program_progression,
+    program_delete_week, program_complete_run, program_backfill, run_week_rate, program_retrospective,
+    program_delete_run,
+)
 
 urlpatterns = [
     path("", today_page, name="today"),
@@ -105,4 +110,17 @@ urlpatterns = [
     path("api/withings/webhook/", withings_webhook, name="withings_webhook"),
     # Peloton credentials rotation
     path("api/peloton/auth/", set_peloton_auth, name="set_peloton_auth"),
+    # Programs
+    path("programs/", program_list, name="program_list"),
+    path("programs/new/", program_new, name="program_new"),
+    path("programs/<slug:slug>/", program_detail, name="program_detail"),
+    path("programs/<slug:slug>/start-cycle/", program_start_cycle, name="program_start_cycle"),
+    path("programs/<slug:slug>/backfill/", program_backfill, name="program_backfill"),
+    path("programs/run/<int:pk>/", program_run, name="program_run"),
+    path("programs/run/<int:pk>/progression/", program_progression, name="program_progression"),
+    path("programs/run/<int:pk>/complete/", program_complete_run, name="program_complete_run"),
+    path("programs/week/<int:pk>/delete/", program_delete_week, name="program_delete_week"),
+    path("programs/run-week/<int:pk>/rate/", run_week_rate, name="run_week_rate"),
+    path("programs/run/<int:pk>/retrospective/", program_retrospective, name="program_retrospective"),
+    path("programs/run/<int:pk>/delete/", program_delete_run, name="program_delete_run"),
 ]

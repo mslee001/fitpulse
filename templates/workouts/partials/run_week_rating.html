@@ -1,0 +1,23 @@
+{% load workout_filters %}
+<div class="rw-rating" id="rw-rating-{{ row.run_week.pk }}">
+  {% if row.has_done %}
+    <form hx-post="{% url 'run_week_rate' row.run_week.pk %}"
+          hx-target="#rw-rating-{{ row.run_week.pk }}" hx-swap="outerHTML"
+          class="rw-rating-form">
+      {% csrf_token %}
+      <div class="rw-rating-row">
+        <label class="rw-rating-label">RPE</label>
+        <select name="rpe" class="filter-select rw-rating-select">
+          <option value="">&mdash;</option>
+          {% for n in 10|to_range %}
+          <option value="{{ n }}"{% if row.run_week.rpe == n %} selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+        {% if row.run_week.rpe %}<span class="rw-rating-badge rpe-{{ row.run_week.rpe }}">{{ row.run_week.rpe }}/10</span>{% endif %}
+      </div>
+      <input type="text" name="note" class="form-input rw-rating-note" maxlength="280"
+             placeholder="what felt hardest / body-awareness note&hellip;" value="{{ row.run_week.note|default:'' }}">
+      <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+    </form>
+  {% endif %}
+</div>

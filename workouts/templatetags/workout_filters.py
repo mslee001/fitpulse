@@ -31,6 +31,11 @@ def index(lst, i):
 
 
 @register.filter
+def to_range(n):
+    return range(1, int(n) + 1)
+
+
+@register.filter
 def format_watts(value):
     if value is None:
         return "—"

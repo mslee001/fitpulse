@@ -916,7 +916,7 @@ def analytics_check_insights(request):
         insights_text = None
         for row in llm.get_batch_results(batch_id):
             if row.get("result", {}).get("type") == "succeeded":
-                insights_text = row["result"]["message"]["content"][0]["text"]
+                insights_text = llm.extract_text(row["result"]["message"]["content"])
                 break
     except Exception as e:
         logger.warning("batch results fetch failed for %s: %s", batch_id, e)
@@ -2226,7 +2226,7 @@ def nutrition_insights_check(request):
         insights_text = None
         for row in llm.get_batch_results(batch_id):
             if row.get("result", {}).get("type") == "succeeded":
-                insights_text = row["result"]["message"]["content"][0]["text"]
+                insights_text = llm.extract_text(row["result"]["message"]["content"])
                 break
     except Exception as e:
         logger.warning("nutrition insights batch results failed for %s: %s", batch_id, e)
@@ -2583,7 +2583,7 @@ def pattern_insights_check(request):
         insights_text = None
         for row in llm.get_batch_results(batch_id):
             if row.get("result", {}).get("type") == "succeeded":
-                insights_text = row["result"]["message"]["content"][0]["text"]
+                insights_text = llm.extract_text(row["result"]["message"]["content"])
                 break
     except Exception as e:
         logger.warning("pattern insights batch results failed for %s: %s", batch_id, e)
@@ -2826,7 +2826,7 @@ def weekly_review_check(request):
         content = None
         for row in llm.get_batch_results(review.batch_id):
             if row.get("result", {}).get("type") == "succeeded":
-                content = row["result"]["message"]["content"][0]["text"]
+                content = llm.extract_text(row["result"]["message"]["content"])
                 break
     except Exception as e:
         logger.warning("weekly review batch results failed for %s: %s", review.batch_id, e)
@@ -2867,3 +2867,62 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
             return WeeklyReview.objects.get(week_start=week_start)
         except WeeklyReview.DoesNotExist:
             return None
+
+
+# ---------------------------------------------------------------------------
+# Program retrospective — Claude Sonnet, cached per ProgramRun
+# ---------------------------------------------------------------------------
+
+def _get_or_generate_retrospective(run, force: bool = False) -> str:
+    """
+    Return the retrospective for this ProgramRun, generating (or regenerating) it
+    with Sonnet if missing. Synchronous like intervention interpretation — a
+    retrospective is generated once per run end (or previewed on demand mid-cycle),
+    not on a schedule, so the batch API isn't worth the complexity here.
+    """
+    if run.retrospective and not force:
+        return run.retrospective
+
+    from .programs import build_retrospective_context
+    ctx = build_retrospective_context(run)
+
+    kind_line = (
+        "This is a structured PLAN with an intended ramp (durations/intensity increase across weeks). "
+        "Grade whether the athlete followed that progression."
+        if ctx["kind"] == "plan" else
+        "This is a SPLIT — the same sessions repeated weekly with no designed progression. "
+        "Judge it on consistency and strength gain, not on following a ramp."
+    )
+
+    prompt = f"""You are writing a retrospective for a completed training block in a personal fitness app.
+{kind_line}
+
+Be specific and cite the numbers you're given; never invent values or infer effort that wasn't
+logged. RPE is the athlete's reported experience — use it only where present, note coverage, and
+highlight where load trend and RPE diverge (e.g. load flat but RPE rising = possible under-recovery;
+load rising but RPE falling = ready to progress harder). If an intervention or dose change overlapped
+the window, treat it as a confounder and do NOT attribute body-composition or performance changes to
+training alone. Calibrate causal language to the evidence. No filler adjectives.
+
+Data:
+{json.dumps(ctx, indent=1)}
+
+Respond using these markdown headers exactly:
+
+## What worked
+## Where it slipped
+## Progression highlights
+## Recovery & effort
+## Focus for next cycle"""
+
+    try:
+        text = llm.call(prompt, model=llm.SONNET, max_tokens=1800, timeout=60)
+    except Exception as e:
+        logger.warning("Program retrospective generation failed: %s", e)
+        return run.retrospective or ""
+
+    run.retrospective = text
+    run.retrospective_generated_at = tz.now()
+    run.retrospective_model = llm.SONNET
+    run.save(update_fields=["retrospective", "retrospective_generated_at", "retrospective_model"])
+    return text

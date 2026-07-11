@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Programs — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h1 class="page-title">PROGRAMS</h1>
+      <p class="page-sub">Plans, collections, and splits tracked across cycles</p>
+    </div>
+    <a class="btn btn-accent" href="{% url 'program_new' %}">+ New Split</a>
+  </div>
+</div>
+
+<div class="discipline-grid">
+  {% for p in programs %}
+  <a class="discipline-card" href="{% url 'program_detail' p.slug %}">
+    <div class="discipline-name">{{ p.get_kind_display }}</div>
+    <div class="record-discipline" style="margin-bottom:0.4rem">{{ p.name }}</div>
+    {% if p.instructor %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ p.instructor }}</div>{% endif %}
+    {% with run=p.active_run %}
+      {% if run %}<span class="badge badge-accent">Current cycle</span>
+      {% else %}<span class="badge badge-muted">{{ p.runs.count }} cycle{{ p.runs.count|pluralize }}</span>{% endif %}
+    {% endwith %}
+  </a>
+  {% empty %}
+  <p class="stat-sub">No programs yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

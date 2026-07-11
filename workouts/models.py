@@ -1,3 +1,4 @@
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -921,3 +922,151 @@ class PelotonAuth(models.Model):
         if not self.session_id or len(self.session_id) < 8:
             return "(empty)"
         return f"…{self.session_id[-4:]}"
+
+
+class Program(models.Model):
+    """Durable definition of a plan / collection / split. Created once, reused across runs."""
+    KIND_CHOICES = [("plan", "Plan"), ("collection", "Collection"), ("split", "Split")]
+    MATCH_CHOICES = [
+        ("achievement", "Achievement name"),
+        ("description", "Description/title suffix"),
+        ("ride_ids", "Ride ID list"),
+    ]
+    name = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default="plan")
+    instructor = models.CharField(max_length=120, blank=True)
+    match_strategy = models.CharField(max_length=20, choices=MATCH_CHOICES, default="ride_ids")
+    # Matched against CachedWorkout.achievements[].name (e.g. "HiLit Training Plan").
+    # Peloton's list-sync payload carries no achievement_templates/slug; only the
+    # detail-synced `achievements` field (name/description/count) is available.
+    achievement_name = models.CharField(max_length=150, blank=True)
+    # named group regex over CachedWorkout.title; must expose 'week' and 'day'.
+    # Real titles are suffix-style: "10 min Mobility: HiLit W1 D1".
+    title_week_day_regex = models.CharField(
+        max_length=200, blank=True,
+        default=r"W(?:eek)?\s*(?P<week>\d+)[,\s]*D(?:ay)?\s*(?P<day>\d+)")
+    series_id_hint = models.CharField(max_length=64, blank=True)      # discovery aid for splits
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def active_run(self):
+        return self.runs.filter(end_date__isnull=True).order_by("-start_date").first()
+
+
+class ProgramWeek(models.Model):
+    """A canonical week in the definition. A split has exactly one."""
+    program = models.ForeignKey(Program, related_name="weeks", on_delete=models.CASCADE)
+    number = models.PositiveIntegerField()
+    label = models.CharField(max_length=120, blank=True)   # "Base", "Peak"
+
+    class Meta:
+        unique_together = [("program", "number")]
+        ordering = ["program", "number"]
+
+    def __str__(self):
+        return f"{self.program.slug} W{self.number}"
+
+
+class ProgramSlot(models.Model):
+    """A planned class within a canonical week."""
+    week = models.ForeignKey(ProgramWeek, related_name="slots", on_delete=models.CASCADE)
+    day = models.PositiveIntegerField(null=True, blank=True)     # 1=Mon
+    order = models.PositiveIntegerField(default=0)
+    title = models.CharField(max_length=200)                    # base title, no "HiLit W_ D_" suffix
+    discipline = models.CharField(max_length=40, blank=True)
+    duration_min = models.PositiveIntegerField(null=True, blank=True)
+    peloton_ride_id = models.CharField(max_length=64, blank=True)   # split matcher / exact pin
+    # Peloton sometimes re-shoots a class under a new ride id while keeping the same
+    # title (e.g. a re-recorded "45 min Upper Body: Pull"). Older completions land
+    # under these ids but still belong to this slot.
+    alt_ride_ids = models.JSONField(default=list, blank=True)
+    optional = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["week", "day", "order"]
+
+    def __str__(self):
+        return f"{self.week} · {self.title}"
+
+
+class ProgramRun(models.Model):
+    """One engagement period. end_date NULL == the current tracker."""
+    program = models.ForeignKey(Program, related_name="runs", on_delete=models.CASCADE)
+    label = models.CharField(max_length=120, blank=True)     # "Cycle 1 — Spring"
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Sonnet retrospective, generated once a run ends (or previewed mid-cycle);
+    # cached like WeeklyReview — one per run, regenerated on demand.
+    retrospective = models.TextField(blank=True)
+    retrospective_generated_at = models.DateTimeField(null=True, blank=True)
+    retrospective_model = models.CharField(max_length=60, blank=True)
+
+    class Meta:
+        ordering = ["-start_date"]
+
+    def __str__(self):
+        state = "current" if self.end_date is None else "ended"
+        return f"{self.program.slug} · {self.label or self.start_date} ({state})"
+
+    @property
+    def is_current(self):
+        return self.end_date is None
+
+    @property
+    def display_name(self):
+        """label if one was explicitly set, else the date range itself — so a
+        cycle's name never goes stale independently of its actual dates."""
+        if self.label:
+            return self.label
+        start = self.start_date.strftime("%b %-d, %Y") if self.start_date else "?"
+        end = self.end_date.strftime("%b %-d, %Y") if self.end_date else "ongoing"
+        return f"{start} – {end}"
+
+
+class RunWeek(models.Model):
+    """One pass through a canonical week inside a run. Repeats == more of these."""
+    run = models.ForeignKey(ProgramRun, related_name="run_weeks", on_delete=models.CASCADE)
+    program_week = models.ForeignKey(ProgramWeek, on_delete=models.CASCADE)
+    sequence = models.PositiveIntegerField()   # 1,2,3… position in the run
+
+    # Subjective texture for this pass — one rating per row, not per session (Peloton
+    # doesn't expose session-level RPE, and weekly is the review app's natural grain).
+    rpe = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(10)])
+    note = models.TextField(blank=True)
+    rated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = [("run", "sequence")]
+        ordering = ["run", "sequence"]
+
+    def __str__(self):
+        return f"{self.run} · seq{self.sequence} (W{self.program_week.number})"
+
+
+class ProgramWorkout(models.Model):
+    """A completion pinned to a specific pass + slot."""
+    run_week = models.ForeignKey(RunWeek, related_name="entries", on_delete=models.CASCADE)
+    slot = models.ForeignKey(ProgramSlot, null=True, blank=True, on_delete=models.SET_NULL)
+    workout = models.ForeignKey("CachedWorkout", on_delete=models.CASCADE)
+    matched_by = models.CharField(max_length=20, default="auto")   # achievement/description/ride_id/manual
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("run_week", "workout")]
+        ordering = ["run_week", "slot"]
+
+    def __str__(self):
+        return f"{self.run_week} · {self.workout_id}"

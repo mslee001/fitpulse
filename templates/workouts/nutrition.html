@@ -405,6 +405,27 @@ function setServingNote(text) {
           <span style="font-size:0.7rem;opacity:0.65;margin-left:0.3rem">{{ sm.protein_g|floatformat:0 }}g P</span>
         </button>
       </form>
+      <details class="saved-meal-portion">
+        <summary class="saved-meal-portion-btn" title="Log a different serving size">%</summary>
+        <div class="saved-meal-portion-menu">
+          <form method="post" action="{% url 'nutrition_relog' sm.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="date" value="{{ page_date|date:'Y-m-d' }}">
+            <div class="portion-quick-btns">
+              <button type="submit" name="portion_pct" value="25">25%</button>
+              <button type="submit" name="portion_pct" value="50">50%</button>
+              <button type="submit" name="portion_pct" value="75">75%</button>
+              <button type="submit" name="portion_pct" value="100">100%</button>
+              <button type="submit" name="portion_pct" value="150">150%</button>
+            </div>
+            <div class="portion-custom">
+              <input type="number" name="custom_portion_pct" min="1" max="500" step="1"
+                     placeholder="Custom %" class="portion-custom-input">
+              <button type="submit" class="btn btn-ghost btn-sm">Log</button>
+            </div>
+          </form>
+        </div>
+      </details>
       <form method="post" action="{% url 'nutrition_delete_meal' sm.pk %}">
         {% csrf_token %}
         <button type="submit" class="saved-meal-delete" title="Remove saved meal">×</button>
@@ -413,7 +434,7 @@ function setServingNote(text) {
     {% endfor %}
   </div>
   <p style="color:var(--text-dim);font-size:0.75rem;margin-top:0.75rem">
-    Click a saved meal to log it for today. Star ★ any entry to save it here.
+    Click a saved meal to log it for today, or click % to log a partial/extra serving. Star ★ any entry to save it here.
   </p>
 </div>
 {% endif %}

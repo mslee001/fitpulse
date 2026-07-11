@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Load progression — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <p class="stat-sub">{{ program.name }}</p>
+      <h1 class="page-title">Load progression</h1>
+      <p class="page-sub">{{ run.display_name }}</p>
+    </div>
+    <div class="page-header-actions">
+      <a class="range-btn{% if metric == 'top_weight' %} active{% endif %}" href="?metric=top_weight{% if selected_slot %}&slot={{ selected_slot.pk }}{% endif %}">Top set (lb)</a>
+      <a class="range-btn{% if metric == 'volume' %} active{% endif %}" href="?metric=volume{% if selected_slot %}&slot={{ selected_slot.pk }}{% endif %}">Volume (lb)</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'program_run' run.pk %}">&larr; Grid</a>
+    </div>
+  </div>
+</div>
+
+{% if slots|length > 1 %}
+<div class="range-toggle-row" style="margin-bottom:1rem">
+  {% for s in slots %}
+  <a href="?slot={{ s.pk }}&metric={{ metric }}" class="range-btn{% if selected_slot.pk == s.pk %} active{% endif %}">{{ s.title }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{{ data|json_script:"prog-data" }}
+{% if data.series %}
+<div class="chart-card">
+  <canvas id="progChart" height="360"></canvas>
+</div>
+<p class="stat-sub" style="margin-top:0.75rem">
+  Only strength classes with tracked movements contribute. X-axis is each pass through a week.
+  {% if data.hidden_count %}Showing the {{ data.series|length }} most-tracked exercises for this class &mdash; {{ data.hidden_count }} tracked less often {{ data.hidden_count|pluralize:"is,are" }} hidden.{% endif %}
+</p>
+{% else %}
+<p class="stat-sub">No tracked-movement strength classes in this cycle yet.</p>
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const data = JSON.parse(document.getElementById("prog-data").textContent);
+  if (!data.series.length) { return; }
+  const ctx = document.getElementById("progChart").getContext("2d");
+  // Fixed categorical palette (dark surface), assigned in order — never a generated hue.
+  const PALETTE = ["#3987e5", "#199e70", "#c98500", "#008300", "#9085e9", "#e66767", "#d55181", "#d95926"];
+  new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.labels,
+      datasets: data.series.map(function (s, i) {
+        const color = PALETTE[i % PALETTE.length];
+        return {
+          label: s.exercise,
+          data: s.points,
+          borderColor: color,
+          backgroundColor: color,
+          spanGaps: true, tension: .25, pointRadius: 3,
+        };
+      }),
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "nearest", intersect: false },
+      scales: { y: { title: { display: true, text: data.metric === "volume" ? "Volume (lb)" : "Top set (lb)" } } },
+      plugins: { legend: { position: "bottom" } },
+    },
+  });
+});
+</script>
+{% endblock %}

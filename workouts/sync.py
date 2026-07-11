@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from django.http import JsonResponse
 from django.utils import timezone as tz
 
+from . import programs as _programs
 from .models import BodyMeasurement, CachedWorkout, DailyStats, UserSettings
 from .services.garmin_client import GarminClient
 from .services.peloton_client import PelotonClient
@@ -22,6 +23,14 @@ logger = logging.getLogger(__name__)
 
 # Disciplines that have a Peloton performance graph worth fetching.
 _PERF_DISCS = {"cycling", "bike_bootcamp", "running", "outdoor_running", "strength", "walking"}
+
+
+def _associate_program_safe(workout):
+    """Best-effort Program association — a matcher bug must never break a sync."""
+    try:
+        _programs.associate_workout(workout)
+    except Exception:
+        logger.exception("program association failed for workout %s", getattr(workout, "pk", "?"))
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +168,10 @@ def _run_peloton_sync_all():
             if unsynced:
                 _fetch_and_store_details(unsynced, client)
             _fetch_and_store_performance(page_ids, client)
+            # oldest-first: fill_or_append's pass-placement logic assumes strict
+            # date order, but CachedWorkout's default ordering is newest-first
+            for w in CachedWorkout.objects.filter(workout_id__in=page_ids).order_by("created_at"):
+                _associate_program_safe(w)
             page += 1
             if page * limit >= total_on_peloton:
                 break
@@ -209,6 +222,10 @@ def _run_peloton_sync_new(days=None):
                 page_workout_ids = [w.get("id") for w in page_workouts if w.get("id")]
                 _fetch_and_store_details(page_workout_ids, client)
                 _fetch_and_store_performance(page_workout_ids, client)
+                # oldest-first: fill_or_append's pass-placement logic assumes strict
+                # date order, but CachedWorkout's default ordering is newest-first
+                for w in CachedWorkout.objects.filter(workout_id__in=page_workout_ids).order_by("created_at"):
+                    _associate_program_safe(w)
             if stop or len(data) < limit:
                 break
             page += 1
@@ -355,6 +372,7 @@ def _augment_peloton_run(parsed: dict, garmin_activity_id: int, client) -> None:
         match.garmin_form_json = garmin_form
 
         _apply_garmin_form(match)
+        _associate_program_safe(match)
     except Exception as e:
         # Fallback: use Garmin summary averages if the time-series fetch fails.
         for f in ("stride_length_avg", "vertical_oscillation_avg", "vertical_ratio_avg", "ground_contact_time_avg"):
@@ -364,6 +382,7 @@ def _augment_peloton_run(parsed: dict, garmin_activity_id: int, client) -> None:
         match.save(update_fields=["stride_length_avg", "vertical_oscillation_avg",
                                    "vertical_ratio_avg", "ground_contact_time_avg"])
         logger.warning("Garmin form perf fetch failed for %s: %s", match.workout_id, e)
+        _associate_program_safe(match)
 
 
 def _find_hr_offset(garmin_form: dict, peloton_perf: dict, max_offset: int = 300) -> int | None:

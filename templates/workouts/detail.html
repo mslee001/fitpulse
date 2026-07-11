@@ -35,6 +35,16 @@
       </div>
       {% endif %}
       {% endwith %}
+      {% with elev=perf_summaries.elevation %}
+      {% if elev or workout.elevation_gain %}
+      <div class="metric-card">
+        <div class="metric-label">Elevation</div>
+        <div class="metric-value">
+          {% if elev %}{{ elev.value|floatformat:0 }}{% else %}{{ workout.elevation_gain|floatformat:0 }}{% endif %}<span class="metric-unit">ft</span>
+        </div>
+      </div>
+      {% endif %}
+      {% endwith %}
       {% if workout.heart_rate_avg %}
       <div class="metric-card">
         <div class="metric-label">Avg HR</div>
@@ -131,6 +141,8 @@ const hrZonesDirect = {{ hr_zones_direct|safe }};
 const ZONE_COLORS = ["#4FC3F7", "#81C784", "#FFD54F", "#FF8A65", "#E57373"];
 const ZONE_NAMES  = ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"];
 
+// Garmin's directElevation feeds the "incline" slug as real elevation (ft), not treadmill grade %.
+const isGarminElevation = perf.source === "garmin";
 const metricConfigs = [
   { slug: "heart_rate", label: "HR",       color: "#FF3B5C", fmt: v => v != null ? Math.round(v) + " bpm" : "—" },
   { slug: "output",     label: "OUTPUT",   color: "#CE93D8", fmt: v => v != null ? Math.round(v) + " W" : "—" },
@@ -138,7 +150,9 @@ const metricConfigs = [
   { slug: "speed",      label: "SPEED",    color: "#80CBC4", fmt: v => v != null ? v.toFixed(1) + " mph" : "—" },
   { slug: "pace",       label: "PACE",     color: "#A5D6A7", fmt: v => { if (v == null) return "—"; const m = Math.floor(v/60); return m + ":" + String(Math.round(v%60)).padStart(2,"0") + "/mi"; } },
   { slug: "resistance", label: "RESIST",   color: "#A5B4FC", fmt: v => v != null ? Math.round(v) + "%" : "—" },
-  { slug: "incline",    label: "INCLINE",  color: "#B0BEC5", fmt: v => v != null ? v.toFixed(1) + "%" : "—" },
+  isGarminElevation
+    ? { slug: "incline", label: "ELEVATION", color: "#B0BEC5", fmt: v => v != null ? Math.round(v) + " ft" : "—" }
+    : { slug: "incline", label: "INCLINE",   color: "#B0BEC5", fmt: v => v != null ? v.toFixed(1) + "%" : "—" },
 ];
 
 const available = metricConfigs.filter(c => {
@@ -149,7 +163,7 @@ const available = metricConfigs.filter(c => {
 function makeLabels(n) {
   return Array.from({ length: n }, (_, i) => {
     const m = Math.floor(i * everyN / 60);
-    const s = (i * everyN) % 60;
+    const s = Math.floor((i * everyN) % 60);
     return `${m}:${s.toString().padStart(2, "0")}`;
   });
 }

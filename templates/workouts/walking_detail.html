@@ -257,13 +257,17 @@ const currentWorkoutId = "{{ workout.workout_id }}";
 const typeStats = perf._typeStats || {};
 
 // Pace time-series values come from the API as min/mi (e.g. 9.75 = 9:45/mi)
+// Garmin's directElevation feeds the "incline" slug as real elevation (ft), not treadmill grade %.
+const isGarminElevation = perf.source === "garmin";
 const metricConfigs = [
   { slug: "pace", group: "pace", label: "PACE", color: "#00D1FF", invert: true,
     fmt: v => { if (v == null) return "—"; const s = Math.round(v * 60); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}/mi`; },
     tickFmt: v => { const s = Math.round(v * 60); return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; }
   },
   { slug: "cadence",    label: "CADENCE",    color: "#FFD54F", invert: false, fmt: v => v != null ? Math.round(v) + " spm" : "—", tickFmt: null },
-  { slug: "incline",    label: "INCLINE",    color: "#FF8A65", invert: false, fmt: v => v != null ? v.toFixed(1) + "%" : "—", tickFmt: null },
+  isGarminElevation
+    ? { slug: "incline", label: "ELEVATION", color: "#FF8A65", invert: false, fmt: v => v != null ? Math.round(v) + " ft" : "—", tickFmt: null }
+    : { slug: "incline", label: "INCLINE",   color: "#FF8A65", invert: false, fmt: v => v != null ? v.toFixed(1) + "%" : "—", tickFmt: null },
   { slug: "heart_rate", label: "HR",         color: "#FF3B5C", invert: false, fmt: v => v != null ? Math.round(v) + " bpm" : "—", tickFmt: null },
   { slug: "output",     label: "OUTPUT",     color: "#CE93D8", invert: false, fmt: v => v != null ? Math.round(v) + " W" : "—", tickFmt: null },
   { slug: "resistance", label: "RESISTANCE", color: "#A5B4FC", invert: false, fmt: v => v != null ? Math.round(v) + "%" : "—", tickFmt: null },
@@ -304,7 +308,7 @@ function normalizeSeries(values, invert = false, sharedMin = null, sharedMax = n
 function makeLabels(n) {
   return Array.from({ length: n }, (_, i) => {
     const m = Math.floor(i * everyN / 60);
-    const s = (i * everyN) % 60;
+    const s = Math.floor((i * everyN) % 60);
     return `${m}:${s.toString().padStart(2, "0")}`;
   });
 }

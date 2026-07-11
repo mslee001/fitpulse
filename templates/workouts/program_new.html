@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}New Split — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">New Split</h1>
+  <p class="page-sub">Same rides repeated week after week</p>
+</div>
+
+{% if errors %}
+<div class="peloton-msg peloton-msg--error">
+  {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+</div>
+{% endif %}
+
+{% if candidates is None %}
+<div class="chart-card">
+  <p class="stat-sub">
+    Select the classes that make up the split from
+    <a href="{% url 'history' %}">Workout History</a> — check a few, then click
+    "Create Program" in the sidebar. It doesn't matter how many times you pick each
+    one; each distinct class you check off becomes one slot in the split.
+  </p>
+</div>
+{% else %}
+<form method="post" action="{% url 'program_new' %}">
+  {% csrf_token %}
+  <input type="hidden" name="ids" value="{{ ids_param }}">
+  <div class="add-form-card" style="margin-bottom:1.5rem">
+    <div class="form-group">
+      <label class="form-label">Split name *</label>
+      <input name="name" class="form-input" placeholder="e.g. Rebecca 3 Day Split" value="{{ name|default:'' }}" required>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-header">
+      <h3 class="chart-title">CLASSES IN THIS SPLIT</h3>
+      <span class="chart-sub">One slot per class — uncheck any that shouldn't be included</span>
+    </div>
+    {% for c in candidates %}
+    <label class="iv-item" style="cursor:pointer;display:block">
+      <div class="iv-item-main">
+        <div class="iv-item-info">
+          <div>
+            <input type="checkbox" name="slot_ride_id" value="{{ c.ride_id }}"
+              {% if c.ride_id in checked_ride_ids %}checked{% endif %} style="margin-right:0.6rem">
+            <span class="iv-item-name">{{ c.title }}</span>
+            <span class="iv-item-dose"> &mdash; {{ c.discipline }}{% if c.instructor %} &middot; {{ c.instructor }}{% endif %}</span>
+          </div>
+          <div class="iv-item-meta">
+            {{ c.count }} of the selected workout{{ c.count|pluralize }}
+            {% if c.claimed_by %} &middot; <span style="color:var(--accent-red)">already used by {{ c.claimed_by }}</span>{% endif %}
+          </div>
+        </div>
+      </div>
+    </label>
+    {% empty %}
+    <p class="stat-sub">None of the selected workouts are Peloton classes with a ride-id — nothing to build a slot from.</p>
+    {% endfor %}
+  </div>
+
+  <div class="page-header-actions" style="margin-top:1.25rem">
+    <button class="btn btn-accent" type="submit">Create split</button>
+    <a class="btn btn-ghost" href="{% url 'history' %}">Back to History</a>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

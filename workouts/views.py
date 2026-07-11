@@ -2326,7 +2326,7 @@ def nutrition_save_meal_api(request, pk):
 
 
 def nutrition_relog_api(request, pk):
-    """POST — create a FoodEntry from a SavedMeal."""
+    """POST — create a FoodEntry from a SavedMeal, optionally scaled by a serving-size percentage."""
     from django.http import HttpResponseNotAllowed
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
@@ -2340,16 +2340,33 @@ def nutrition_relog_api(request, pk):
     except ValueError:
         entry_date = datetime.date.today()
 
+    pct_raw = request.POST.get("custom_portion_pct") or request.POST.get("portion_pct") or "100"
+    try:
+        portion = float(pct_raw) / 100.0
+    except (TypeError, ValueError):
+        portion = 1.0
+    portion = min(max(portion, 0.05), 5.0)
+
+    items = saved.items_json
+    if portion != 1.0 and isinstance(items, list):
+        macro_keys = ("calories", "protein_g", "carbs_g", "fat_g", "fiber_g")
+        items = [
+            {**item, **{k: round(item[k] * portion, 1) for k in macro_keys if isinstance(item.get(k), (int, float))}}
+            for item in items
+        ]
+
+    raw_text = saved.name if portion == 1.0 else f"{saved.name} ({portion * 100:.0f}% serving)"
+
     FoodEntry.objects.create(
         date=entry_date,
         meal=saved.meal,
-        raw_text=saved.name,
-        items_json=saved.items_json,
-        calories=saved.calories,
-        protein_g=saved.protein_g,
-        carbs_g=saved.carbs_g,
-        fat_g=saved.fat_g,
-        fiber_g=saved.fiber_g,
+        raw_text=raw_text,
+        items_json=items,
+        calories=round((saved.calories or 0) * portion, 1),
+        protein_g=round((saved.protein_g or 0) * portion, 1),
+        carbs_g=round((saved.carbs_g or 0) * portion, 1),
+        fat_g=round((saved.fat_g or 0) * portion, 1),
+        fiber_g=round((saved.fiber_g or 0) * portion, 1),
         is_favorite=True,
         source_saved_meal=saved,
     )
