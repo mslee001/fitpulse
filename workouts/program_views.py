@@ -14,6 +14,7 @@ from .programs import (
     backfill_program, create_plan, create_split, extract_ride_id_from_text,
     normalize_ride_id_input, progression_categories, recompute_run_dates,
     resolve_slot_ride_id, resolve_split_candidates, run_exercise_progression,
+    run_running_progression,
 )
 
 
@@ -71,7 +72,9 @@ def _run_grid(run):
 
 def program_list(request):
     programs = Program.objects.prefetch_related("runs").all()
-    return render(request, "workouts/program_list.html", {"programs": programs})
+    current = [p for p in programs if p.active_run]
+    past = [p for p in programs if not p.active_run]
+    return render(request, "workouts/program_list.html", {"current_programs": current, "past_programs": past})
 
 
 def program_new(request):
@@ -468,6 +471,19 @@ def program_progression(request, pk):
     return render(request, "workouts/program_progression.html", {
         "program": run.program, "run": run, "data": data, "metric": metric,
         "categories": categories, "selected_category": category,
+    })
+
+
+def program_running_progression(request, pk):
+    run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
+    metric = request.GET.get("metric", "pace")
+    if metric not in ("pace", "distance", "hr"):
+        metric = "pace"
+    data = run_running_progression(run, metric=metric)
+    if request.headers.get("HX-Request") or request.GET.get("format") == "json":
+        return JsonResponse(data)
+    return render(request, "workouts/program_running_progression.html", {
+        "program": run.program, "run": run, "data": data, "metric": metric,
     })
 
 

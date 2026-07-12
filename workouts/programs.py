@@ -390,6 +390,70 @@ def run_exercise_progression(run, metric="top_weight", category=None):
     return {"labels": labels, "series": series, "metric": metric, "hidden_count": hidden_count}
 
 
+# ---------- cross-cycle running progression ----------
+
+# A running class has no per-movement breakdown to group by, and grouping by
+# exact slot is nearly useless for a well-formed plan — each week's interval
+# run is a distinct ride_id even though it's conceptually "the same" workout,
+# so most slots would only ever hold a single data point. Bucketing by run
+# type (from the slot/workout title) gives a stable axis instead — same idea
+# as _muscle_group_for, just applied to run titles.
+_INTERVAL_KEYWORDS = ("interval", "hiit", "fartlek")
+_TEMPO_KEYWORDS = ("tempo",)
+RUN_CATEGORY_LABELS = {"intervals": "Intervals", "tempo": "Tempo", "steady": "Steady / Race Prep"}
+RUN_CATEGORY_ORDER = ["intervals", "tempo", "steady"]
+
+def _run_type_for(title):
+    name = (title or "").lower()
+    if any(kw in name for kw in _INTERVAL_KEYWORDS):
+        return "intervals"
+    if any(kw in name for kw in _TEMPO_KEYWORDS):
+        return "tempo"
+    return "steady"
+
+
+def run_running_progression(run, metric="pace"):
+    """
+    Cross-cycle running progression, mirroring run_exercise_progression's
+    shape but for running plans/splits. metric: "pace" (avg sec/mile, lower
+    is faster), "distance" (miles), "hr" (avg heart rate, bpm). Multiple
+    completions landing in the same pass+category (e.g. two interval runs in
+    one week) are averaged — there's no clear "better" direction for HR the
+    way there is for strength load, so averaging (rather than picking a
+    max/min) is used for all three metrics for consistency.
+    """
+    run_weeks = list(run.run_weeks.select_related("program_week").order_by("sequence"))
+    labels = [f"W{rw.program_week.number}·p{rw.sequence}" for rw in run_weeks]
+    seq_index = {rw.id: i for i, rw in enumerate(run_weeks)}
+
+    grid = {}   # category -> [[vals...] per pass]
+    pws = (ProgramWorkout.objects
+           .filter(run_week__run=run)
+           .select_related("workout", "slot", "run_week"))
+    for pw in pws:
+        col = seq_index.get(pw.run_week_id)
+        if col is None:
+            continue
+        w = pw.workout
+        val = {"pace": w.avg_pace_seconds, "distance": w.distance_miles,
+               "hr": w.heart_rate_avg_best}.get(metric)
+        if val is None:
+            continue
+        title = pw.slot.title if pw.slot else w.title
+        cat = _run_type_for(title)
+        grid.setdefault(cat, [[] for _ in run_weeks])[col].append(val)
+
+    series = []
+    for cat in RUN_CATEGORY_ORDER:
+        rows = grid.get(cat)
+        if not rows or not any(rows):
+            continue
+        points = [round(sum(vals) / len(vals), 1) if vals else None for vals in rows]
+        series.append({"category": cat, "label": RUN_CATEGORY_LABELS[cat], "points": points})
+
+    return {"labels": labels, "series": series, "metric": metric}
+
+
 def _workout_exercise_loads(workout):
     """Yield (key, display_name, top_weight_lb, volume_lb, total_reps) per exercise for one workout."""
     sets = getattr(workout, "exercise_sets_json", None) or []
@@ -797,6 +861,36 @@ def load_vs_rpe(run):
             "rpe": rpes, "rpe_coverage": f"{rated}/{len(rpes)}"}
 
 
+def running_progression_deltas(run):
+    """
+    Start vs end pace/distance per run-type category (see run_running_progression),
+    for the retrospective prompt — the running counterpart of the per-exercise
+    weight/reps deltas below. Pace is seconds/mile, so a NEGATIVE change is an
+    improvement (faster) — the opposite sign convention from the strength deltas,
+    where negative is a regression; the prompt spells this out explicitly.
+    """
+    prog_pace = run_running_progression(run, metric="pace")
+    prog_dist = run_running_progression(run, metric="distance")
+    dist_points = {s["category"]: s["points"] for s in prog_dist["series"]}
+
+    deltas = []
+    for s in prog_pace["series"]:
+        pace_pts = [p for p in s["points"] if p is not None]
+        dist_pts = [p for p in dist_points.get(s["category"], []) if p is not None]
+        if len(pace_pts) < 2 and len(dist_pts) < 2:
+            continue
+        d = {"run_type": s["label"]}
+        if len(pace_pts) >= 2:
+            d.update({"start_pace_sec_per_mi": pace_pts[0], "end_pace_sec_per_mi": pace_pts[-1],
+                      "pace_change_sec_per_mi": round(pace_pts[-1] - pace_pts[0], 1),
+                      "pace_change_pct": round(100 * (pace_pts[-1] - pace_pts[0]) / pace_pts[0], 1) if pace_pts[0] else None})
+        if len(dist_pts) >= 2:
+            d.update({"start_distance_mi": dist_pts[0], "end_distance_mi": dist_pts[-1],
+                      "distance_change_mi": round(dist_pts[-1] - dist_pts[0], 1)})
+        deltas.append(d)
+    return deltas
+
+
 def build_retrospective_context(run):
     prog_weight = run_exercise_progression(run, metric="top_weight")
     prog_reps = run_exercise_progression(run, metric="reps")
@@ -829,6 +923,9 @@ def build_retrospective_context(run):
         "recovery": recovery_across_block(run),
         "interventions": intervention_overlap(run),
     }
+    running_deltas = running_progression_deltas(run)
+    if running_deltas:
+        ctx["running_progression_deltas"] = running_deltas
     # cross-cycle: only when a prior ended run of the same program exists
     prior = (run.program.runs.filter(end_date__isnull=False)
              .exclude(pk=run.pk).order_by("-end_date").first())

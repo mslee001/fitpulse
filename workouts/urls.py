@@ -32,8 +32,8 @@ from .ai import (
 )
 from .program_views import (
     program_list, program_new, program_new_plan, program_detail, program_delete, program_run,
-    program_start_cycle, program_progression, program_delete_week, program_complete_run,
-    program_backfill, run_week_rate, program_retrospective, program_delete_run,
+    program_start_cycle, program_progression, program_running_progression, program_delete_week,
+    program_complete_run, program_backfill, run_week_rate, program_retrospective, program_delete_run,
 )
 
 urlpatterns = [
@@ -120,6 +120,7 @@ urlpatterns = [
     path("programs/<slug:slug>/backfill/", program_backfill, name="program_backfill"),
     path("programs/run/<int:pk>/", program_run, name="program_run"),
     path("programs/run/<int:pk>/progression/", program_progression, name="program_progression"),
+    path("programs/run/<int:pk>/running-progression/", program_running_progression, name="program_running_progression"),
     path("programs/run/<int:pk>/complete/", program_complete_run, name="program_complete_run"),
     path("programs/week/<int:pk>/delete/", program_delete_week, name="program_delete_week"),
     path("programs/run-week/<int:pk>/rate/", run_week_rate, name="run_week_rate"),

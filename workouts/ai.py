@@ -2982,6 +2982,12 @@ but rising reps is still real progress (more work at the same load) and should b
 read as stalled; the reverse (reps flat or falling while weight rises) is also worth naming. Don't
 assume the two always move together.
 
+If present, running_progression_deltas carries pace and distance deltas per run type (intervals /
+tempo / steady-race-prep). IMPORTANT sign convention: pace is seconds per mile, so a NEGATIVE
+pace_change_sec_per_mi / pace_change_pct means the athlete got FASTER — this is the opposite of
+progression_deltas, where negative means a regression. Read pace improvement and distance growth as
+two independent signals, same as weight/reps above.
+
 Data:
 {json.dumps(ctx, indent=1)}
 

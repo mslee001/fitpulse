@@ -4,6 +4,7 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
+<div class="kind-scope kind-scope--{{ program.kind }}">
 <div class="page-header">
   <div class="page-header-row">
     <div>
@@ -40,6 +41,7 @@
         <button class="btn btn-ghost btn-sm" type="submit" title="Re-run matching for this program — picks up anything a deleted pass orphaned, or that was never matched">Backfill History</button>
       </form>
       <a class="btn btn-ghost btn-sm" href="{% url 'program_progression' run.pk %}">Load progression</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'program_running_progression' run.pk %}">Running progression</a>
       <form method="post" action="{% url 'program_delete_run' run.pk %}" style="display:inline"
             onsubmit="return confirm('Delete this entire cycle? This permanently removes all {{ rows|length }} passes and {{ totals.workouts }} completions from the tracker (not from your workout history). This cannot be undone.')">
         {% csrf_token %}
@@ -155,5 +157,6 @@
   {% empty %}
   <p class="stat-sub">No weeks yet — take a class in this program and sync.</p>
   {% endfor %}
+</div>
 </div>
 {% endblock %}

@@ -155,7 +155,7 @@ a:hover { text-decoration: underline; }
   background: var(--accent); color: #fff;
   border-color: var(--accent);
 }
-.btn-accent:hover { background: #e55c2a; text-decoration: none; }
+.btn-accent:hover { background: color-mix(in srgb, var(--accent) 90%, black); text-decoration: none; }
 
 .btn-ghost {
   background: transparent; color: var(--text-muted);
@@ -165,7 +165,7 @@ a:hover { text-decoration: underline; }
 
 /* Selected state: ghost button with accent applied via JS (higher specificity wins) */
 .btn-ghost.btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
-.btn-ghost.btn-accent:hover { background: #e55c2a; }
+.btn-ghost.btn-accent:hover { background: color-mix(in srgb, var(--accent) 90%, black); }
 
 /* ── Stat / Metric cards ─────────────────────── */
 
@@ -1598,6 +1598,43 @@ a:hover { text-decoration: underline; }
 .cat-lifestyle  { color: var(--cat-lifestyle);  }
 .cat-surgery    { color: var(--cat-surgery);    }
 .cat-other      { color: var(--cat-other);      }
+
+/* ── Programs ───────────────────────────────────── */
+
+:root {
+  --kind-plan:       var(--accent-green);
+  --kind-split:      var(--accent-alt);
+  --kind-collection: #A78BFA;
+}
+[data-theme="light"] {
+  --kind-collection: #6B4FD6;
+}
+
+.kind-badge {
+  display: inline-block;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  margin-bottom: 0.5rem;
+}
+.kind-plan       { color: var(--kind-plan);       }
+.kind-split      { color: var(--kind-split);      }
+.kind-collection { color: var(--kind-collection); }
+
+.discipline-card.kind-plan       { border-left: 3px solid var(--kind-plan);       }
+.discipline-card.kind-split      { border-left: 3px solid var(--kind-split);      }
+.discipline-card.kind-collection { border-left: 3px solid var(--kind-collection); }
+
+/* A program's run/detail pages carry its kind color as the page accent —
+   overriding --accent here cascades into every element already built on it
+   (buttons, badges, the page-title gradient, done-cell borders/checkmarks)
+   with no per-component changes needed. */
+.kind-scope--plan       { --accent: var(--kind-plan);       }
+.kind-scope--split      { --accent: var(--kind-split);      }
+.kind-scope--collection { --accent: var(--kind-collection); }
 
 .intervention-row {
   display: grid;

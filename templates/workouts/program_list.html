@@ -16,19 +16,35 @@
   </div>
 </div>
 
-<div class="discipline-grid">
-  {% for p in programs %}
-  <a class="discipline-card" href="{% url 'program_detail' p.slug %}">
-    <div class="discipline-name">{{ p.get_kind_display }}</div>
+{% if current_programs %}
+<h3 class="chart-title" style="margin-bottom:0.75rem">CURRENT</h3>
+<div class="discipline-grid" style="margin-bottom:2rem">
+  {% for p in current_programs %}
+  <a class="discipline-card kind-{{ p.kind }}" href="{% url 'program_detail' p.slug %}">
+    <span class="kind-badge kind-{{ p.kind }}">{{ p.get_kind_display }}</span>
     <div class="record-discipline" style="margin-bottom:0.4rem">{{ p.name }}</div>
     {% if p.instructor %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ p.instructor }}</div>{% endif %}
-    {% with run=p.active_run %}
-      {% if run %}<span class="badge badge-accent">Current cycle</span>
-      {% else %}<span class="badge badge-muted">{{ p.runs.count }} cycle{{ p.runs.count|pluralize }}</span>{% endif %}
-    {% endwith %}
+    <span class="badge badge-accent">Current cycle</span>
   </a>
-  {% empty %}
-  <p class="stat-sub">No programs yet.</p>
   {% endfor %}
 </div>
+{% endif %}
+
+{% if past_programs %}
+<h3 class="chart-title" style="margin-bottom:0.75rem">{% if current_programs %}PAST PROGRAMS{% else %}PROGRAMS{% endif %}</h3>
+<div class="discipline-grid">
+  {% for p in past_programs %}
+  <a class="discipline-card kind-{{ p.kind }}" href="{% url 'program_detail' p.slug %}">
+    <span class="kind-badge kind-{{ p.kind }}">{{ p.get_kind_display }}</span>
+    <div class="record-discipline" style="margin-bottom:0.4rem">{{ p.name }}</div>
+    {% if p.instructor %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ p.instructor }}</div>{% endif %}
+    <span class="badge badge-muted">{{ p.runs.count }} cycle{{ p.runs.count|pluralize }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not current_programs and not past_programs %}
+<p class="stat-sub">No programs yet.</p>
+{% endif %}
 {% endblock %}

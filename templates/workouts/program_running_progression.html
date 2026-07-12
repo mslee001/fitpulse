@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Running progression — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <p class="stat-sub">{{ program.name }}</p>
+      <h1 class="page-title">Running progression</h1>
+      <p class="page-sub">{{ run.display_name }}</p>
+    </div>
+    <div class="page-header-actions">
+      <a class="range-btn{% if metric == 'pace' %} active{% endif %}" href="?metric=pace">Pace</a>
+      <a class="range-btn{% if metric == 'distance' %} active{% endif %}" href="?metric=distance">Distance</a>
+      <a class="range-btn{% if metric == 'hr' %} active{% endif %}" href="?metric=hr">Avg HR</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'program_run' run.pk %}">&larr; Grid</a>
+    </div>
+  </div>
+</div>
+
+{{ data|json_script:"run-prog-data" }}
+{% if data.series %}
+<div class="chart-card">
+  <div style="position:relative; height:340px">
+    <canvas id="runProgChart"></canvas>
+  </div>
+</div>
+<p class="stat-sub" style="margin-top:0.75rem">
+  Only running/walking classes with tracked pace, distance, or heart rate data contribute. X-axis is each pass through a week.
+  Grouped by run type (intervals vs. tempo vs. steady/race-prep) rather than by exact class, since a well-formed plan's classes are rarely repeated week to week.
+</p>
+{% else %}
+<p class="stat-sub">No tracked running data in this cycle yet.</p>
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const data = JSON.parse(document.getElementById("run-prog-data").textContent);
+  if (!data.series.length) { return; }
+  const ctx = document.getElementById("runProgChart").getContext("2d");
+  // Fixed categorical palette (dark surface), assigned in order — never a generated hue.
+  const PALETTE = ["#3987e5", "#199e70", "#c98500"];
+
+  function fmtPace(secs) {
+    if (secs == null) return "—";
+    const m = Math.floor(secs / 60), s = Math.round(secs % 60);
+    return m + ":" + String(s).padStart(2, "0") + "/mi";
+  }
+  const METRIC_META = {
+    pace:     { title: "Pace (lower is faster)", tick: fmtPace, tooltip: fmtPace },
+    distance: { title: "Distance (mi)",          tick: v => v.toFixed(1), tooltip: v => v.toFixed(2) + " mi" },
+    hr:       { title: "Avg heart rate (bpm)",   tick: v => Math.round(v), tooltip: v => Math.round(v) + " bpm" },
+  };
+  const meta = METRIC_META[data.metric] || METRIC_META.pace;
+
+  new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.labels,
+      datasets: data.series.map(function (s, i) {
+        const color = PALETTE[i % PALETTE.length];
+        return {
+          label: s.label,
+          data: s.points,
+          borderColor: color,
+          backgroundColor: color,
+          spanGaps: true, tension: .25, pointRadius: 3,
+        };
+      }),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "nearest", intersect: false },
+      scales: { y: { title: { display: true, text: meta.title }, ticks: { callback: v => meta.tick(v) } } },
+      plugins: {
+        legend: { position: "bottom" },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${meta.tooltip(ctx.parsed.y)}` } },
+      },
+    },
+  });
+});
+</script>
+{% endblock %}
