@@ -9,7 +9,10 @@
       <h1 class="page-title">PROGRAMS</h1>
       <p class="page-sub">Plans, collections, and splits tracked across cycles</p>
     </div>
-    <a class="btn btn-accent" href="{% url 'program_new' %}">+ New Split</a>
+    <div class="page-header-actions">
+      <a class="btn btn-ghost" href="{% url 'program_new_plan' %}">+ New Plan</a>
+      <a class="btn btn-accent" href="{% url 'program_new' %}">+ New Split</a>
+    </div>
   </div>
 </div>
 

@@ -1,4 +1,5 @@
 """Program & Collection Tracker — list/detail/run views and the completion grid builder."""
+import base64
 from datetime import date
 
 from django.contrib import messages
@@ -10,8 +11,9 @@ from django.views.decorators.http import require_POST
 
 from .models import Program, ProgramRun, RunWeek, ProgramWorkout
 from .programs import (
-    backfill_program, create_split, progression_slots, recompute_run_dates,
-    resolve_split_candidates, run_exercise_progression,
+    backfill_program, create_plan, create_split, extract_ride_id_from_text,
+    normalize_ride_id_input, progression_categories, recompute_run_dates,
+    resolve_slot_ride_id, resolve_split_candidates, run_exercise_progression,
 )
 
 
@@ -27,10 +29,20 @@ def _run_grid(run):
     for e in entries:
         by_cell[(e.run_week_id, e.slot_id)] = e
 
+    # Only the run's single most-recent pass overall (by sequence, across
+    # every program_week) can still receive a "repeat" completion —
+    # _resolve_recurring_week always targets the run's global latest pass,
+    # not the latest pass of that specific canonical week — so once a later
+    # pass exists anywhere in the run (e.g. week 2 has started), every
+    # earlier pass is done. A never-filled optional slot there is just noise.
+    latest_run_week_id = (run.run_weeks.order_by("-sequence")
+                          .values_list("id", flat=True).first())
+
     rows = []
     total_workouts = 0
     total_effort = 0.0
     for rw in run.run_weeks.select_related("program_week").order_by("sequence"):
+        is_open_pass = run.end_date is None and rw.id == latest_run_week_id
         slots = list(rw.program_week.slots.all())
         cells = []
         for slot in slots:
@@ -38,6 +50,8 @@ def _run_grid(run):
             if e:
                 total_workouts += 1
                 total_effort += (getattr(e.workout, "effort_points", 0) or 0)
+            elif slot.optional and not is_open_pass:
+                continue   # never-filled optional slot in a closed pass — hide it
             cells.append({"slot": slot, "entry": e})
         # Completed classes in the order actually taken; still-empty slots trail at
         # the end (they have no date to sort by) in their defined slot order.
@@ -105,6 +119,185 @@ def program_new(request):
     })
 
 
+def _plan_rows_from_post(post):
+    """Rebuild the review-table row list from a submitted review/create form —
+    used both to redisplay the table on a validation error and to build the
+    final skeleton on success."""
+    weeks = post.getlist("week")
+    days = post.getlist("day")
+    orders = post.getlist("order")
+    titles = post.getlist("title")
+    disciplines = post.getlist("discipline")
+    durations = post.getlist("duration")
+    ride_ids = post.getlist("ride_id")
+    optional_idx = set(post.getlist("optional"))
+    included_idx = set(post.getlist("include"))
+    repeat_days_idx = set(post.getlist("repeat_days"))
+    repeat_weeks_idx = set(post.getlist("repeat_weeks"))
+
+    def _int(lst, i, default=None):
+        try:
+            v = lst[i].strip()
+            return int(v) if v else default
+        except (ValueError, IndexError, AttributeError):
+            return default
+
+    rows = []
+    for i, title in enumerate(titles):
+        rows.append({
+            "i": i,
+            "included": str(i) in included_idx,
+            "week": _int(weeks, i, 1) or 1,
+            "day": _int(days, i, None),
+            "order": _int(orders, i, 0) or 0,
+            "title": title.strip(),
+            "discipline": disciplines[i].strip() if i < len(disciplines) else "",
+            "duration_min": _int(durations, i, None),
+            "optional": str(i) in optional_idx,
+            "ride_id": ride_ids[i].strip() if i < len(ride_ids) else "",
+            "repeat_all_days": str(i) in repeat_days_idx,
+            "repeat_all_weeks": str(i) in repeat_weeks_idx,
+            "matched_via": "", "candidates": [],
+        })
+    return rows
+
+
+def program_new_plan(request):
+    """
+    Build a multi-week Plan from pasted text/links and/or a screenshot, instead
+    of hand-writing HILIT_SCHEDULE-style Python. Single URL, three stages:
+      GET / no stage        -> intake form (name, instructor, paste text/links,
+                                optional screenshot)
+      POST stage="review"   -> AI-extract the skeleton (workouts.ai.parse_plan_skeleton),
+                                resolve a ride_id per slot where possible (a pasted
+                                class link first, then a match in the user's own
+                                synced history — see resolve_slot_ride_id for why
+                                catalog search isn't in the cascade), render an
+                                editable review table
+      POST stage="create"   -> build the Program from whatever rows are still
+                                checked, using the (possibly hand-corrected)
+                                submitted field values
+    """
+    from .ai import parse_plan_skeleton
+
+    stage = request.POST.get("stage") if request.method == "POST" else None
+
+    if stage == "create":
+        name = (request.POST.get("name") or "").strip()
+        instructor = (request.POST.get("instructor") or "").strip()
+        rows = _plan_rows_from_post(request.POST)
+
+        errors = []
+        if not name:
+            errors.append("Plan name is required.")
+        slug = slugify(name)
+        if not errors and Program.objects.filter(slug=slug).exists():
+            errors.append(f'A program named "{name}" already exists.')
+        included = [r for r in rows if r["included"] and r["title"]]
+        if not included:
+            errors.append("Select at least one class to include.")
+
+        if errors:
+            for e in errors:
+                messages.error(request, e)
+            return render(request, "workouts/program_new_plan.html", {
+                "rows": rows, "name": name, "instructor": instructor,
+            })
+
+        rows_by_week = {}
+        for r in included:
+            rows_by_week.setdefault(r["week"], []).append({
+                "day": r["day"], "order": r["order"], "title": r["title"],
+                "discipline": r["discipline"], "duration_min": r["duration_min"],
+                "optional": r["optional"], "ride_id": normalize_ride_id_input(r["ride_id"]),
+                "repeat_all_days": r["repeat_all_days"], "repeat_all_weeks": r["repeat_all_weeks"],
+            })
+        weeks_data = [{"number": n, "slots": slots} for n, slots in sorted(rows_by_week.items())]
+        program = create_plan(name, slug, instructor, weeks_data)
+        total = sum(len(w["slots"]) for w in weeks_data)
+        messages.success(
+            request,
+            f'"{name}" created with {total} class{"es" if total != 1 else ""} '
+            f'across {len(weeks_data)} week{"s" if len(weeks_data) != 1 else ""}.')
+        return redirect("program_detail", slug=program.slug)
+
+    if stage == "review":
+        raw_text = (request.POST.get("raw_text") or "").strip()
+        name = (request.POST.get("name") or "").strip()
+        instructor = (request.POST.get("instructor") or "").strip()
+
+        image_b64 = None
+        image_media_type = "image/jpeg"
+        screenshot = request.FILES.get("screenshot")
+        if screenshot:
+            content_type = screenshot.content_type or "image/jpeg"
+            if content_type not in ("image/jpeg", "image/png", "image/gif", "image/webp"):
+                messages.error(request, "Unsupported image type. Please upload a JPEG, PNG, or WebP.")
+                return render(request, "workouts/program_new_plan.html",
+                              {"raw_text": raw_text, "name": name, "instructor": instructor})
+            image_b64 = base64.b64encode(screenshot.read()).decode("utf-8")
+            image_media_type = content_type
+
+        if not raw_text and not image_b64:
+            messages.error(request, "Paste the plan's schedule text (with links, if you have them) or upload a screenshot.")
+            return render(request, "workouts/program_new_plan.html",
+                          {"raw_text": raw_text, "name": name, "instructor": instructor})
+
+        result = parse_plan_skeleton(raw_text, image_b64=image_b64, image_media_type=image_media_type)
+        if not result.get("ok") or not result.get("items"):
+            messages.error(
+                request,
+                f"Couldn't extract a schedule from that ({result.get('error', 'no items found')}). "
+                f"Try adding more text context or a clearer screenshot.")
+            return render(request, "workouts/program_new_plan.html",
+                          {"raw_text": raw_text, "name": name, "instructor": instructor})
+
+        instructor = instructor or result.get("instructor_guess", "")
+        name = name or result.get("plan_name_guess", "")
+
+        rows = []
+        for item in result["items"]:
+            title = (item.get("title") or "").strip()
+            if not title:
+                continue
+            resolved = resolve_slot_ride_id(
+                title, instructor=instructor, source_url=item.get("source_url", ""))
+            rows.append({
+                "week": item.get("week") or 1,
+                "day": item.get("day"),
+                "order": item.get("order") or 0,
+                "title": title,
+                "discipline": item.get("discipline", ""),
+                "duration_min": item.get("duration_min"),
+                "optional": bool(item.get("optional")),
+                "included": True,
+                "repeat_all_days": False, "repeat_all_weeks": False,
+                "ride_id": resolved["ride_id"] or "",
+                "matched_via": resolved["matched_via"],
+                "candidates": resolved["candidates"],
+            })
+        rows.sort(key=lambda r: (r["week"], r["day"] if r["day"] is not None else 99, r["order"]))
+        for i, r in enumerate(rows):
+            r["i"] = i
+
+        return render(request, "workouts/program_new_plan.html", {
+            "rows": rows, "name": name, "instructor": instructor,
+            "note": result.get("note", ""),
+        })
+
+    return render(request, "workouts/program_new_plan.html", {})
+
+
+@require_POST
+def program_delete(request, slug):
+    """Delete an entire Program — every week/slot/run/pass/completion it owns
+    (cascades via FK on_delete=CASCADE). Does not touch the underlying workout
+    history, same as deleting a single run."""
+    program = get_object_or_404(Program, slug=slug)
+    program.delete()
+    return redirect("program_list")
+
+
 def program_detail(request, slug):
     program = get_object_or_404(Program, slug=slug)
     runs = program.runs.all()
@@ -118,10 +311,25 @@ def program_detail(request, slug):
 def program_run(request, pk):
     run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
     rows, totals = _run_grid(run)
+
+    # Retrospective only loads for a completed run — _end_run() already
+    # generates and caches one automatically when a run ends, so this is
+    # normally an instant cache read; it just avoids spending a Sonnet call
+    # (and showing a necessarily-partial analysis) on every view of a run
+    # that's still in progress.
+    retro_text = None
+    if not run.is_current:
+        from .ai import _get_or_generate_retrospective
+        if request.GET.get("refresh_retro") == "1":
+            _get_or_generate_retrospective(run, force=True)
+            return redirect("program_run", pk=run.pk)
+        retro_text = _get_or_generate_retrospective(run)
+
     return render(request, "workouts/program_run.html", {
         "program": run.program, "run": run,
         "rows": rows, "totals": totals,
         "other_runs": run.program.runs.exclude(pk=run.pk),
+        "retro_text": retro_text,
     })
 
 
@@ -250,20 +458,16 @@ def program_start_cycle(request, slug):
 def program_progression(request, pk):
     run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
     metric = request.GET.get("metric", "top_weight")
-    slots = progression_slots(run)
-    slot_id = request.GET.get("slot")
-    selected_slot = None
-    if slots:
-        if slot_id:
-            selected_slot = next((s for s in slots if str(s.pk) == slot_id), slots[0])
-        else:
-            selected_slot = slots[0]
-    data = run_exercise_progression(run, metric=metric, slot_id=selected_slot.pk if selected_slot else None)
+    categories = progression_categories(run)
+    category = request.GET.get("category") or None
+    if category not in {c["key"] for c in categories}:
+        category = None   # "All" (or an unrecognized value) -> no filter
+    data = run_exercise_progression(run, metric=metric, category=category)
     if request.headers.get("HX-Request") or request.GET.get("format") == "json":
         return JsonResponse(data)
     return render(request, "workouts/program_progression.html", {
         "program": run.program, "run": run, "data": data, "metric": metric,
-        "slots": slots, "selected_slot": selected_slot,
+        "categories": categories, "selected_category": category,
     })
 
 

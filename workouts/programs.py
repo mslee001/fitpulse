@@ -51,6 +51,33 @@ def normalize_title(title):
     base = re.sub(r":\s*.*Week\s*\d+.*Day\s*\d+.*$", "", base, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", base).strip().lower()
 
+PELOTON_CLASS_ID_RE = re.compile(r'(?:classId=|/player/)([0-9a-f]{16,40})', re.IGNORECASE)
+
+def extract_ride_id_from_text(text):
+    """Pull a Peloton ride/class id out of a pasted class URL, if present."""
+    if not text:
+        return None
+    m = PELOTON_CLASS_ID_RE.search(text)
+    return m.group(1).lower() if m else None
+
+
+def normalize_ride_id_input(raw):
+    """
+    Accept either a raw ride_id or a pasted class URL in a manual-entry field
+    (the plan review table's ride_id box takes both) and normalize to a bare
+    ride_id, or "" if unrecognizable.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    linked = extract_ride_id_from_text(raw)
+    if linked:
+        return linked
+    if re.fullmatch(r"[0-9a-fA-F]{16,40}", raw):
+        return raw.lower()
+    return ""
+
+
 def parse_week_day(program, workout):
     """Return (week, day) ints from the workout title using the program's regex, else (None, None)."""
     pattern = program.title_week_day_regex or TITLE_SUFFIX_RE.pattern
@@ -84,11 +111,20 @@ def identify_membership(workout):
 
     # 2) ride-id membership (splits, and any exact-pinned slot)
     if ride_id:
-        slot = (ProgramSlot.objects
-                .filter(Q(peloton_ride_id=ride_id) | Q(alt_ride_ids__contains=ride_id))
-                .select_related("week", "week__program").first())
-        if slot:
-            return slot.week.program, slot.week.number, slot.day, "ride_id"
+        slots = list(ProgramSlot.objects
+                     .filter(Q(peloton_ride_id=ride_id) | Q(alt_ride_ids__contains=ride_id))
+                     .select_related("week", "week__program"))
+        if slots:
+            program = slots[0].week.program
+            week_numbers = {s.week.number for s in slots}
+            if len(week_numbers) == 1:
+                return program, slots[0].week.number, slots[0].day, "ride_id"
+            # This ride_id has a slot in more than one canonical week — a
+            # "repeat_all_weeks" plan slot (e.g. a warm-up retakeable in any
+            # week). Which week it belongs to can't be decided from the ride_id
+            # alone; associate_workout resolves it once it has the active run
+            # (week=None is the signal to do that).
+            return program, None, slots[0].day, "ride_id"
 
     # 3) title suffix -> only auto-associate if a Program name matches
     m = TITLE_SUFFIX_RE.search(workout.title or "")
@@ -120,14 +156,23 @@ def _slot_for(workout, program_week, matched_by, day=None):
     still offered as a fallback. That fallback matters: it lets a repeat of an
     already-filled slot (e.g. rewatching that same D1 mobility class) land on a
     still-open same-titled slot instead of always spilling into a brand new pass.
+
+    Ride-id matching gets the same multi-candidate treatment as title matching —
+    a "repeat_all_days" plan slot (e.g. a stretch retakeable any day of the week)
+    is authored as several ProgramSlot rows sharing one ride_id (one per day, all
+    but the first optional); returning all of them here (not just the first) lets
+    _open_slot_in spread retakes across the still-open day-slots instead of
+    always reusing the same one.
     """
     ride_id = workout.ride_id
     if ride_id:
-        s = program_week.slots.filter(
+        matches = list(program_week.slots.filter(
             Q(peloton_ride_id=ride_id) | Q(alt_ride_ids__contains=ride_id)
-        ).first()
-        if s:
-            return [s]
+        ))
+        if matches:
+            if day is not None:
+                matches.sort(key=lambda s: s.day != day)
+            return matches
     norm = normalize_title(workout.title)
     if not norm:
         return []
@@ -195,6 +240,19 @@ def fill_or_append(run, workout, program_week, slot_candidates, matched_by):
         run_week=rw, slot=slot, workout=workout, matched_by=matched_by)
 
 
+def _resolve_recurring_week(run):
+    """
+    Attribute a repeat_all_weeks completion (its ride_id has a slot in every
+    canonical week — see identify_membership) to whichever week the run is
+    currently on: the program_week of its most recent pass. There's no
+    per-week date range to check the completion's date against, so "current
+    week" is defined behaviorally, by wherever the run's progress already is.
+    Falls back to week 1 for a brand new run with no passes yet.
+    """
+    latest = run.run_weeks.order_by("-sequence").first()
+    return latest.program_week.number if latest else 1
+
+
 @transaction.atomic
 def associate_workout(workout):
     """Full pipeline for one workout. Idempotent. Returns the ProgramWorkout or None."""
@@ -207,12 +265,16 @@ def associate_workout(workout):
         return None
     program, week_number, day, matched_by = hit
 
+    on_date = workout_local_date(workout) or date.today()
+    run = get_or_create_active_run(program, on_date)
+
+    if week_number is None:
+        week_number = _resolve_recurring_week(run)
+
     pw_week = program.weeks.filter(number=week_number).first()
     if pw_week is None:   # week not seeded (e.g. a plan week we didn't define) -> create bare
         pw_week = ProgramWeek.objects.create(program=program, number=week_number)
 
-    on_date = workout_local_date(workout) or date.today()
-    run = get_or_create_active_run(program, on_date)
     slot_candidates = _slot_for(workout, pw_week, matched_by, day=day)
     return fill_or_append(run, workout, pw_week, slot_candidates, matched_by)
 
@@ -223,39 +285,77 @@ KG_TO_LB = 2.20462
 
 MAX_PROGRESSION_SERIES = 8   # matches the app's 8-color validated categorical palette
 
-def progression_slots(run):
-    """Slots in this run with at least one completion carrying exercise load data —
-    the set worth offering as a chart filter. Ordered by (week, slot order)."""
-    slot_ids = set()
-    pws = (ProgramWorkout.objects
-           .filter(run_week__run=run, slot__isnull=False)
-           .select_related("workout", "slot"))
+# Best-effort muscle-group bucket for a free-text exercise name — there's no
+# stored per-exercise taxonomy (Garmin/Peloton give names, not tags), so this
+# is a keyword heuristic, not a lookup. Checked in priority order since some
+# terms are ambiguous alone (e.g. bare "curl"/"extension"/"press" span both
+# legs and arms) — the more specific compound terms go first so "leg curl"
+# resolves to lower body before the generic "curl" would claim it for upper.
+_CORE_KEYWORDS = (
+    "twist", "crunch", "plank", "sit-up", "situp", "mountain climber",
+    "dead bug", "bird dog", "side bend", "ab wheel", "hollow hold", "v-up",
+)
+_LOWER_BODY_KEYWORDS = (
+    "leg curl", "leg extension", "leg press", "squat", "deadlift", "lunge",
+    "glute", "hamstring", "quad", "calf", "hip thrust", "hip hinge", "swing",
+    "step up", "step-up", "bridge",
+)
+_UPPER_BODY_KEYWORDS = (
+    "press", "curl", "row", "pull", "push", "fly", "extension", "raise",
+    "pulldown", "shoulder", "chest", "tricep", "bicep", "lat", "shrug",
+)
+CATEGORY_LABELS = {"lower_body": "Lower Body", "upper_body": "Upper Body", "core": "Core", "other": "Other"}
+CATEGORY_ORDER = ["lower_body", "upper_body", "core", "other"]
+
+def _muscle_group_for(exercise_name):
+    name = (exercise_name or "").lower()
+    if any(kw in name for kw in _CORE_KEYWORDS):
+        return "core"
+    if any(kw in name for kw in _LOWER_BODY_KEYWORDS):
+        return "lower_body"
+    if any(kw in name for kw in _UPPER_BODY_KEYWORDS):
+        return "upper_body"
+    return "other"
+
+
+def progression_categories(run):
+    """
+    Muscle-group categories present among this run's tracked exercises — only
+    the ones with data are offered as chart filter buttons. Grouping by body
+    region rather than by ProgramSlot: a plan slot can be retaken across many
+    weeks (e.g. a repeat_all_weeks class) with several near-identical-titled
+    ProgramSlot rows, which made a per-slot toggle both confusing (indistinguishable
+    labels) and thin (any one slot instance rarely holds more than a session or
+    two); muscle group is a stable axis regardless of how the slots were authored.
+    """
+    present = set()
+    pws = ProgramWorkout.objects.filter(run_week__run=run).select_related("workout")
     for pw in pws:
-        if pw.slot_id in slot_ids:
-            continue
-        if any(True for _ in _workout_exercise_loads(pw.workout)):
-            slot_ids.add(pw.slot_id)
-    return list(
-        ProgramSlot.objects.filter(pk__in=slot_ids)
-        .select_related("week").order_by("week__number", "order")
-    )
+        for _key, name, top_lb, _vol, _reps in _workout_exercise_loads(pw.workout):
+            if top_lb:
+                present.add(_muscle_group_for(name))
+    return [{"key": k, "label": CATEGORY_LABELS[k]} for k in CATEGORY_ORDER if k in present]
 
 
-def run_exercise_progression(run, metric="top_weight", slot_id=None):
+def run_exercise_progression(run, metric="top_weight", category=None):
     """
     Returns {"labels": [...pass labels...], "series": [{"exercise","key","points":[...]}...],
-    "hidden_count": N}. metric: "top_weight" (max weight in the session) or "volume"
-    (sum reps*weight). Contributes from either data source a strength workout may carry:
-    Garmin's per-set `exercise_sets_json` (weight_kg, converted to lb), or Peloton's
-    Movement Tracker `movements` summary (already aggregated per movement, in lb).
+    "hidden_count": N}. metric: "top_weight" (max weight in the session), "volume"
+    (sum reps*weight), or "reps" (total reps in the session, weight-independent — tracks
+    endurance progression even when load is flat). Contributes from either data source a
+    strength workout may carry: Garmin's per-set `exercise_sets_json` (weight_kg,
+    converted to lb), or Peloton's Movement Tracker `movements` summary (already
+    aggregated per movement, in lb).
 
     Bodyweight-only movements (never any recorded weight) are dropped — they carry no
     signal on a load chart. If more than MAX_PROGRESSION_SERIES exercises remain, only
     the most-frequently-tracked ones are kept, since one canvas can't stay legible with
     the ride's full movement roster (a "9th series" folds out rather than getting an
     invented color) — this is normal for slots that span two ride-id variants of a
-    class with slightly different movement lineups. Pass `slot_id` to scope to a single
-    class instead of every slot in the run.
+    class with slightly different movement lineups. Pass `category` (see
+    progression_categories) to scope to one muscle-group bucket — filtered per exercise,
+    not per slot/workout, so a mixed full-body class still splits correctly across
+    categories instead of an all-or-nothing toggle.
     """
     run_weeks = list(run.run_weeks.select_related("program_week").order_by("sequence"))
     labels = [f"W{rw.program_week.number}·p{rw.sequence}" for rw in run_weeks]
@@ -266,19 +366,19 @@ def run_exercise_progression(run, metric="top_weight", slot_id=None):
     pws = (ProgramWorkout.objects
            .filter(run_week__run=run)
            .select_related("workout", "run_week"))
-    if slot_id:
-        pws = pws.filter(slot_id=slot_id)
     for pw in pws:
         col = seq_index.get(pw.run_week_id)
         if col is None:
             continue
-        for key, name, top_lb, vol_lb in _workout_exercise_loads(pw.workout):
+        for key, name, top_lb, vol_lb, reps in _workout_exercise_loads(pw.workout):
             if not top_lb:   # bodyweight-only movement — never any real load, no signal here
+                continue
+            if category and _muscle_group_for(name) != category:
                 continue
             names.setdefault(key, name)
             counts[key] = counts.get(key, 0) + 1
             row = grid.setdefault(key, [None] * len(run_weeks))
-            val = top_lb if metric == "top_weight" else vol_lb
+            val = {"top_weight": top_lb, "volume": vol_lb, "reps": reps}[metric]
             # if two sessions in the same pass hit the same exercise, keep the higher
             row[col] = max(row[col], val) if row[col] is not None else val
 
@@ -291,7 +391,7 @@ def run_exercise_progression(run, metric="top_weight", slot_id=None):
 
 
 def _workout_exercise_loads(workout):
-    """Yield (key, display_name, top_weight_lb, volume_lb) per exercise for one workout."""
+    """Yield (key, display_name, top_weight_lb, volume_lb, total_reps) per exercise for one workout."""
     sets = getattr(workout, "exercise_sets_json", None) or []
     if sets:
         per_ex = {}
@@ -301,33 +401,37 @@ def _workout_exercise_loads(workout):
                 continue
             w = s.get("weight_kg")
             reps = s.get("reps") or 0
-            bucket = per_ex.setdefault(key, {"name": s.get("exercise") or key, "top": 0.0, "vol": 0.0})
+            bucket = per_ex.setdefault(key, {"name": s.get("exercise") or key, "top": 0.0, "vol": 0.0, "reps": 0})
+            bucket["reps"] += reps
             if w is not None:
                 w_lb = w * KG_TO_LB
                 bucket["top"] = max(bucket["top"], w_lb)
                 bucket["vol"] += w_lb * reps
         for key, agg in per_ex.items():
-            yield key, agg["name"], agg["top"], agg["vol"]
+            yield key, agg["name"], agg["top"], agg["vol"], agg["reps"]
         return
 
     # Peloton's own weight-tracking classes (e.g. "gold" Movement Tracker tier) record
-    # one summary row per movement instead of per-set — weight is already in lb. A
-    # movement can appear more than once in a single workout (e.g. two supersets of
-    # the same exercise), so aggregate by name before yielding.
+    # one summary row per movement instead of per-set — weight is already in lb, and
+    # reps_done is already the session total (not per-set). A movement can appear more
+    # than once in a single workout (e.g. two supersets of the same exercise), so
+    # aggregate by name before yielding.
     per_ex = {}
     for m in getattr(workout, "movements", None) or []:
         name = m.get("name")
         if not name:
             continue
         weight_lb = m.get("weight_lbs") or 0
+        reps_done = m.get("reps_done") or 0
         volume_lb = m.get("volume")
         if volume_lb is None:
-            volume_lb = weight_lb * (m.get("reps_done") or 0)
-        bucket = per_ex.setdefault(name, {"top": 0.0, "vol": 0.0})
+            volume_lb = weight_lb * reps_done
+        bucket = per_ex.setdefault(name, {"top": 0.0, "vol": 0.0, "reps": 0})
         bucket["top"] = max(bucket["top"], weight_lb)
         bucket["vol"] += volume_lb
+        bucket["reps"] += reps_done
     for name, agg in per_ex.items():
-        yield name, name, agg["top"], agg["vol"]
+        yield name, name, agg["top"], agg["vol"], agg["reps"]
 
 
 # ---------- building a new split from the UI ----------
@@ -461,6 +565,144 @@ def create_split(name, slug, selected_candidates):
     return program
 
 
+# ---------- building a new plan from the UI (link / screenshot / text intake) ----------
+
+def verify_ride_id(ride_id):
+    """
+    Live-confirm a ride_id resolves to a real Peloton class, and return the
+    catalog facts about it. Used both to validate a link-extracted id and to
+    let the review table show what a manually-pasted id/link actually is
+    before the user commits to it.
+    """
+    from .services.peloton_client import PelotonClient
+    try:
+        detail = PelotonClient().get_ride_details(ride_id)
+    except Exception:
+        return None
+    ride = detail.get("ride") or {}
+    if not ride.get("id"):
+        return None
+    return {
+        "ride_id": ride["id"],
+        "title": ride.get("title", ""),
+        "duration_min": round((ride.get("duration") or 0) / 60) or None,
+        "discipline": ride.get("fitness_discipline", ""),
+        "instructor": ((detail.get("ride") or {}).get("instructor") or {}).get("name", "")
+                      or (ride.get("instructor") or {}).get("name", ""),
+    }
+
+
+def find_local_ride_ids(title, instructor=""):
+    """
+    Match a plan-slot title against the user's own already-synced Peloton
+    history. A class the user has already taken resolves for free, with no
+    external lookup — this is the most common way slots for older content
+    (no achievement badge, no title-suffix tagging) get pinned automatically.
+    Returns candidates most-recent-first, deduped by ride_id.
+    """
+    norm = normalize_title(title)
+    if not norm:
+        return []
+    qs = CachedWorkout.objects.filter(source="peloton").exclude(ride_id="")
+    if instructor:
+        qs = qs.filter(instructor_name__iexact=instructor)
+    seen = {}
+    for w in qs.order_by("-created_at").iterator():
+        wnorm = normalize_title(w.title)
+        if wnorm and (wnorm == norm or norm in wnorm or wnorm in norm) and w.ride_id not in seen:
+            seen[w.ride_id] = {
+                "ride_id": w.ride_id, "title": w.title,
+                "instructor": w.instructor_name, "taken_on": workout_local_date(w),
+            }
+    return sorted(seen.values(), key=lambda c: c["taken_on"] or date.min, reverse=True)
+
+
+def resolve_slot_ride_id(title, instructor="", source_url=""):
+    """
+    Best-effort ride_id resolution for one plan slot, cascading:
+    1) a Peloton class link pasted alongside this item (ground truth — verified live)
+    2) an exact/near title match already in the user's own synced history
+
+    Peloton's on-demand catalog has no reachable title-search endpoint from this
+    app's session (verified live — /api/v2/ride/archived 401s, /api/ride/search
+    is an unrelated endpoint), so anything not covered by 1) or 2) is left for
+    manual entry in the review table rather than guessed.
+
+    Returns {"ride_id": str|None, "matched_via": "link"|"history"|"ambiguous"|"none",
+    "info": dict|None, "candidates": [...]}.
+    """
+    linked = extract_ride_id_from_text(source_url)
+    if linked:
+        info = verify_ride_id(linked)
+        if info:
+            return {"ride_id": linked, "matched_via": "link", "info": info, "candidates": []}
+    local = find_local_ride_ids(title, instructor=instructor)
+    if len(local) == 1:
+        return {"ride_id": local[0]["ride_id"], "matched_via": "history", "info": None, "candidates": []}
+    if len(local) > 1:
+        return {"ride_id": None, "matched_via": "ambiguous", "info": None, "candidates": local}
+    return {"ride_id": None, "matched_via": "none", "info": None, "candidates": []}
+
+
+def _expand_repeats(base, week, weeks_by_number, s):
+    """
+    A slot marked repeat_all_days / repeat_all_weeks is authored once but
+    needs an open slot for every day and/or week it can be retaken into — see
+    _slot_for's ride-id branch (day spread within a week) and
+    _resolve_recurring_week (week spread) for the matching-side half of this.
+    Duplicates are always optional, regardless of the original slot's flag.
+    Checking both flags cross-products days x weeks.
+    """
+    ride_id = base.peloton_ride_id
+    if not ride_id or not (s.get("repeat_all_days") or s.get("repeat_all_weeks")):
+        return
+    weeks = list(weeks_by_number.values()) if s.get("repeat_all_weeks") else [week]
+    days = list(range(1, 8)) if s.get("repeat_all_days") else [base.day]
+    for wk_obj in weeks:
+        for d in days:
+            if wk_obj.pk == week.pk and d == base.day:
+                continue   # that's `base` itself
+            ProgramSlot.objects.create(
+                week=wk_obj, day=d, order=base.order,
+                title=base.title, discipline=base.discipline,
+                duration_min=base.duration_min,
+                peloton_ride_id=ride_id, optional=True,
+            )
+
+
+def create_plan(name, slug, instructor, weeks_data):
+    """
+    Create a Program (kind=plan, match_strategy=ride_ids) from a structured
+    skeleton — weeks_data: [{"number": 1, "slots": [{"day", "order", "title",
+    "discipline", "duration_min", "optional", "ride_id", "repeat_all_days",
+    "repeat_all_weeks"}, ...]}, ...]. Structurally the multi-week counterpart
+    of create_split: every slot is ride-id pinned up front rather than
+    discovered from History picks, so the grid is fully seeded (including
+    weeks not yet started) the moment the plan is created. Slots left without
+    a ride_id (unresolved at review time) are still created — they just won't
+    auto-match until pinned later via ProgramSlot.peloton_ride_id, e.g. by
+    editing the row after taking the class.
+    """
+    program = Program.objects.create(
+        name=name, slug=slug, kind="plan", match_strategy="ride_ids", instructor=instructor,
+    )
+    weeks_by_number = {wk["number"]: ProgramWeek.objects.create(program=program, number=wk["number"])
+                       for wk in weeks_data}
+    for wk in weeks_data:
+        week = weeks_by_number[wk["number"]]
+        for s in wk["slots"]:
+            base = ProgramSlot.objects.create(
+                week=week, day=s.get("day"), order=s.get("order", 0),
+                title=s["title"], discipline=s.get("discipline", ""),
+                duration_min=s.get("duration_min"),
+                peloton_ride_id=s.get("ride_id") or "",
+                optional=bool(s.get("optional")),
+            )
+            _expand_repeats(base, week, weeks_by_number, s)
+    backfill_program(program)
+    return program
+
+
 # ---------- program retrospective — aggregation for the Sonnet prompt ----------
 
 def _run_window(run):
@@ -556,21 +798,33 @@ def load_vs_rpe(run):
 
 
 def build_retrospective_context(run):
-    prog = run_exercise_progression(run, metric="top_weight")
-    # start vs end per exercise
+    prog_weight = run_exercise_progression(run, metric="top_weight")
+    prog_reps = run_exercise_progression(run, metric="reps")
+    reps_points = {s["key"]: s["points"] for s in prog_reps["series"]}
+
+    # start vs end per exercise, weight and reps together — so a flat-weight/rising-reps
+    # exercise (still real progress) is visible in one place rather than two separate lists
     deltas = []
-    for s in prog["series"]:
+    for s in prog_weight["series"]:
         pts = [p for p in s["points"] if p is not None]
+        reps_pts = [p for p in reps_points.get(s["key"], []) if p is not None]
+        if len(pts) < 2 and len(reps_pts) < 2:
+            continue
+        d = {"exercise": s["exercise"]}
         if len(pts) >= 2:
-            deltas.append({"exercise": s["exercise"], "start": pts[0], "end": pts[-1],
-                           "change_lb": round(pts[-1] - pts[0], 1),
-                           "change_pct": round(100 * (pts[-1] - pts[0]) / pts[0], 1) if pts[0] else None})
+            d.update({"start_top_set_lb": pts[0], "end_top_set_lb": pts[-1],
+                      "change_lb": round(pts[-1] - pts[0], 1),
+                      "change_pct": round(100 * (pts[-1] - pts[0]) / pts[0], 1) if pts[0] else None})
+        if len(reps_pts) >= 2:
+            d.update({"start_reps": reps_pts[0], "end_reps": reps_pts[-1],
+                      "reps_change": round(reps_pts[-1] - reps_pts[0], 1)})
+        deltas.append(d)
     ctx = {
         "program": run.program.name, "kind": run.program.kind,
         "window": [str(x) for x in _run_window(run)],
         "adherence": adherence_summary(run),
         "cadence": cadence_summary(run),
-        "progression_deltas": sorted(deltas, key=lambda d: (d["change_pct"] or 0)),
+        "progression_deltas": sorted(deltas, key=lambda d: (d.get("change_pct") or 0)),
         "load_vs_rpe": load_vs_rpe(run),
         "recovery": recovery_across_block(run),
         "interventions": intervention_overlap(run),
@@ -580,10 +834,12 @@ def build_retrospective_context(run):
              .exclude(pk=run.pk).order_by("-end_date").first())
     if prior:
         prior_adh = adherence_summary(prior)
-        ctx["prior_cycle"] = {"label": prior.label or str(prior.start_date),
+        prior_reps = {s["key"]: s["points"] for s in run_exercise_progression(prior, metric="reps")["series"]}
+        ctx["prior_cycle"] = {"label": prior.display_name,
                               "overall_pct": prior_adh["overall_pct"],
                               "progression": [
                                   {"exercise": s["exercise"],
-                                   "end": next((p for p in reversed(s["points"]) if p is not None), None)}
+                                   "end_top_set_lb": next((p for p in reversed(s["points"]) if p is not None), None),
+                                   "end_reps": next((p for p in reversed(prior_reps.get(s["key"], [])) if p is not None), None)}
                                   for s in run_exercise_progression(prior)["series"]]}
     return ctx

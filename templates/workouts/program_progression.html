@@ -11,17 +11,19 @@
       <p class="page-sub">{{ run.display_name }}</p>
     </div>
     <div class="page-header-actions">
-      <a class="range-btn{% if metric == 'top_weight' %} active{% endif %}" href="?metric=top_weight{% if selected_slot %}&slot={{ selected_slot.pk }}{% endif %}">Top set (lb)</a>
-      <a class="range-btn{% if metric == 'volume' %} active{% endif %}" href="?metric=volume{% if selected_slot %}&slot={{ selected_slot.pk }}{% endif %}">Volume (lb)</a>
+      <a class="range-btn{% if metric == 'top_weight' %} active{% endif %}" href="?metric=top_weight{% if selected_category %}&category={{ selected_category }}{% endif %}">Top set (lb)</a>
+      <a class="range-btn{% if metric == 'volume' %} active{% endif %}" href="?metric=volume{% if selected_category %}&category={{ selected_category }}{% endif %}">Volume (lb)</a>
+      <a class="range-btn{% if metric == 'reps' %} active{% endif %}" href="?metric=reps{% if selected_category %}&category={{ selected_category }}{% endif %}">Reps</a>
       <a class="btn btn-ghost btn-sm" href="{% url 'program_run' run.pk %}">&larr; Grid</a>
     </div>
   </div>
 </div>
 
-{% if slots|length > 1 %}
+{% if categories %}
 <div class="range-toggle-row" style="margin-bottom:1rem">
-  {% for s in slots %}
-  <a href="?slot={{ s.pk }}&metric={{ metric }}" class="range-btn{% if selected_slot.pk == s.pk %} active{% endif %}">{{ s.title }}</a>
+  <a href="?metric={{ metric }}" class="range-btn{% if not selected_category %} active{% endif %}">All</a>
+  {% for c in categories %}
+  <a href="?category={{ c.key }}&metric={{ metric }}" class="range-btn{% if selected_category == c.key %} active{% endif %}">{{ c.label }}</a>
   {% endfor %}
 </div>
 {% endif %}
@@ -29,11 +31,13 @@
 {{ data|json_script:"prog-data" }}
 {% if data.series %}
 <div class="chart-card">
-  <canvas id="progChart" height="360"></canvas>
+  <div style="position:relative; height:340px">
+    <canvas id="progChart"></canvas>
+  </div>
 </div>
 <p class="stat-sub" style="margin-top:0.75rem">
   Only strength classes with tracked movements contribute. X-axis is each pass through a week.
-  {% if data.hidden_count %}Showing the {{ data.series|length }} most-tracked exercises for this class &mdash; {{ data.hidden_count }} tracked less often {{ data.hidden_count|pluralize:"is,are" }} hidden.{% endif %}
+  {% if data.hidden_count %}Showing the {{ data.series|length }} most-tracked exercises &mdash; {{ data.hidden_count }} tracked less often {{ data.hidden_count|pluralize:"is,are" }} hidden.{% endif %}
 </p>
 {% else %}
 <p class="stat-sub">No tracked-movement strength classes in this cycle yet.</p>
@@ -63,8 +67,9 @@ document.addEventListener("DOMContentLoaded", function () {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: "nearest", intersect: false },
-      scales: { y: { title: { display: true, text: data.metric === "volume" ? "Volume (lb)" : "Top set (lb)" } } },
+      scales: { y: { title: { display: true, text: {top_weight: "Top set (lb)", volume: "Volume (lb)", reps: "Total reps"}[data.metric] } } },
       plugins: { legend: { position: "bottom" } },
     },
   });

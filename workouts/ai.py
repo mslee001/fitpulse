@@ -1940,6 +1940,78 @@ Rules:
         return {"ok": False, "error": str(e), "items": [], "confidence": "low", "note": ""}
 
 
+def parse_plan_skeleton(raw_text: str = "", image_b64: str | None = None, image_media_type: str = "image/jpeg") -> dict:
+    """
+    Parse a multi-week workout-plan schedule — pasted text (optionally containing
+    class links) and/or a screenshot of a plan tracker page/PDF — into a
+    structured week/day/slot skeleton for the "New Plan" builder.
+
+    Returns {"ok": True, "plan_name_guess", "instructor_guess", "items": [
+      {"week", "day", "order", "title", "discipline", "duration_min", "optional",
+       "source_url"}, ...], "note"} or {"ok": False, "error": ..., "items": []}.
+    Ride-id resolution happens separately in workouts/programs.py — this only
+    extracts structure and, where present, per-item source links.
+    """
+    if not raw_text.strip() and not image_b64:
+        return {"ok": False, "error": "no_input", "items": []}
+
+    json_schema = """{
+  "plan_name_guess": "Glutes and Legs Strength Program",
+  "instructor_guess": "Adrian Williams",
+  "items": [
+    {"week": 1, "day": 1, "order": 0, "title": "20 min Power & Performance Benchmark", "discipline": "strength", "duration_min": 20, "optional": false, "source_url": ""}
+  ],
+  "note": "optional one-line note about anything ambiguous or skipped"
+}"""
+
+    rules = f"""Extract every class/session listed into "items", one row per class, in the order they appear.
+
+RULES:
+- "week" and "day" are 1-indexed integers from the schedule structure (e.g. "Week 1", "Day 2"). If the source has no explicit week grouping, use week 1 for everything and infer "day" from the day/session labels.
+- "order" is the position of this class within its day (0 for the first class listed under that day, 1 for the second, etc).
+- "title" is the class title only — strip the instructor name and date/time (e.g. "20 min Power & Performance Benchmark with Adrian Williams – 2023/12/18 @ 5:00am ET" -> "20 min Power & Performance Benchmark"). Keep a leading duration if present.
+- "discipline" is your best guess from: cycling, running, walking, strength, stretching, cardio, yoga, meditation. Stretches/foam rolling/mobility -> "stretching". Warm ups/benchmarks/strength work -> "strength" unless clearly another discipline.
+- "duration_min" is the integer minutes from the title if present, else your best guess, else null.
+- "optional" is true only if the source explicitly marks it optional/bonus — default false.
+- "source_url" is any URL directly associated with this specific class line (e.g. it was hyperlinked, or a plain https://... URL sits adjacent to it in the pasted text). Empty string if none.
+- "plan_name_guess" / "instructor_guess": best guess for the overall plan name and lead instructor from context.
+- If a title repeats verbatim on a different day, keep both as SEPARATE items — never merge or dedupe.
+
+Respond with ONLY valid JSON, no markdown fences, no preamble:
+{json_schema}"""
+
+    if image_b64:
+        extra_text = f'\n\nADDITIONAL TEXT PROVIDED BY USER (may include class links or corrections):\n"""{raw_text}"""' if raw_text.strip() else ""
+        prompt = f"""You are extracting a structured workout-plan schedule from a screenshot of a plan tracker page. Read every visible class entry in the image, in order.{extra_text}
+
+{rules}"""
+        message_content = [
+            {"type": "image", "source": {"type": "base64", "media_type": image_media_type, "data": image_b64}},
+            {"type": "text", "text": prompt},
+        ]
+    else:
+        prompt = f"""You are extracting a structured workout-plan schedule from pasted text (copied from a plan tracker page or PDF, possibly including class links).
+
+SOURCE TEXT:
+\"\"\"{raw_text}\"\"\"
+
+{rules}"""
+        message_content = prompt
+
+    try:
+        result = llm.call_json(prompt, model=llm.HAIKU, max_tokens=4000,
+                               message_content=message_content, timeout=45)
+        result["ok"] = True
+        result.setdefault("items", [])
+        return result
+    except json.JSONDecodeError as e:
+        logger.warning("parse_plan_skeleton JSON decode failed: %s", e)
+        return {"ok": False, "error": "parse_failed", "items": []}
+    except Exception as e:
+        logger.warning("parse_plan_skeleton failed: %s", e)
+        return {"ok": False, "error": str(e), "items": []}
+
+
 def suggest_meals(
     remaining_cal: float,
     remaining_protein: float,
@@ -2903,6 +2975,12 @@ highlight where load trend and RPE diverge (e.g. load flat but RPE rising = poss
 load rising but RPE falling = ready to progress harder). If an intervention or dose change overlapped
 the window, treat it as a confounder and do NOT attribute body-composition or performance changes to
 training alone. Calibrate causal language to the evidence. No filler adjectives.
+
+progression_deltas carries both top-set weight and total reps per exercise where each was tracked —
+treat them as two independent progression signals, not one. An exercise with flat or missing weight
+but rising reps is still real progress (more work at the same load) and should be named as such, not
+read as stalled; the reverse (reps flat or falling while weight rises) is also worth naming. Don't
+assume the two always move together.
 
 Data:
 {json.dumps(ctx, indent=1)}

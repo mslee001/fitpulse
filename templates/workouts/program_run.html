@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load workout_filters %}
 {% block title %}{{ program.name }} — FitPulse{% endblock %}
 {% block nav_training %}active{% endblock %}
 
@@ -39,11 +40,15 @@
         <button class="btn btn-ghost btn-sm" type="submit" title="Re-run matching for this program — picks up anything a deleted pass orphaned, or that was never matched">Backfill History</button>
       </form>
       <a class="btn btn-ghost btn-sm" href="{% url 'program_progression' run.pk %}">Load progression</a>
-      <a class="btn btn-ghost btn-sm" href="{% url 'program_retrospective' run.pk %}">{% if run.is_current %}Preview retrospective{% else %}Retrospective{% endif %}</a>
       <form method="post" action="{% url 'program_delete_run' run.pk %}" style="display:inline"
             onsubmit="return confirm('Delete this entire cycle? This permanently removes all {{ rows|length }} passes and {{ totals.workouts }} completions from the tracker (not from your workout history). This cannot be undone.')">
         {% csrf_token %}
         <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete Cycle</button>
+      </form>
+      <form method="post" action="{% url 'program_delete' program.slug %}" style="display:inline"
+            onsubmit="return confirm('Delete the entire &quot;{{ program.name }}&quot; program? This permanently removes its whole definition — every week, slot, cycle, and completion in the tracker (not from your workout history). This cannot be undone.')">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete Program</button>
       </form>
     </div>
   </div>
@@ -57,6 +62,7 @@
 </div>
 {% endif %}
 
+{% if run.is_current %}
 <div class="stat-grid">
   <div class="stat-card stat-card--hero">
     <div class="stat-label">Classes done</div>
@@ -71,6 +77,37 @@
     <div class="stat-value">{{ rows|length }}</div>
   </div>
 </div>
+{% else %}
+<div style="display:flex; gap:1rem; margin-bottom:2.5rem">
+  <div style="flex:0 0 220px; display:flex; flex-direction:column; gap:1rem">
+    <div class="stat-card stat-card--hero" style="flex:1; display:flex; flex-direction:column; justify-content:center">
+      <div class="stat-label">Classes done</div>
+      <div class="stat-value">{{ totals.workouts }}</div>
+    </div>
+    <div class="stat-card" style="flex:1; display:flex; flex-direction:column; justify-content:center">
+      <div class="stat-label">Total effort pts</div>
+      <div class="stat-value">{{ totals.effort_points }}</div>
+    </div>
+    <div class="stat-card" style="flex:1; display:flex; flex-direction:column; justify-content:center">
+      <div class="stat-label">Weeks</div>
+      <div class="stat-value">{{ rows|length }}</div>
+    </div>
+  </div>
+  <div class="stat-card" style="flex:1; min-width:0">
+    <div class="chart-header" style="margin-bottom:0.6rem">
+      <span class="stat-label">Retrospective</span>
+      <a href="?refresh_retro=1" class="btn btn-ghost btn-sm" style="padding:0.15rem 0.6rem">Regenerate</a>
+    </div>
+    {% if retro_text %}
+    <div style="font-size:0.92rem; line-height:1.6; max-height:640px; overflow-y:auto">
+      {{ retro_text|format_nutrition_insights }}
+    </div>
+    {% else %}
+    <p class="stat-sub">Couldn't generate a retrospective right now — try Regenerate.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 
 <div class="program-grid">
   {% for row in rows %}

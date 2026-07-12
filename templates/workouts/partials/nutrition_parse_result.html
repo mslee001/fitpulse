@@ -45,14 +45,14 @@
       </thead>
       <tbody>
         {% for item in result.items %}
-        <tr>
+        <tr data-base-calories="{{ item.calories|default:0 }}" data-base-protein_g="{{ item.protein_g|default:0 }}" data-base-carbs_g="{{ item.carbs_g|default:0 }}" data-base-fat_g="{{ item.fat_g|default:0 }}" data-base-fiber_g="{{ item.fiber_g|default:0 }}">
           <td><input type="text" name="items-{{ forloop.counter0 }}-name" value="{{ item.name }}" class="parse-cell-input parse-cell-input--name" oninput="markEdited()"></td>
-          <td><input type="text" name="items-{{ forloop.counter0 }}-quantity" value="{{ item.quantity }}" class="parse-cell-input parse-cell-input--qty" oninput="markEdited()"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-calories"  value="{{ item.calories }}"  class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-protein_g" value="{{ item.protein_g }}" class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-carbs_g"   value="{{ item.carbs_g }}"   class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-fat_g"     value="{{ item.fat_g }}"     class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-fiber_g"   value="{{ item.fiber_g }}"   class="parse-cell-input parse-cell-input--num" min="0" step="1" oninput="markEdited()"></td>
+          <td><input type="text" name="items-{{ forloop.counter0 }}-quantity" data-role="quantity" value="{{ item.quantity }}" class="parse-cell-input parse-cell-input--qty" oninput="markEdited()"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-calories"  data-macro="calories"  value="{{ item.calories }}"  class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-protein_g" data-macro="protein_g" value="{{ item.protein_g }}" class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-carbs_g"   data-macro="carbs_g"   value="{{ item.carbs_g }}"   class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-fat_g"     data-macro="fat_g"     value="{{ item.fat_g }}"     class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-fiber_g"   data-macro="fiber_g"   value="{{ item.fiber_g }}"   class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
           <td><button type="button" onclick="removeRow(this)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem;padding:0 0.25rem" title="Remove row">×</button></td>
         </tr>
         {% endfor %}
@@ -110,6 +110,45 @@
     document.getElementById('edited-flag').value = '1';
     recalcTotals();
   };
+  var MACRO_KEYS = ['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g'];
+  function baseKey(key) {
+    // data-base-protein_g -> dataset.baseProtein_g (hyphens camelize, underscores don't)
+    return 'base' + key.charAt(0).toUpperCase() + key.slice(1);
+  }
+  window.scaleRow = function(field) {
+    var row = field.closest('tr');
+    if (!row) return;
+    var key = field.dataset.macro;
+    var oldVal = parseFloat(row.dataset[baseKey(key)]) || 0;
+    var newVal = parseFloat(field.value) || 0;
+    if (!oldVal || newVal === oldVal) {
+      row.dataset[baseKey(key)] = newVal;
+      recalcTotals();
+      return;
+    }
+    var ratio = newVal / oldVal;
+    MACRO_KEYS.forEach(function(k) {
+      if (k === key) {
+        row.dataset[baseKey(k)] = newVal;
+        return;
+      }
+      var otherBase = parseFloat(row.dataset[baseKey(k)]) || 0;
+      var scaled = Math.round(otherBase * ratio * 10) / 10;
+      row.dataset[baseKey(k)] = scaled;
+      var otherInput = row.querySelector('input[data-macro="' + k + '"]');
+      if (otherInput) otherInput.value = scaled;
+    });
+    scaleQuantity(row, ratio);
+    recalcTotals();
+  };
+  function scaleQuantity(row, ratio) {
+    var qtyInput = row.querySelector('input[data-role="quantity"]');
+    if (!qtyInput) return;
+    var m = qtyInput.value.match(/^(\d+(?:\.\d+)?)/);
+    if (!m) return;
+    var scaled = Math.round(parseFloat(m[1]) * ratio * 100) / 100;
+    qtyInput.value = scaled + qtyInput.value.slice(m[1].length);
+  }
   window.removeRow = function(btn) {
     btn.closest('tr').remove();
     recalcTotals();

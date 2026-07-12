@@ -19,6 +19,11 @@
         {% csrf_token %}
         <button class="btn btn-accent" type="submit">Start new cycle</button>
       </form>
+      <form method="post" action="{% url 'program_delete' program.slug %}" style="display:inline"
+            onsubmit="return confirm('Delete the entire &quot;{{ program.name }}&quot; program? This permanently removes its whole definition — every week, slot, cycle, and completion in the tracker (not from your workout history). This cannot be undone.')">
+        {% csrf_token %}
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete Program</button>
+      </form>
     </div>
   </div>
 </div>

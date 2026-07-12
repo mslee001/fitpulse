@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}New Plan — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">New Plan</h1>
+  <p class="page-sub">Multi-week programs — paste the schedule (with class links if you have them), or upload a screenshot</p>
+</div>
+
+{% if messages %}
+<div style="margin-bottom:1.5rem">
+  {% for message in messages %}
+  <div class="peloton-msg peloton-msg--{% if message.tags == 'error' %}error{% else %}success{% endif %}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not rows %}
+<form method="post" action="{% url 'program_new_plan' %}" enctype="multipart/form-data">
+  {% csrf_token %}
+  <input type="hidden" name="stage" value="review">
+  <div class="add-form-card" style="margin-bottom:1.5rem">
+    <div class="form-group">
+      <label class="form-label">Plan name</label>
+      <input name="name" class="form-input" placeholder="e.g. Glutes and Legs Strength Program" value="{{ name|default:'' }}">
+      <p class="stat-sub" style="margin-top:0.35rem">Leave blank to use the AI's best guess from the pasted content.</p>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Instructor</label>
+      <input name="instructor" class="form-input" placeholder="e.g. Adrian Williams" value="{{ instructor|default:'' }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Schedule text</label>
+      <textarea name="raw_text" class="form-textarea" rows="10"
+        placeholder="Paste the plan's class list here. If you have the class links (e.g. copy-link on each title), paste those too — a pasted link resolves that slot's exact class automatically. Otherwise a class you've already taken will still match from your own history.">{{ raw_text|default:'' }}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Or upload a screenshot</label>
+      <input type="file" name="screenshot" class="form-input" accept="image/jpeg,image/png,image/gif,image/webp">
+      <p class="stat-sub" style="margin-top:0.35rem">You can provide text, a screenshot, or both — extra text is used as additional context alongside the image.</p>
+    </div>
+  </div>
+  <div class="page-header-actions">
+    <button class="btn btn-accent" type="submit">Extract schedule</button>
+    <a class="btn btn-ghost" href="{% url 'program_list' %}">Cancel</a>
+  </div>
+</form>
+
+{% else %}
+<form method="post" action="{% url 'program_new_plan' %}">
+  {% csrf_token %}
+  <input type="hidden" name="stage" value="create">
+  <div class="add-form-card" style="margin-bottom:1.5rem">
+    <div class="form-group">
+      <label class="form-label">Plan name *</label>
+      <input name="name" class="form-input" value="{{ name|default:'' }}" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Instructor</label>
+      <input name="instructor" class="form-input" value="{{ instructor|default:'' }}">
+    </div>
+  </div>
+
+  {% if note %}<p class="stat-sub" style="margin-bottom:1rem">AI note: {{ note }}</p>{% endif %}
+
+  <div class="chart-card">
+    <div class="chart-header">
+      <h3 class="chart-title">REVIEW SCHEDULE</h3>
+      <span class="chart-sub">Uncheck a row to drop it. Ride ID resolves via a pasted link first, then your own history — paste a ride id or a class link into any unresolved row.</span>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th></th><th>Week</th><th>Day</th><th>Order</th><th>Title</th>
+            <th>Discipline</th><th>Min</th><th>Opt.</th>
+            <th>Repeat<br>days</th><th>Repeat<br>weeks</th><th>Ride ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td><input type="checkbox" name="include" value="{{ r.i }}" {% if r.included %}checked{% endif %}></td>
+            <td><input name="week" value="{{ r.week }}" class="form-input" style="width:3.5rem"></td>
+            <td><input name="day" value="{{ r.day|default_if_none:'' }}" class="form-input" style="width:3.5rem"></td>
+            <td><input name="order" value="{{ r.order }}" class="form-input" style="width:3.5rem"></td>
+            <td><input name="title" value="{{ r.title }}" class="form-input" style="min-width:16rem"></td>
+            <td><input name="discipline" value="{{ r.discipline }}" class="form-input" style="width:7rem"></td>
+            <td><input name="duration" value="{{ r.duration_min|default_if_none:'' }}" class="form-input" style="width:3.5rem"></td>
+            <td style="text-align:center"><input type="checkbox" name="optional" value="{{ r.i }}" {% if r.optional %}checked{% endif %}></td>
+            <td style="text-align:center" title="Retakeable any day this week — spreads into an optional slot per day">
+              <input type="checkbox" name="repeat_days" value="{{ r.i }}" {% if r.repeat_all_days %}checked{% endif %}>
+            </td>
+            <td style="text-align:center" title="Retakeable in any week of this plan — spreads into an optional slot per week">
+              <input type="checkbox" name="repeat_weeks" value="{{ r.i }}" {% if r.repeat_all_weeks %}checked{% endif %}>
+            </td>
+            <td>
+              <input name="ride_id" value="{{ r.ride_id }}" class="form-input plan-ride-input" style="min-width:14rem" placeholder="ride id or class link">
+              {% if r.matched_via == "link" %}<div class="stat-sub" style="color:var(--accent)">matched via link</div>
+              {% elif r.matched_via == "history" %}<div class="stat-sub" style="color:var(--accent)">matched from your history</div>
+              {% elif r.matched_via == "ambiguous" %}
+                <div class="stat-sub">multiple matches in your history — pick one:</div>
+                {% for c in r.candidates %}
+                <button type="button" class="btn btn-ghost btn-sm plan-pick-candidate" data-ride-id="{{ c.ride_id }}" style="margin:0.15rem 0.25rem 0 0">
+                  {{ c.taken_on|date:"M j, Y" }}{% if c.instructor %} · {{ c.instructor }}{% endif %}
+                </button>
+                {% endfor %}
+              {% elif not r.ride_id %}<div class="stat-sub">unresolved — paste a ride id or class link</div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="page-header-actions" style="margin-top:1.25rem">
+    <button class="btn btn-accent" type="submit">Create plan</button>
+    <a class="btn btn-ghost" href="{% url 'program_list' %}">Cancel</a>
+  </div>
+</form>
+
+<script>
+document.addEventListener("click", function (e) {
+  const btn = e.target.closest(".plan-pick-candidate");
+  if (!btn) return;
+  const input = btn.closest("td").querySelector(".plan-ride-input");
+  if (input) input.value = btn.dataset.rideId;
+});
+</script>
+{% endif %}
+{% endblock %}
