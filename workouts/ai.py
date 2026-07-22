@@ -54,6 +54,19 @@ logger = logging.getLogger(__name__)
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+def _render_poll_partial(request, template_name, context, status=200):
+    """Render an HTMX batch-poll partial.
+
+    status=286 is HTMX's "stop polling" convention. Pass it for every terminal
+    (non-pending) state — no batch, missing API key, no successful result, or
+    a resolved success — so a browser tab left open on an unresolved batch
+    can't keep re-querying the DB every 30s forever. Genuinely pending states
+    keep the default 200 so HTMX continues polling.
+    """
+    from django.shortcuts import render
+    return render(request, template_name, context, status=status)
+
+
 def _interventions_context(start_date, end_date) -> str:
     """Human-readable summary of interventions and dose changes overlapping the given date range."""
     from django.db.models import Q
@@ -895,12 +908,12 @@ def analytics_check_insights(request):
         return render_insights_partial(request, {
             "insights": settings_obj.ai_insights,
             "generated_at": settings_obj.ai_insights_generated_at,
-        })
+        }, status=286)
 
     if not api_key:
         settings_obj.ai_insights_batch_id = None
         settings_obj.save(update_fields=["ai_insights_batch_id"])
-        return render_insights_partial(request, {"error": "ANTHROPIC_API_KEY is not set."})
+        return render_insights_partial(request, {"error": "ANTHROPIC_API_KEY is not set."}, status=286)
 
     # Check batch status — treat any transient error (including 429) as still-pending
     try:
@@ -927,7 +940,7 @@ def analytics_check_insights(request):
         settings_obj.save(update_fields=["ai_insights_batch_id"])
         return render_insights_partial(request, {
             "error": "Batch completed but no successful result found."
-        })
+        }, status=286)
 
     settings_obj.ai_insights = insights_text
     settings_obj.ai_insights_generated_at = tz.now()
@@ -937,13 +950,12 @@ def analytics_check_insights(request):
     return render_insights_partial(request, {
         "insights": insights_text,
         "generated_at": settings_obj.ai_insights_generated_at,
-    })
+    }, status=286)
 
 
-def render_insights_partial(request, context):
+def render_insights_partial(request, context, status=200):
     """Thin wrapper so the insights endpoints don't need to import render."""
-    from django.shortcuts import render
-    return render(request, "workouts/partials/insights.html", context)
+    return _render_poll_partial(request, "workouts/partials/insights.html", context, status=status)
 
 
 # ---------------------------------------------------------------------------
@@ -2270,13 +2282,13 @@ def _submit_nutrition_insights_batch(range_days: int = 30) -> str:
     return batch_id
 
 
-def render_nutrition_insights_partial(request, context):
-    from django.shortcuts import render
-    return render(request, "workouts/partials/nutrition_insights.html", context)
+def render_nutrition_insights_partial(request, context, status=200):
+    return _render_poll_partial(request, "workouts/partials/nutrition_insights.html", context, status=status)
 
 
 def nutrition_insights_check(request):
     """HTMX poll — check nutrition insights batch status, return rendered HTML partial."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     settings = UserSettings.get()
     batch_id = settings.ai_nutrition_insights_batch_id
 
@@ -2284,7 +2296,12 @@ def nutrition_insights_check(request):
         return render_nutrition_insights_partial(request, {
             "insights": settings.ai_nutrition_insights,
             "generated_at": settings.ai_nutrition_insights_generated_at,
-        })
+        }, status=286)
+
+    if not api_key:
+        settings.ai_nutrition_insights_batch_id = None
+        settings.save(update_fields=["ai_nutrition_insights_batch_id"])
+        return render_nutrition_insights_partial(request, {"error": "ANTHROPIC_API_KEY is not set."}, status=286)
 
     try:
         batch = llm.get_batch_status(batch_id)
@@ -2309,7 +2326,7 @@ def nutrition_insights_check(request):
         settings.save(update_fields=["ai_nutrition_insights_batch_id"])
         return render_nutrition_insights_partial(request, {
             "error": "Batch completed but no successful result found."
-        })
+        }, status=286)
 
     settings.ai_nutrition_insights = insights_text
     settings.ai_nutrition_insights_generated_at = tz.now()
@@ -2320,7 +2337,7 @@ def nutrition_insights_check(request):
     return render_nutrition_insights_partial(request, {
         "insights": insights_text,
         "generated_at": settings.ai_nutrition_insights_generated_at,
-    })
+    }, status=286)
 
 
 def nutrition_insights_refresh(request):
@@ -2627,13 +2644,13 @@ def _submit_pattern_insights_batch() -> str:
     return batch_id
 
 
-def render_pattern_insights_partial(request, context):
-    from django.shortcuts import render
-    return render(request, "workouts/partials/pattern_insights.html", context)
+def render_pattern_insights_partial(request, context, status=200):
+    return _render_poll_partial(request, "workouts/partials/pattern_insights.html", context, status=status)
 
 
 def pattern_insights_check(request):
     """HTMX poll — check pattern insights batch status, return rendered HTML partial."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     settings = UserSettings.get()
     batch_id = settings.ai_pattern_insights_batch_id
 
@@ -2641,7 +2658,12 @@ def pattern_insights_check(request):
         return render_pattern_insights_partial(request, {
             "insights": settings.ai_pattern_insights,
             "generated_at": settings.ai_pattern_insights_generated_at,
-        })
+        }, status=286)
+
+    if not api_key:
+        settings.ai_pattern_insights_batch_id = None
+        settings.save(update_fields=["ai_pattern_insights_batch_id"])
+        return render_pattern_insights_partial(request, {"error": "ANTHROPIC_API_KEY is not set."}, status=286)
 
     try:
         batch = llm.get_batch_status(batch_id)
@@ -2666,7 +2688,7 @@ def pattern_insights_check(request):
         settings.save(update_fields=["ai_pattern_insights_batch_id"])
         return render_pattern_insights_partial(request, {
             "error": "Batch completed but no successful result found."
-        })
+        }, status=286)
 
     settings.ai_pattern_insights = insights_text
     settings.ai_pattern_insights_generated_at = tz.now()
@@ -2677,7 +2699,7 @@ def pattern_insights_check(request):
     return render_pattern_insights_partial(request, {
         "insights": insights_text,
         "generated_at": settings.ai_pattern_insights_generated_at,
-    })
+    }, status=286)
 
 
 def pattern_insights_refresh(request):
@@ -2865,26 +2887,40 @@ def _submit_weekly_review_batch(week_start):
     return review
 
 
+def render_weekly_review_partial(request, context, status=200):
+    return _render_poll_partial(request, "workouts/partials/weekly_review_content.html", context, status=status)
+
+
 def weekly_review_check(request):
     """HTMX poll — check weekly review batch status, return rendered HTML."""
     import datetime as _dt
-    from django.shortcuts import render as _render
     from .models import WeeklyReview
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 
     week_str = request.GET.get("week", "")
     try:
         week_start = _dt.date.fromisoformat(week_str)
         review = WeeklyReview.objects.get(week_start=week_start)
     except (ValueError, WeeklyReview.DoesNotExist):
-        return HttpResponse("Week not found.", status=404)
+        # Not in the four listed terminal states, but equally unresolvable —
+        # a bad/missing week param can never turn into a live batch, so
+        # polling on it would otherwise never stop either.
+        return HttpResponse("Week not found.", status=286)
 
     def _pending():
-        return _render(request, "workouts/partials/weekly_review_content.html", {
+        return render_weekly_review_partial(request, {
             "pending": True, "week_start": week_start,
         })
 
     if not review.batch_id:
-        return _render(request, "workouts/partials/weekly_review_content.html", {"review": review})
+        return render_weekly_review_partial(request, {"review": review}, status=286)
+
+    if not api_key:
+        WeeklyReview.objects.filter(week_start=week_start).update(batch_id=None)
+        return render_weekly_review_partial(request, {
+            "error": "ANTHROPIC_API_KEY is not set.", "week_start": week_start,
+        }, status=286)
 
     try:
         batch = llm.get_batch_status(review.batch_id)
@@ -2906,13 +2942,13 @@ def weekly_review_check(request):
 
     if not content:
         WeeklyReview.objects.filter(week_start=week_start).update(batch_id=None)
-        return _render(request, "workouts/partials/weekly_review_content.html", {
+        return render_weekly_review_partial(request, {
             "error": "Batch completed but no result found.", "week_start": week_start,
-        })
+        }, status=286)
 
     WeeklyReview.objects.filter(week_start=week_start).update(content=content, batch_id=None)
     review.refresh_from_db()
-    return _render(request, "workouts/partials/weekly_review_content.html", {"review": review})
+    return render_weekly_review_partial(request, {"review": review}, status=286)
 
 
 def _get_or_generate_weekly_review(week_start, force: bool = False):

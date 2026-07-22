@@ -14,9 +14,10 @@ import urllib.parse
 from django.contrib import messages
 from django.db.models import Avg, Count, Max, Min, Q
 from django.db.models.functions import TruncWeek
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .ai import (
@@ -2901,4 +2902,13 @@ def weekly_review_page(request):
         "last_monday": last_monday,
     })
 
+
+@never_cache
+def health(request):
+    """Liveness probe for Render.
+
+    Deliberately touches nothing: no DB query, no session access, no template
+    render. This lets Neon compute stay suspended between real requests.
+    """
+    return HttpResponse("ok", content_type="text/plain")
 
