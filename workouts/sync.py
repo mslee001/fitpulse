@@ -851,6 +851,14 @@ def _update_daily_stats_for_dates(dates: list) -> None:
             stats.hydration_lb = first.hydration_lb
             stats.bone_mass_lb = first.bone_mass_lb
             stats.fat_ratio_pct = first.fat_ratio_pct
+        else:
+            stats.weight_lb = None
+            stats.fat_mass_lb = None
+            stats.fat_free_mass_lb = None
+            stats.muscle_mass_lb = None
+            stats.hydration_lb = None
+            stats.bone_mass_lb = None
+            stats.fat_ratio_pct = None
         stats.weight_count = count
         stats.weight_synced_at = now
         stats.save(update_fields=[
