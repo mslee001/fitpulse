@@ -42,7 +42,10 @@ def _run_grid(run):
     rows = []
     total_workouts = 0
     total_effort = 0.0
-    for rw in run.run_weeks.select_related("program_week").order_by("sequence"):
+    # Grouped by canonical week number, chronological (sequence) within each
+    # group — so a repeated pass (e.g. a week resumed after a gap) sits right
+    # under its earlier attempt instead of trailing at the end of the run.
+    for rw in run.run_weeks.select_related("program_week").order_by("program_week__number", "sequence"):
         is_open_pass = run.end_date is None and rw.id == latest_run_week_id
         slots = list(rw.program_week.slots.all())
         cells = []
