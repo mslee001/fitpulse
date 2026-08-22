@@ -234,7 +234,9 @@ Raw per-weigh-in records from Withings. Multiple per day is normal. Deduped by `
 **Sync flow:** Withings API → upsert `BodyMeasurement` → `_update_daily_stats_for_dates()` recomputes `DailyStats` body composition fields using the earliest weigh-in of each day.
 
 ### Garmin ↔ Peloton Deduplication
-`_is_peloton_duplicate()` binary-searches a sorted timestamp index with ±120s window. For **running** duplicates, instead of skipping entirely, `_augment_peloton_run()` stamps the matching Peloton workout with the Garmin form metrics and merges form-metric time-series into `performance_graph_json`. Non-running duplicates are skipped.
+`_is_peloton_duplicate()` binary-searches a sorted timestamp index with ±120s window, checked once at the start of each Garmin sync run. For **running** duplicates, instead of skipping entirely, `_augment_peloton_run()` stamps the matching Peloton workout with the Garmin form metrics and merges form-metric time-series into `performance_graph_json`. Non-running duplicates are skipped (not stored, not merged — Peloton's own data is authoritative).
+
+Sync order no longer matters: `_reconcile_garmin_duplicates()` re-checks every existing `source="garmin"` row against current Peloton workouts and runs after every Peloton sync (`_run_peloton_sync_new`/`_run_peloton_sync_all`), so a Garmin activity synced *before* its matching Peloton workout existed still gets merged/cleaned up once Peloton catches up — no need to run Peloton first. Running matches get the same live-API augmentation as the real-time path (one `get_activity_details` call per match, needed for HR-cross-correlation offset precision — the already-stored `performance_graph_json` on a Garmin row is downsampled and isn't precise enough); if Garmin is disabled or the call fails, that row is left in place rather than deleted, so its form data isn't lost. Non-running matches are just deleted, no API call needed. Manual sweep: `venv/bin/python3 manage.py dedupe_garmin_exercise --dry-run` (drop `--dry-run` to apply) — same pattern as `dedupe_google_health_exercise` for Google Health ↔ Peloton.
 
 ### Garmin `performance_graph_json` Format
 Uses the top-level `metricDescriptors` list (with `metricsIndex` positions) — **not** per-entry `metricDescriptor`. `parse_performance()` builds an index map then extracts values per point. Normalized to `metrics_by_slug`:
@@ -247,12 +249,12 @@ directVerticalRatio→vertical_ratio  directGroundContactTime→ground_contact_t
 `directRunCadence` is strides/min (half steps); use `directDoubleCadence` for steps/min.
 
 ### Sync Endpoints
-- Peloton: `Sync New` (`/api/sync/new/`), `Sync All` (`/api/sync/all/`)
+- Peloton: `Peloton Sync New` (`/api/sync/peloton/new/`), `Peloton Sync All` (`/api/sync/peloton/all/`)
 - Garmin activities: `Garmin Sync New` (`/api/sync/garmin/new/`), `Garmin Sync All` (`/api/sync/garmin/all/`)
 - Garmin wellness: `Garmin Wellness Today` (`/api/sync/garmin/wellness/`), `?date=YYYY-MM-DD`, `?days=N` (max 90)
 - Withings: `Withings Sync New` (`/api/sync/withings/new/`), `Withings Sync All` (`/api/sync/withings/all/`)
 - `POST /api/withings/webhook/` — Withings push webhook. `@csrf_exempt`. Listed in `PUBLIC_PATHS` (no auth required). Called by Withings when body measurements change. Fetches measurements for the notified time window and upserts them. Always returns HTTP 200.
-- All sync types are accessible from the Sync dropdown in the nav.
+- All sync types are accessible from the Sync dropdown in the nav, each source fully independent — no combined "sync everything" button. Peloton and Garmin used to be bundled into one action (`sync_new`/`sync_all`, since removed); `_reconcile_garmin_duplicates()`/`_reconcile_google_health_duplicates()` (see Deduplication sections above) are what actually keep them consistent regardless of which order you click them in.
 
 ### Detail Page Templates
 All five discipline-specific detail pages extend `detail_base.html`, which owns:

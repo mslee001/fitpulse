@@ -196,6 +196,7 @@ def _run_peloton_sync_all():
             if page * limit >= total_on_peloton:
                 break
         reconciled = _reconcile_google_health_duplicates()
+        garmin_reconciled = _reconcile_garmin_duplicates()
         return {
             "done": True,
             "total_on_peloton": total_on_peloton,
@@ -203,6 +204,7 @@ def _run_peloton_sync_all():
             "updated": total_updated,
             "pages_fetched": page,
             "google_health_merged": reconciled["deleted"],
+            "garmin_merged": garmin_reconciled["deleted"],
         }
     except Exception as e:
         return {"error": str(e), "created": total_created, "updated": total_updated}
@@ -254,12 +256,14 @@ def _run_peloton_sync_new(days=None):
                 break
             page += 1
         reconciled = _reconcile_google_health_duplicates()
+        garmin_reconciled = _reconcile_garmin_duplicates()
         return {
             "done": True,
             "created": total_created,
             "updated": total_updated,
             "pages_fetched": page + 1,
             "google_health_merged": reconciled["deleted"],
+            "garmin_merged": garmin_reconciled["deleted"],
         }
     except Exception as e:
         return {"error": str(e), "created": total_created, "updated": total_updated}
@@ -414,6 +418,112 @@ def _augment_peloton_run(parsed: dict, garmin_activity_id: int, client) -> None:
                                    "vertical_ratio_avg", "ground_contact_time_avg"])
         logger.warning("Garmin form perf fetch failed for %s: %s", match.workout_id, e)
         _associate_program_safe(match)
+
+
+_GARMIN_FORM_FIELDS = ["run_cadence_avg", "stride_length_avg", "vertical_oscillation_avg",
+                       "vertical_ratio_avg", "ground_contact_time_avg"]
+
+
+def _reconcile_garmin_duplicates(dry_run=False) -> dict:
+    """
+    Re-check every existing source="garmin" CachedWorkout row against the
+    current set of Peloton workouts and merge/delete any new match.
+
+    Needed because Garmin sync's dedup (_is_peloton_duplicate) only checks
+    against Peloton workouts that exist *at that moment* — a one-time
+    snapshot taken at the start of each Garmin sync run (_peloton_timestamp_index()).
+    If Garmin syncs before the matching Peloton workout does, the two land as
+    separate rows and nothing re-checks them afterward — Peloton sync never
+    looked at garmin rows at all. Calling this after every Peloton sync
+    closes that gap, the same way _reconcile_google_health_duplicates does
+    for Google Health, so sync_daily no longer has to run Peloton before
+    Garmin for correctness.
+
+    Running duplicates: re-run the live-sync augmentation (_augment_peloton_run)
+    against the already-known garmin_activity_id, so fidelity (HR
+    cross-correlation offset detection, full-resolution form metrics) matches
+    what a same-order sync would have produced. Requires one live Garmin API
+    call per match — the already-stored performance_graph_json on the garmin
+    row is downsampled (parse_performance, every 5th sample, no per-point
+    elapsed timestamps) and isn't precise enough for offset alignment. If the
+    Garmin integration is disabled (or the API call fails), that row is left
+    alone rather than deleted, so its form data isn't lost — it'll be picked
+    up on a later reconciliation once Garmin is available again.
+    Non-running duplicates: Peloton's own data is authoritative (same policy
+    as the live sync path) — just delete the redundant Garmin row. No API
+    call needed, so this runs even with the Garmin integration disabled.
+
+    Returns {"checked", "matched", "augmented", "deleted", "details"}, where
+    each entry in "details" is {"garmin_workout_id", "peloton_workout_id",
+    "peloton_title", "discipline", "filled", "skipped"}.
+    """
+    peloton_index = _peloton_workout_index()
+    garmin_workouts = list(CachedWorkout.objects.filter(source="garmin").order_by("created_at"))
+
+    matches = []
+    for gw in garmin_workouts:
+        match = _find_peloton_match(gw.created_at, peloton_index)
+        if match is not None:
+            matches.append((gw, match))
+
+    garmin_enabled = _integration_enabled("garmin")
+    client = None
+    if not dry_run and garmin_enabled and any(gw.discipline == "running" for gw, _ in matches):
+        try:
+            client = _garmin_client()
+        except Exception as e:
+            logger.warning("Garmin reconciliation: couldn't create client for augmentation: %s", e)
+
+    augmented = 0
+    to_delete = []
+    details = []
+    for gw, match in matches:
+        filled = []
+        skipped = False
+        if gw.discipline == "running":
+            if not garmin_enabled:
+                skipped = True
+            elif dry_run:
+                before = {f: getattr(match, f) for f in _GARMIN_FORM_FIELDS}
+                filled = [f for f in _GARMIN_FORM_FIELDS if before[f] is None]
+            elif client is not None:
+                try:
+                    garmin_activity_id = int(gw.workout_id.removeprefix("garmin_"))
+                    before = {f: getattr(match, f) for f in _GARMIN_FORM_FIELDS}
+                    _augment_peloton_run({"created_at": gw.created_at}, garmin_activity_id, client)
+                    match.refresh_from_db()
+                    filled = [f for f in _GARMIN_FORM_FIELDS
+                              if before[f] is None and getattr(match, f) is not None]
+                    if filled:
+                        augmented += 1
+                except Exception as e:
+                    logger.warning("Garmin reconciliation augment failed for %s: %s", gw.workout_id, e)
+                    skipped = True
+            else:
+                skipped = True
+
+        details.append({
+            "garmin_workout_id": gw.workout_id,
+            "peloton_workout_id": match.workout_id,
+            "peloton_title": match.title,
+            "discipline": gw.discipline,
+            "filled": filled,
+            "skipped": skipped,
+        })
+        if not skipped:
+            to_delete.append(gw.pk)
+
+    deleted = 0
+    if not dry_run and to_delete:
+        deleted = CachedWorkout.objects.filter(pk__in=to_delete).delete()[0]
+
+    return {
+        "checked": len(garmin_workouts),
+        "matched": len(matches),
+        "augmented": augmented,
+        "deleted": deleted,
+        "details": details,
+    }
 
 
 def _find_hr_offset(garmin_form: dict, peloton_perf: dict, max_offset: int = 300) -> int | None:
@@ -1816,24 +1926,6 @@ def google_health_webhook(request):
 # ---------------------------------------------------------------------------
 # Sync API endpoints
 # ---------------------------------------------------------------------------
-
-def sync_new(request):
-    """Combined sync: new Peloton workouts + new Garmin activities + today's wellness."""
-    peloton = _run_peloton_sync_new()
-    garmin = _run_garmin_sync_new()
-    wellness = _run_wellness_sync([date.today()])
-    return JsonResponse({"peloton": peloton, "garmin": garmin, "wellness": wellness})
-
-
-def sync_all(request):
-    """Combined sync: all Peloton workouts + all Garmin activities + last 30 days of wellness."""
-    today = date.today()
-    dates = [today - timedelta(days=i) for i in range(30)]
-    peloton = _run_peloton_sync_all()
-    garmin = _run_garmin_sync_all()
-    wellness = _run_wellness_sync(dates)
-    return JsonResponse({"peloton": peloton, "garmin": garmin, "wellness": wellness})
-
 
 def sync_all_workouts(request):
     return JsonResponse(_run_peloton_sync_all())

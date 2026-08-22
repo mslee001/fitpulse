@@ -128,14 +128,29 @@
         <div class="sync-option-label">Last auto-sync: {{ lds|date:"M j, Y g:i A" }}</div>
         {% endif %}
         {% if ls or lds %}<div class="sync-divider"></div>{% endif %}
-        {% if 'peloton' in enabled or 'garmin' in enabled %}
-        <a class="sync-option" href="{% url 'sync_new' %}" target="_blank">
-          <strong>Sync New</strong>
-          <span>New Peloton &amp; Garmin + today's wellness</span>
+        {% if 'peloton' in enabled %}
+        <a class="sync-option" href="{% url 'sync_new_workouts' %}" target="_blank">
+          <strong>Peloton Sync New</strong>
+          <span>New Peloton workouts</span>
         </a>
-        <a class="sync-option sync-option--danger" href="{% url 'sync_all' %}" target="_blank">
-          <strong>Sync All</strong>
+        <a class="sync-option sync-option--danger" href="{% url 'sync_all_workouts' %}" target="_blank">
+          <strong>Peloton Sync All</strong>
           <span>Full backfill — slow</span>
+        </a>
+        {% endif %}
+        {% if 'garmin' in enabled %}
+        <div class="sync-divider"></div>
+        <a class="sync-option" href="{% url 'sync_garmin_new' %}" target="_blank">
+          <strong>Garmin Sync New</strong>
+          <span>New Garmin activities</span>
+        </a>
+        <a class="sync-option sync-option--danger" href="{% url 'sync_garmin_all' %}" target="_blank">
+          <strong>Garmin Sync All</strong>
+          <span>Full backfill — slow</span>
+        </a>
+        <a class="sync-option" href="{% url 'sync_garmin_wellness' %}" target="_blank">
+          <strong>Garmin Wellness Today</strong>
+          <span>Today's wellness data</span>
         </a>
         {% endif %}
         {% if 'withings' in enabled %}

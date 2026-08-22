@@ -54,8 +54,12 @@ class Command(BaseCommand):
 
         results = []
 
-        # Peloton first — its timestamps must be in the DB before Garmin dedup runs,
-        # otherwise a workout done today appears in both (Garmin doesn't see it as a duplicate).
+        # Order no longer matters for correctness: Peloton sync runs
+        # _reconcile_garmin_duplicates() (and the Google Health equivalent)
+        # after every run, which cleans up any Garmin/Google Health rows that
+        # duplicate a Peloton workout regardless of which source synced
+        # first. Peloton still runs first here just to avoid the wasted
+        # work of creating a Garmin row only to delete it moments later.
         if not opts["skip_peloton"]:
             self.stdout.write("[sync_daily] Peloton…")
             try:

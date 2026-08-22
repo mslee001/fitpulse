@@ -20,7 +20,7 @@ from .views import (
     chat_message_api, chat_clear_api,
 )
 from .sync import (
-    sync_new, sync_all, sync_new_workouts, sync_all_workouts,
+    sync_new_workouts, sync_all_workouts,
     sync_garmin_new, sync_garmin_all, sync_garmin_wellness,
     sync_withings_new, sync_withings_all,
     withings_webhook,
@@ -48,8 +48,6 @@ urlpatterns = [
     path("class/<str:ride_id>/", class_history, name="class_history"),
     path("garmin-activity/<str:discipline>/", garmin_activity_history, name="garmin_activity_history"),
     path("compare/", compare, name="compare"),
-    path("api/sync/new/", sync_new, name="sync_new"),
-    path("api/sync/all/", sync_all, name="sync_all"),
     path("api/sync/peloton/new/", sync_new_workouts, name="sync_new_workouts"),
     path("api/sync/peloton/all/", sync_all_workouts, name="sync_all_workouts"),
     path("api/set-ftp/", set_ftp, name="set_ftp"),
