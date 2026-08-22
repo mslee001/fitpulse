@@ -26,7 +26,7 @@
     <div class="stat-card">
       <div class="stat-label" style="display:flex;justify-content:space-between;align-items:center;">
         Next Workout
-        {% if today_stats.synced_at %}
+        {% if today_stats.readiness_score is not None %}
         <form method="post" action="{% url 'next_workout_refresh' %}" style="margin:0">
           {% csrf_token %}
           <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:0.2rem 0.5rem;">
@@ -37,22 +37,22 @@
       </div>
       {% if next_workout_rec %}
         <div style="margin-top:0.75rem">{{ next_workout_rec|format_next_workout|safe }}</div>
-      {% elif today_stats.synced_at %}
+      {% elif today_stats.readiness_score is not None %}
         <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">Hit "Get Rec" to generate a recommendation based on today's wellness data.</p>
       {% else %}
-        <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">Sync Garmin wellness data to get a recommendation.</p>
+        <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">Waiting on today's readiness score (Garmin or Google Health wellness sync) before a recommendation can be generated.</p>
       {% endif %}
     </div>
 
-    {% if today_stats and today_stats.synced_at %}
+    {% if today_stats and today_stats.has_wellness_data %}
     <div class="stat-card" style="margin-top:1rem;">
       <div class="stat-label">Today's Signals</div>
       <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem;">
-        {% if today_stats.training_readiness_score %}
+        {% if today_stats.readiness_score is not None %}
         <div class="cal-signal-row">
-          <span class="cal-signal-label">Readiness</span>
-          <span class="cal-signal-value {% if today_stats.training_readiness_score >= 70 %}cal-sig-green{% elif today_stats.training_readiness_score >= 40 %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
-            {{ today_stats.training_readiness_score }}/100
+          <span class="cal-signal-label">Readiness{% if today_stats.readiness_is_computed %} (est.){% endif %}</span>
+          <span class="cal-signal-value cal-sig-{{ today_stats.readiness_color }}">
+            {{ today_stats.readiness_score }}/100
           </span>
         </div>
         {% endif %}
@@ -136,9 +136,9 @@
               {% endfor %}
             </div>
             {% endif %}
-            {% if cell.stats and cell.stats.training_readiness_score %}
-            <div class="cal-readiness {% if cell.stats.training_readiness_score >= 70 %}cal-sig-green{% elif cell.stats.training_readiness_score >= 40 %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
-              {{ cell.stats.training_readiness_score }}
+            {% if cell.stats and cell.stats.readiness_score is not None %}
+            <div class="cal-readiness cal-sig-{{ cell.stats.readiness_color }}">
+              {{ cell.stats.readiness_score }}
             </div>
             {% endif %}
             {% if cell.nutrition_status %}

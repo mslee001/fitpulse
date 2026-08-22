@@ -10,8 +10,11 @@ import bisect
 import logging
 from datetime import date, datetime, timedelta, timezone
 
-from django.http import JsonResponse
+from django.db.models import Q
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone as tz
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from . import programs as _programs
 from .models import BodyMeasurement, CachedWorkout, DailyStats, UserSettings
@@ -31,6 +34,21 @@ def _associate_program_safe(workout):
         _programs.associate_workout(workout)
     except Exception:
         logger.exception("program association failed for workout %s", getattr(workout, "pk", "?"))
+
+
+def _integration_enabled(key: str) -> bool:
+    """
+    True if Integration(key=key).is_enabled, defaulting to True if the row
+    is somehow missing (fail open rather than silently blocking sync for an
+    integration that predates the Integration model, e.g. if a migration
+    hasn't run yet in some environment).
+    """
+    from .models import Integration
+    return Integration.objects.filter(key=key).values_list("is_enabled", flat=True).first() is not False
+
+
+def _integration_disabled_result(key: str) -> dict:
+    return {"done": True, "skipped": True, "reason": f"{key} integration is disabled in /settings/integrations/"}
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +163,8 @@ def _upsert_page(raw_data):
 # ---------------------------------------------------------------------------
 
 def _run_peloton_sync_all():
+    if not _integration_enabled("peloton"):
+        return _integration_disabled_result("peloton")
     limit = 100
     page = 0
     total_created = total_updated = total_on_peloton = 0
@@ -175,18 +195,22 @@ def _run_peloton_sync_all():
             page += 1
             if page * limit >= total_on_peloton:
                 break
+        reconciled = _reconcile_google_health_duplicates()
         return {
             "done": True,
             "total_on_peloton": total_on_peloton,
             "created": total_created,
             "updated": total_updated,
             "pages_fetched": page,
+            "google_health_merged": reconciled["deleted"],
         }
     except Exception as e:
         return {"error": str(e), "created": total_created, "updated": total_updated}
 
 
 def _run_peloton_sync_new(days=None):
+    if not _integration_enabled("peloton"):
+        return _integration_disabled_result("peloton")
     cutoff_dt = None
     if days:
         cutoff_dt = datetime.now(tz=timezone.utc) - timedelta(days=int(days))
@@ -229,7 +253,14 @@ def _run_peloton_sync_new(days=None):
             if stop or len(data) < limit:
                 break
             page += 1
-        return {"done": True, "created": total_created, "updated": total_updated, "pages_fetched": page + 1}
+        reconciled = _reconcile_google_health_duplicates()
+        return {
+            "done": True,
+            "created": total_created,
+            "updated": total_updated,
+            "pages_fetched": page + 1,
+            "google_health_merged": reconciled["deleted"],
+        }
     except Exception as e:
         return {"error": str(e), "created": total_created, "updated": total_updated}
 
@@ -617,6 +648,8 @@ def _fetch_garmin_extra(wid: str, garmin_id: int, client, discipline: str) -> No
 # ---------------------------------------------------------------------------
 
 def _run_garmin_sync_new():
+    if not _integration_enabled("garmin"):
+        return _integration_disabled_result("garmin")
     existing_ids = set(
         CachedWorkout.objects.filter(source="garmin").values_list("workout_id", flat=True)
     )
@@ -660,6 +693,8 @@ def _run_garmin_sync_new():
 
 
 def _run_garmin_sync_all():
+    if not _integration_enabled("garmin"):
+        return _integration_disabled_result("garmin")
     peloton_timestamps = _peloton_timestamp_index()
     limit = 100
     start = 0
@@ -696,6 +731,8 @@ def _run_garmin_sync_all():
 
 
 def _run_wellness_sync(dates):
+    if not _integration_enabled("garmin"):
+        return {**_integration_disabled_result("garmin"), "synced": 0, "errors": 0}
     synced = errors = 0
     try:
         client = _garmin_client()
@@ -708,6 +745,7 @@ def _run_wellness_sync(dates):
             stats, _ = DailyStats.objects.get_or_create(date=d)
             for field, value in data.items():
                 setattr(stats, field, value)
+            stats.wellness_source = "garmin"
             stats.synced_at = tz.now()
             stats.save()
             synced += 1
@@ -726,6 +764,7 @@ def _run_wellness_sync(dates):
                 data = client.get_wellness_data(yesterday.isoformat())
                 for field, value in data.items():
                     setattr(yesterday_stats, field, value)
+                yesterday_stats.wellness_source = "garmin"
                 yesterday_stats.synced_at = tz.now()
                 yesterday_stats.save()
                 synced += 1
@@ -733,6 +772,1045 @@ def _run_wellness_sync(dates):
                 logger.warning("Yesterday body battery backfill failed for %s: %s", yesterday, e)
 
     return {"done": True, "synced": synced, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Google Health wellness sync
+#
+# Field shapes below were confirmed live against a real Pixel Watch 3 account
+# (see workouts/services/google_health_client.py's module docstring). A few
+# fields are best-effort because the account had no live data to confirm the
+# value-field name against (run VO2 max, active energy burned) — these log a
+# warning if the sub-object is ever present-but-unrecognized, rather than
+# silently dropping real data once the watch starts reporting it.
+# ---------------------------------------------------------------------------
+
+def _gh_civil_date(date_dict: dict):
+    """{'year','month','day'} -> date."""
+    return date(date_dict["year"], date_dict["month"], date_dict["day"])
+
+
+def _gh_local_date(iso_utc: str, offset_str: str | None):
+    """RFC3339 UTC timestamp + Google's '-28800s'-style offset -> local date."""
+    dt = datetime.fromisoformat(iso_utc.replace("Z", "+00:00"))
+    offset_seconds = int(offset_str.rstrip("s")) if offset_str else 0
+    return (dt + timedelta(seconds=offset_seconds)).date()
+
+
+def _gh_duration_seconds(start_iso: str, end_iso: str) -> int:
+    start = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+    end = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+    return int((end - start).total_seconds())
+
+
+def _gh_apply_resting_hr(point, daily):
+    rhr = point.get("dailyRestingHeartRate", {})
+    if not rhr.get("date"):
+        return
+    bpm = rhr.get("beatsPerMinute")
+    if bpm is not None:
+        daily[_gh_civil_date(rhr["date"])]["resting_hr"] = int(bpm)
+
+
+def _gh_apply_daily_hrv(point, daily):
+    dhrv = point.get("dailyHeartRateVariability", {})
+    if not dhrv.get("date"):
+        return
+    avg = dhrv.get("averageHeartRateVariabilityMilliseconds")
+    if avg is not None:
+        daily[_gh_civil_date(dhrv["date"])]["hrv_last_night"] = round(float(avg), 1)
+
+
+def _gh_apply_run_vo2_max(point, daily):
+    rv = point.get("runVo2Max", {})
+    sample_date = rv.get("sampleTime", {}).get("civilTime", {}).get("date")
+    if not sample_date:
+        return
+    value = rv.get("vo2Max") or rv.get("vo2MaxValue") or rv.get("value")
+    if value is None:
+        if rv:
+            logger.warning("Google Health run VO2 max: no recognized value field, keys=%s", list(rv.keys()))
+        return
+    daily[_gh_civil_date(sample_date)]["vo2_max_running"] = round(float(value), 1)
+
+
+def _gh_apply_respiratory_rate(point, daily):
+    drr = point.get("dailyRespiratoryRate", {})
+    if not drr.get("date"):
+        return
+    bpm = drr.get("breathsPerMinute")
+    if bpm is not None:
+        daily[_gh_civil_date(drr["date"])]["respiration_avg"] = round(float(bpm), 1)
+
+
+def _gh_apply_respiratory_sleep(point, daily):
+    summary = point.get("respiratoryRateSleepSummary", {})
+    sample_date = summary.get("sampleTime", {}).get("civilTime", {}).get("date")
+    if not sample_date:
+        return
+    bpm = summary.get("fullSleepStats", {}).get("breathsPerMinute")
+    if bpm is not None:
+        daily[_gh_civil_date(sample_date)]["respiration_sleep_avg"] = round(float(bpm), 1)
+
+
+def _gh_apply_oxygen_saturation(point, daily):
+    dos = point.get("dailyOxygenSaturation", {})
+    if not dos.get("date"):
+        return
+    d = _gh_civil_date(dos["date"])
+    avg = dos.get("averagePercentage")
+    low = dos.get("lowerBoundPercentage")
+    if avg is not None:
+        daily[d]["spo2_sleep_avg"] = round(float(avg), 1)
+    if low is not None:
+        daily[d]["spo2_sleep_low"] = int(round(float(low)))
+
+
+def _gh_apply_sleep(point, daily):
+    s = point.get("sleep", {})
+    interval = s.get("interval", {})
+    end_time = interval.get("endTime")
+    start_time = interval.get("startTime")
+    if not end_time or not start_time:
+        return
+    # Attributed to the wake-up day, matching DailyStats' "night leading into
+    # this date" convention already used for Garmin sleep data.
+    d = _gh_local_date(end_time, interval.get("endUtcOffset"))
+    stages = s.get("stages", [])
+    if stages:
+        totals = {"AWAKE": 0, "LIGHT": 0, "DEEP": 0, "REM": 0}
+        for stage in stages:
+            stage_type = stage.get("type")
+            if stage_type in totals and stage.get("startTime") and stage.get("endTime"):
+                totals[stage_type] += _gh_duration_seconds(stage["startTime"], stage["endTime"])
+        daily[d]["sleep_deep_seconds"] = totals["DEEP"]
+        daily[d]["sleep_light_seconds"] = totals["LIGHT"]
+        daily[d]["sleep_rem_seconds"] = totals["REM"]
+        daily[d]["sleep_seconds"] = totals["LIGHT"] + totals["DEEP"] + totals["REM"]
+    else:
+        daily[d]["sleep_seconds"] = _gh_duration_seconds(start_time, end_time)
+
+
+def _gh_apply_steps(point, daily):
+    d_dict = point.get("civilStartTime", {}).get("date")
+    if not d_dict:
+        return
+    count = point.get("steps", {}).get("countSum")
+    if count is not None:
+        daily[_gh_civil_date(d_dict)]["steps"] = int(count)
+
+
+def _gh_apply_floors(point, daily):
+    d_dict = point.get("civilStartTime", {}).get("date")
+    if not d_dict:
+        return
+    count = point.get("floors", {}).get("countSum")
+    if count is not None:
+        daily[_gh_civil_date(d_dict)]["floors_climbed"] = int(count)
+
+
+def _gh_apply_active_calories(point, daily):
+    d_dict = point.get("civilStartTime", {}).get("date")
+    if not d_dict:
+        return
+    energy = point.get("activeEnergyBurned", {})
+    kcal = energy.get("kcalSum")
+    if kcal is not None:
+        daily[_gh_civil_date(d_dict)]["active_calories"] = int(round(float(kcal)))
+    elif energy:
+        logger.warning("Google Health active energy burned: no kcalSum field, keys=%s", list(energy.keys()))
+
+
+def _gh_apply_total_calories(point, daily):
+    d_dict = point.get("civilStartTime", {}).get("date")
+    if not d_dict:
+        return
+    kcal = point.get("totalCalories", {}).get("kcalSum")
+    if kcal is not None:
+        daily[_gh_civil_date(d_dict)]["total_calories"] = int(round(float(kcal)))
+
+
+def _gh_apply_active_minutes(point, daily):
+    d_dict = point.get("civilStartTime", {}).get("date")
+    if not d_dict:
+        return
+    buckets = point.get("activeMinutes", {}).get("activeMinutesRollupByActivityLevel", [])
+    moderate = vigorous = 0
+    found = False
+    for bucket in buckets:
+        mins = bucket.get("activeMinutesSum")
+        if mins is None:
+            continue
+        found = True
+        if bucket.get("activityLevel") == "MODERATE":
+            moderate += int(mins)
+        elif bucket.get("activityLevel") == "VIGOROUS":
+            vigorous += int(mins)
+    if found:
+        d = _gh_civil_date(d_dict)
+        daily[d]["moderate_intensity_minutes"] = moderate
+        daily[d]["vigorous_intensity_minutes"] = vigorous
+
+
+def _gh_apply_intraday_hrv(point, daily):
+    """HRV min/max for the day, accumulated across intraday
+    (~5-min-granularity) readings — mirrors GarminClient.get_wellness_data's
+    hrv_min/hrv_max derivation from its own intraday readings."""
+    hrv = point.get("heartRateVariability", {})
+    sample_date = hrv.get("sampleTime", {}).get("civilTime", {}).get("date")
+    if not sample_date:
+        return
+    value = hrv.get("rootMeanSquareOfSuccessiveDifferencesMilliseconds")
+    if value is None:
+        return
+    d = _gh_civil_date(sample_date)
+    value = int(round(value))
+    existing_min = daily[d].get("hrv_min")
+    existing_max = daily[d].get("hrv_max")
+    daily[d]["hrv_min"] = value if existing_min is None else min(existing_min, value)
+    daily[d]["hrv_max"] = value if existing_max is None else max(existing_max, value)
+
+
+def _gh_apply_active_zone_minutes(point, daily):
+    d_dict = point.get("civilStartTime", {}).get("date")
+    if not d_dict:
+        return
+    azm = point.get("activeZoneMinutes", {})
+    fat_burn = azm.get("sumInFatBurnHeartZone")
+    cardio = azm.get("sumInCardioHeartZone")
+    peak = azm.get("sumInPeakHeartZone")
+    if fat_burn is None and cardio is None and peak is None:
+        return
+    # Fitbit's published AZM formula: fat-burn minutes count once, cardio and
+    # peak minutes count double.
+    total = int(fat_burn or 0) + 2 * int(cardio or 0) + 2 * int(peak or 0)
+    daily[_gh_civil_date(d_dict)]["active_zone_minutes"] = total
+
+
+def _gh_apply_sleep_temp(point, daily):
+    st = point.get("dailySleepTemperatureDerivations", {})
+    if not st.get("date"):
+        return
+    d = _gh_civil_date(st["date"])
+    nightly = st.get("nightlyTemperatureCelsius")
+    baseline = st.get("baselineTemperatureCelsius")
+    if nightly is not None:
+        daily[d]["skin_temp_c"] = round(float(nightly), 2)
+    if nightly is not None and baseline is not None:
+        daily[d]["skin_temp_deviation_c"] = round(float(nightly) - float(baseline), 2)
+
+
+def _gh_interval_local_date(interval: dict):
+    """civilStartTime.date if present, else derive from startTime + startUtcOffset."""
+    d_dict = interval.get("civilStartTime", {}).get("date")
+    if d_dict:
+        return _gh_civil_date(d_dict)
+    start_time = interval.get("startTime")
+    if not start_time:
+        return None
+    return _gh_local_date(start_time, interval.get("startUtcOffset"))
+
+
+def _gh_apply_sedentary(point, daily):
+    interval = point.get("sedentaryPeriod", {}).get("interval", {})
+    start_time, end_time = interval.get("startTime"), interval.get("endTime")
+    d = _gh_interval_local_date(interval)
+    if not d or not start_time or not end_time:
+        return
+    minutes = _gh_duration_seconds(start_time, end_time) // 60
+    daily[d]["sedentary_minutes"] = daily[d].get("sedentary_minutes", 0) + minutes
+
+
+_HR_ZONE_FIELD_MAP = {
+    "LIGHT": "hr_zone_light_minutes",
+    "MODERATE": "hr_zone_moderate_minutes",
+    "VIGOROUS": "hr_zone_vigorous_minutes",
+    "PEAK": "hr_zone_peak_minutes",
+}
+
+
+def _gh_apply_hr_zone_minutes(point, daily):
+    tz_point = point.get("timeInHeartRateZone", {})
+    interval = tz_point.get("interval", {})
+    start_time, end_time = interval.get("startTime"), interval.get("endTime")
+    field = _HR_ZONE_FIELD_MAP.get(tz_point.get("heartRateZoneType"))
+    d = _gh_interval_local_date(interval)
+    if not d or not start_time or not end_time or not field:
+        return
+    minutes = _gh_duration_seconds(start_time, end_time) // 60
+    daily[d][field] = daily[d].get(field, 0) + minutes
+
+
+def _gh_sync_height():
+    """One-time convenience: auto-fill NutritionProfile.height_cm from Google
+    Health's height data type if it's not already set. Never overwrites a
+    value the user (or Withings, if that's ever wired up) already entered."""
+    from .models import NutritionProfile
+    from .services.google_health_client import GoogleHealthClient
+
+    profile = NutritionProfile.get()
+    if profile.height_cm is not None:
+        return
+    try:
+        client = GoogleHealthClient()
+        points = client.get_height(date.today() - timedelta(days=5 * 365), date.today())
+    except Exception as e:
+        logger.warning("Google Health height backfill failed: %s", e)
+        return
+    if not points:
+        return
+    latest = max(points, key=lambda p: p.get("height", {}).get("sampleTime", {}).get("physicalTime", ""))
+    mm = latest.get("height", {}).get("heightMillimeters")
+    if mm is None:
+        return
+    profile.height_cm = round(float(mm) / 10, 1)
+    profile.save(update_fields=["height_cm"])
+    logger.info("Auto-filled NutritionProfile.height_cm=%.1f from Google Health", profile.height_cm)
+
+
+def _run_google_health_wellness_sync(dates: list) -> dict:
+    """
+    Sync Google Health wellness data into DailyStats for the given dates.
+    Fetches each data type once across the full [min(dates), max(dates)]
+    span (cheaper than one call per day), buckets results per calendar day,
+    then upserts. Only ever writes the fields Google Health can plausibly
+    supply (see the mapping table in workouts/services/google_health_client.py's
+    per-type methods) — Garmin-exclusive fields (body battery, stress,
+    training load/readiness, fitness age, daily goals) are never touched.
+    """
+    from collections import defaultdict
+    from .services.google_health_client import GoogleHealthClient, GoogleHealthReauthRequired
+    from .models import Integration
+
+    if not dates:
+        return {"done": True, "synced": 0, "errors": 0}
+    if not _integration_enabled("google_health"):
+        return {**_integration_disabled_result("google_health"), "synced": 0, "errors": 0}
+
+    try:
+        client = GoogleHealthClient()
+    except Exception as e:
+        return {"error": str(e), "synced": 0, "errors": len(dates)}
+
+    start, end = min(dates), max(dates)
+    daily: dict = defaultdict(dict)
+    errors = 0
+
+    fetchers = [
+        (client.get_daily_resting_heart_rate, _gh_apply_resting_hr),
+        (client.get_daily_heart_rate_variability, _gh_apply_daily_hrv),
+        (client.get_run_vo2_max, _gh_apply_run_vo2_max),
+        (client.get_daily_respiratory_rate, _gh_apply_respiratory_rate),
+        (client.get_respiratory_rate_sleep_summary, _gh_apply_respiratory_sleep),
+        (client.get_daily_oxygen_saturation, _gh_apply_oxygen_saturation),
+        (client.get_sleep, _gh_apply_sleep),
+        (client.get_steps_daily_rollup, _gh_apply_steps),
+        (client.get_floors_daily_rollup, _gh_apply_floors),
+        (client.get_active_energy_burned_daily_rollup, _gh_apply_active_calories),
+        (client.get_total_calories_daily_rollup, _gh_apply_total_calories),
+        (client.get_active_minutes_daily_rollup, _gh_apply_active_minutes),
+        (client.get_heart_rate_variability, _gh_apply_intraday_hrv),
+        (client.get_active_zone_minutes_daily_rollup, _gh_apply_active_zone_minutes),
+        (client.get_daily_sleep_temperature_derivations, _gh_apply_sleep_temp),
+        (client.get_sedentary_period, _gh_apply_sedentary),
+        (client.get_time_in_heart_rate_zone, _gh_apply_hr_zone_minutes),
+    ]
+    for getter, apply_fn in fetchers:
+        try:
+            points = getter(start, end)
+        except GoogleHealthReauthRequired as e:
+            logger.error("Google Health wellness sync aborted: %s", e)
+            return {"error": str(e), "synced": 0, "errors": len(dates)}
+        except Exception as e:
+            logger.warning("Google Health wellness sync: %s failed: %s", getattr(getter, "__name__", getter), e)
+            errors += 1
+            continue
+        for point in points:
+            apply_fn(point, daily)
+
+    synced = 0
+    for d in dates:
+        fields = daily.get(d, {})
+        if not fields:
+            # No Google Health data at all for this date — don't create a
+            # pointless empty row or mislabel wellness_source for a day we
+            # have nothing to say about. Matters most for wide "Sync All"
+            # ranges where most days in a multi-year span may be empty.
+            continue
+        stats, _ = DailyStats.objects.get_or_create(date=d)
+        if stats.wellness_source == "garmin":
+            logger.warning(
+                "Google Health wellness sync: %s already has Garmin wellness data — "
+                "updating shared fields only, preserving Garmin-exclusive fields", d
+            )
+        else:
+            stats.wellness_source = "google_health"
+        for field, value in fields.items():
+            setattr(stats, field, value)
+        stats.google_health_synced_at = tz.now()
+        stats.save()
+        synced += 1
+
+    # hrv_weekly_avg has no direct Google Health equivalent — compute it
+    # client-side as a trailing 7-day average of hrv_last_night, for any date
+    # this sync actually populated hrv_last_night on.
+    for d in dates:
+        if daily.get(d, {}).get("hrv_last_night") is None:
+            continue
+        window = DailyStats.objects.filter(
+            date__gte=d - timedelta(days=6), date__lte=d, hrv_last_night__isnull=False
+        ).values_list("hrv_last_night", flat=True)
+        if window:
+            DailyStats.objects.filter(date=d).update(hrv_weekly_avg=round(sum(window) / len(window), 1))
+
+    # resting_hr_baseline: trailing 30-day avg of resting_hr, same pattern as
+    # hrv_weekly_avg above — used by DailyStats.readiness_score to judge
+    # today's resting HR against your own recent norm rather than a fixed number.
+    for d in dates:
+        if daily.get(d, {}).get("resting_hr") is None:
+            continue
+        window = DailyStats.objects.filter(
+            date__gte=d - timedelta(days=29), date__lte=d, resting_hr__isnull=False
+        ).values_list("resting_hr", flat=True)
+        if window:
+            DailyStats.objects.filter(date=d).update(resting_hr_baseline=round(sum(window) / len(window), 1))
+
+    # sleep_baseline_seconds: trailing 30-day avg of sleep_seconds, same
+    # pattern as resting_hr_baseline/hrv_weekly_avg above.
+    for d in dates:
+        if daily.get(d, {}).get("sleep_seconds") is None:
+            continue
+        window = DailyStats.objects.filter(
+            date__gte=d - timedelta(days=29), date__lte=d, sleep_seconds__isnull=False
+        ).values_list("sleep_seconds", flat=True)
+        if window:
+            DailyStats.objects.filter(date=d).update(sleep_baseline_seconds=round(sum(window) / len(window), 1))
+
+    # wellness_days_synced: trailing 30-day count of days with at least one
+    # recovery signal (HRV, resting HR, or sleep) — compute_readiness_proxy()
+    # requires >=7 before it trusts the baselines above enough to score against.
+    for d in dates:
+        if d not in daily:
+            continue
+        count = DailyStats.objects.filter(
+            date__gte=d - timedelta(days=29), date__lte=d
+        ).filter(
+            Q(hrv_last_night__isnull=False) | Q(resting_hr__isnull=False) | Q(sleep_seconds__isnull=False)
+        ).count()
+        DailyStats.objects.filter(date=d).update(wellness_days_synced=count)
+
+    # computed_readiness_score/label: only meaningful once the baselines and
+    # wellness_days_synced above are current for this sync run, so it runs last.
+    for d in dates:
+        if d not in daily:
+            continue
+        stats_row = DailyStats.objects.filter(date=d).first()
+        if not stats_row:
+            continue
+        score, label = stats_row.compute_readiness_proxy()
+        DailyStats.objects.filter(date=d).update(computed_readiness_score=score, computed_readiness_label=label or "")
+
+    _gh_sync_height()
+
+    Integration.objects.filter(key="google_health").update(last_synced_at=tz.now())
+    return {"done": True, "synced": synced, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Google Health nutrition export (FoodEntry -> nutrition-log data type)
+#
+# Schema confirmed live 2026-08-19 via the API's $discovery/rest?version=v4
+# document (NutritionLog/NutrientQuantity/EnergyQuantity/WeightQuantity/
+# SessionTimeInterval schemas) — guessing field names against the live API
+# gave "Cannot find field" errors that never converged, so this is the one
+# Google Health write path in the codebase that was NOT reverse-engineered
+# from error messages alone. One real bug found and worked around: a
+# far-future test date (2099) 500s ("An internal error occurred") on this
+# data type specifically — unlike exercise writes, which accepted 2099 fine
+# during earlier testing. Near-dates work. All live test writes during
+# development used today's date and were immediately cleaned up via
+# batchDelete (POST dataTypes/nutrition-log/dataPoints:batchDelete with a
+# `names` array of full resource names — NOT `dataPointIds`, which 400s).
+# ---------------------------------------------------------------------------
+
+_FOOD_ENTRY_NUTRIENT_FIELDS = [
+    ("protein_g", "PROTEIN"),
+    ("fiber_g", "DIETARY_FIBER"),
+]
+
+
+def _push_food_entry_to_google_health(entry) -> bool:
+    """Best-effort export of a newly-logged FoodEntry to Google Health.
+    Never raises — a failure here must never block food logging. Stores the
+    created data point's resource name on the entry so it can be cleaned up
+    if the entry is later deleted. No-op if the integration is disabled/not
+    authenticated, or if the nutrition.writeonly scope wasn't granted."""
+    from .services.google_health_client import GoogleHealthClient, GoogleHealthReauthRequired
+
+    if not _integration_enabled("google_health"):
+        return False
+
+    start = entry.logged_at
+    end = start + timedelta(minutes=1)
+    offset = start.utcoffset()
+    offset_seconds = int(offset.total_seconds()) if offset else 0
+
+    display_name = (entry.raw_text or "").strip()
+    if not display_name and entry.items_json:
+        display_name = ", ".join(i.get("name", "") for i in entry.items_json if i.get("name"))
+    display_name = display_name[:200] or "FitPulse food log"
+
+    nutrients = [
+        {"nutrient": nutrient, "quantity": {"grams": getattr(entry, field)}}
+        for field, nutrient in _FOOD_ENTRY_NUTRIENT_FIELDS
+        if getattr(entry, field)
+    ]
+
+    body = {
+        "nutritionLog": {
+            "interval": {
+                "startTime": start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "endTime": end.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "startUtcOffset": f"{offset_seconds}s",
+                "endUtcOffset": f"{offset_seconds}s",
+            },
+            "foodDisplayName": display_name,
+            "mealType": entry.meal.upper() if entry.meal else "ANYTIME",
+            "energy": {"kcal": entry.calories},
+            "totalFat": {"grams": entry.fat_g},
+            "totalCarbohydrate": {"grams": entry.carbs_g},
+            "nutrients": nutrients,
+        }
+    }
+
+    try:
+        client = GoogleHealthClient()
+        resp = client._request("POST", "dataTypes/nutrition-log/dataPoints", json_body=body)
+    except GoogleHealthReauthRequired as e:
+        logger.warning("Google Health food export skipped (reauth required): %s", e)
+        return False
+    except Exception as e:
+        logger.warning("Google Health food export failed for FoodEntry %s: %s", entry.pk, e)
+        return False
+
+    name = resp.get("response", {}).get("name")
+    if name:
+        entry.google_health_nutrition_log_name = name
+        entry.save(update_fields=["google_health_nutrition_log_name"])
+    return True
+
+
+def _delete_food_entry_from_google_health(resource_name: str) -> bool:
+    """Best-effort cleanup of a previously-exported nutrition-log entry when
+    the source FoodEntry is deleted in FitPulse."""
+    from .services.google_health_client import GoogleHealthClient
+
+    if not resource_name:
+        return False
+    try:
+        client = GoogleHealthClient()
+        client._request(
+            "POST", "dataTypes/nutrition-log/dataPoints:batchDelete",
+            json_body={"names": [resource_name]},
+        )
+        return True
+    except Exception as e:
+        logger.warning("Google Health food export cleanup failed for %s: %s", resource_name, e)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Google Health exercise sync
+# ---------------------------------------------------------------------------
+
+def _is_peloton_sourced(data_source: dict, display_name: str = "") -> bool:
+    """
+    True if a Google Health exercise data point originated from Peloton's own
+    Fitbit Web API integration — these are filtered out entirely since
+    PelotonClient already ingests the same workout with richer data (effort
+    points, leaderboard). See PELOTON_FITBIT_WEB_CLIENT_ID's docstring in
+    google_health_client.py for how this was confirmed.
+    """
+    from .services.google_health_client import PELOTON_FITBIT_WEB_CLIENT_ID
+
+    web_client_id = data_source.get("application", {}).get("webClientId")
+    by_client_id = web_client_id == PELOTON_FITBIT_WEB_CLIENT_ID
+    by_display_name = display_name.startswith("Peloton -") or display_name.startswith("Peloton –")
+
+    if by_client_id != by_display_name:
+        logger.warning(
+            "Google Health exercise dedup signals disagree: webClientId=%r "
+            "(match=%s) vs displayName=%r (match=%s) — trusting webClientId. "
+            "dataSource format may have changed.",
+            web_client_id, by_client_id, display_name, by_display_name,
+        )
+    elif not web_client_id and not display_name:
+        logger.warning("Google Health exercise data point has neither dataSource.application "
+                        "nor displayName — cannot confirm Peloton origin either way; treating as non-Peloton.")
+
+    return by_client_id
+
+
+def _parse_google_health_exercise(point: dict) -> dict | None:
+    """Extract the fields both _upsert_google_health_exercise and
+    _augment_peloton_from_google_health need from one exercise data point.
+    Returns None if the point is missing required fields (id, start time)."""
+    from .services.google_health_client import GOOGLE_HEALTH_EXERCISE_TYPE_TO_DISCIPLINE
+
+    ex = point.get("exercise", {})
+    name = point.get("name", "")
+    point_id = name.rsplit("/", 1)[-1] if name else None
+    if not point_id:
+        logger.warning("Google Health exercise data point missing a resource name/ID, skipping: %r", point)
+        return None
+
+    interval = ex.get("interval", {})
+    start_time = interval.get("startTime")
+    if not start_time:
+        logger.warning("Google Health exercise data point %s missing interval.startTime, skipping", point_id)
+        return None
+    created_at = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+
+    raw_type = ex.get("exerciseType", "OTHER")
+    discipline = GOOGLE_HEALTH_EXERCISE_TYPE_TO_DISCIPLINE.get(raw_type)
+    if discipline is None:
+        discipline = raw_type.lower()
+        logger.info("Google Health exercise type %r has no explicit discipline mapping, using %r", raw_type, discipline)
+
+    metrics = ex.get("metricsSummary", {})
+    calories = metrics.get("caloriesKcal")
+    distance_mm = metrics.get("distanceMillimeters")
+    distance_miles = round(distance_mm / 1_609_344, 3) if distance_mm else None
+    hr_avg_raw = metrics.get("averageHeartRateBeatsPerMinute")
+    heart_rate_avg = int(hr_avg_raw) if hr_avg_raw is not None else None
+
+    active_duration_str = ex.get("activeDuration", "")
+    duration_seconds = int(active_duration_str.rstrip("s")) if active_duration_str.rstrip("s").isdigit() else \
+        _gh_duration_seconds(start_time, interval.get("endTime", start_time))
+
+    avg_pace_seconds = None
+    if discipline in ("running", "walking") and distance_miles:
+        avg_pace_seconds = round(duration_seconds / distance_miles)
+
+    return dict(
+        point_id=point_id,
+        title=ex.get("displayName", "") or raw_type.replace("_", " ").title(),
+        discipline=discipline,
+        duration_seconds=duration_seconds or 0,
+        calories=int(round(calories)) if calories is not None else None,
+        distance_miles=distance_miles,
+        heart_rate_avg=heart_rate_avg,
+        avg_pace_seconds=avg_pace_seconds,
+        created_at=created_at,
+    )
+
+
+def _upsert_google_health_exercise(point: dict) -> tuple:
+    """Insert or update a CachedWorkout from one Google Health exercise data
+    point (already filtered to exclude Peloton-sourced/duplicate entries).
+    Returns (created, updated). Google Health's exercise type is a
+    session-level summary (metricsSummary), not a time-series — no
+    performance_graph_json or running-form fields get populated here,
+    matching the plainer detail page Google-Health-sourced runs are
+    expected to show."""
+    parsed = _parse_google_health_exercise(point)
+    if parsed is None:
+        return False, False
+
+    point_id = parsed["point_id"]
+    wid = f"google_health_{point_id}"
+    fields = dict(
+        title=parsed["title"],
+        discipline=parsed["discipline"],
+        fitness_discipline_display=parsed["discipline"].replace("_", " ").title(),
+        duration_seconds=parsed["duration_seconds"],
+        calories=parsed["calories"],
+        distance_miles=parsed["distance_miles"],
+        heart_rate_avg=parsed["heart_rate_avg"],
+        avg_pace_seconds=parsed["avg_pace_seconds"],
+        created_at=parsed["created_at"],
+        google_health_activity_id=point_id,
+        source="google_health",
+        raw_data=point,
+    )
+
+    existing = CachedWorkout.objects.filter(workout_id=wid).first()
+    if existing:
+        for field, value in fields.items():
+            if field != "raw_data" and value is not None:
+                setattr(existing, field, value)
+        existing.raw_data = point
+        existing.save()
+        return False, True
+
+    obj = CachedWorkout(workout_id=wid, ride_id="", workout_type="",
+                         instructor_name="", instructor_image_url="", class_image_url="",
+                         **fields)
+    obj.save()
+    return True, False
+
+
+def _peloton_workout_index():
+    """Sorted [(timestamp, CachedWorkout)] for all Peloton-sourced workouts —
+    like _peloton_timestamp_index() but keeps the object so callers can
+    augment it, not just detect the overlap."""
+    return sorted(
+        (
+            (int(w.created_at.timestamp()), w)
+            for w in CachedWorkout.objects.filter(source="peloton")
+            if w.created_at is not None
+        ),
+        key=lambda pair: pair[0],
+    )
+
+
+def _find_peloton_match(created_at, workout_index, window_seconds=300):
+    """Closest Peloton CachedWorkout within window_seconds of created_at, or None.
+    Originally 120s (same as Garmin's _is_peloton_duplicate), calibrated against
+    446 real Google Health/Peloton duplicate pairs, 445 of which were within
+    120s (median offset: 0s, i.e. identical timestamps). Widened to 300s after
+    a confirmed real pair (google_health_7934183891199634496 / Peloton strength
+    workout 7ac396af733a45e5ac7b5f4182e95ac9) landed 187s apart — the watch's
+    auto-detected start lags Peloton's own timestamp more for strength sessions
+    than for cardio."""
+    if created_at is None or not workout_index:
+        return None
+    ts = int(created_at.timestamp())
+    timestamps = [t for t, _ in workout_index]
+    pos = bisect.bisect_left(timestamps, ts - window_seconds)
+    best = None
+    while pos < len(workout_index) and workout_index[pos][0] <= ts + window_seconds:
+        candidate_ts, candidate = workout_index[pos]
+        if best is None or abs(candidate_ts - ts) < abs(best[0] - ts):
+            best = (candidate_ts, candidate)
+        pos += 1
+    return best[1] if best else None
+
+
+def _augment_peloton_from_google_health(peloton_workout, point: dict) -> dict:
+    """
+    When a Google Health exercise entry duplicates a Peloton workout (either
+    via Peloton's own Fitbit integration, or the watch's independent
+    auto-detection — see _is_peloton_sourced vs _find_peloton_match), don't
+    create a second CachedWorkout. Instead reconcile: fill any field the
+    Peloton record is missing using Google's data (Peloton's own value
+    always wins when both sides have one — never overwrites), and report
+    which fields Peloton has that Google's copy lacks, for the write-back
+    path (_push_peloton_to_google_health).
+
+    Returns {"filled": [...], "google_missing": [...], "point_id": str}.
+    """
+    parsed = _parse_google_health_exercise(point)
+    if parsed is None:
+        return {"filled": [], "google_missing": [], "point_id": None}
+
+    filled = []
+    if parsed["calories"] is not None and peloton_workout.calories is None:
+        peloton_workout.calories = parsed["calories"]
+        filled.append("calories")
+    if parsed["heart_rate_avg"] is not None and peloton_workout.heart_rate_avg_best is None:
+        peloton_workout.heart_rate_avg = parsed["heart_rate_avg"]
+        filled.append("heart_rate_avg")
+    if parsed["distance_miles"] is not None and peloton_workout.distance_miles is None:
+        peloton_workout.distance_miles = parsed["distance_miles"]
+        filled.append("distance_miles")
+        if peloton_workout.avg_pace_seconds is None and peloton_workout.duration_seconds:
+            peloton_workout.avg_pace_seconds = round(peloton_workout.duration_seconds / parsed["distance_miles"])
+            filled.append("avg_pace_seconds")
+
+    if filled:
+        peloton_workout.google_health_activity_id = parsed["point_id"]
+        peloton_workout.save(update_fields=filled + ["google_health_activity_id"])
+
+    google_missing = []
+    if peloton_workout.calories is not None and parsed["calories"] is None:
+        google_missing.append("calories")
+    if peloton_workout.heart_rate_avg_best is not None and parsed["heart_rate_avg"] is None:
+        google_missing.append("heart_rate_avg")
+    if peloton_workout.distance_miles is not None and parsed["distance_miles"] is None:
+        google_missing.append("distance_miles")
+
+    return {"filled": filled, "google_missing": google_missing, "point_id": parsed["point_id"]}
+
+
+def _reconcile_google_health_duplicates(dry_run=False) -> dict:
+    """
+    Re-check every existing source="google_health" CachedWorkout row against
+    the current set of Peloton workouts and merge any new match.
+
+    Needed because matching is otherwise one-directional: a Google Health
+    sync only matches against Peloton workouts that already exist *at that
+    moment*. If Google Health syncs before the corresponding Peloton workout
+    does, the two land as separate rows and nothing re-checks them — Peloton
+    sync never looked at google_health rows at all. Calling this after every
+    Peloton sync closes that gap. Same logic as the one-time
+    dedupe_google_health_exercise command, factored out so both can share it.
+
+    Returns {"checked", "matched", "augmented", "deleted", "details"}, where
+    each entry in "details" is {"google_workout_id", "peloton_workout_id",
+    "peloton_title", "filled", "had_raw_data"}.
+    """
+    if not _integration_enabled("google_health"):
+        return {"checked": 0, "matched": 0, "augmented": 0, "deleted": 0, "details": []}
+
+    peloton_index = _peloton_workout_index()
+    gh_workouts = list(CachedWorkout.objects.filter(source="google_health").order_by("created_at"))
+
+    augmented = 0
+    to_delete = []
+    details = []
+
+    for w in gh_workouts:
+        match = _find_peloton_match(w.created_at, peloton_index)
+        if match is None:
+            continue
+
+        filled = []
+        had_raw_data = bool(w.raw_data)
+        if had_raw_data:
+            if dry_run:
+                parsed = _parse_google_health_exercise(w.raw_data)
+                if parsed:
+                    if parsed["calories"] is not None and match.calories is None:
+                        filled.append("calories")
+                    if parsed["heart_rate_avg"] is not None and match.heart_rate_avg_best is None:
+                        filled.append("heart_rate_avg")
+                    if parsed["distance_miles"] is not None and match.distance_miles is None:
+                        filled.append("distance_miles")
+            else:
+                filled = _augment_peloton_from_google_health(match, w.raw_data)["filled"]
+
+        if filled:
+            augmented += 1
+
+        details.append({
+            "google_workout_id": w.workout_id,
+            "peloton_workout_id": match.workout_id,
+            "peloton_title": match.title,
+            "filled": filled,
+            "had_raw_data": had_raw_data,
+        })
+        to_delete.append(w.pk)
+
+    deleted = 0
+    if not dry_run and to_delete:
+        deleted = CachedWorkout.objects.filter(pk__in=to_delete).delete()[0]
+
+    return {
+        "checked": len(gh_workouts),
+        "matched": len(details),
+        "augmented": augmented,
+        "deleted": deleted,
+        "details": details,
+    }
+
+
+def _run_google_health_exercise_sync(start, end) -> dict:
+    if not _integration_enabled("google_health"):
+        return {**_integration_disabled_result("google_health"), "created": 0, "updated": 0}
+
+    from .services.google_health_client import GoogleHealthClient, GoogleHealthReauthRequired
+
+    try:
+        client = GoogleHealthClient()
+        points = client.get_exercise(start, end)
+    except GoogleHealthReauthRequired as e:
+        logger.error("Google Health exercise sync aborted: %s", e)
+        return {"error": str(e), "created": 0, "updated": 0}
+    except Exception as e:
+        return {"error": str(e), "created": 0, "updated": 0}
+
+    peloton_index = _peloton_workout_index()
+    created = updated = skipped_peloton = augmented = 0
+    google_missing_fields: list = []  # candidates for the write-back path
+
+    for point in points:
+        ex = point.get("exercise", {})
+        data_source = point.get("dataSource", {})
+        display_name = ex.get("displayName", "")
+        start_time = ex.get("interval", {}).get("startTime")
+        created_at = datetime.fromisoformat(start_time.replace("Z", "+00:00")) if start_time else None
+
+        is_official = _is_peloton_sourced(data_source, display_name)
+        # Even non-official entries can duplicate a Peloton workout — the
+        # watch's own auto-detection creates a separate generic-titled entry
+        # ("Walk", "Run") for the same session, independent of Peloton's own
+        # Fitbit-integration sync. Confirmed 2026-08-18: 446/471 previously-
+        # synced Google Health workouts landed within 120s of an existing
+        # Peloton workout despite not matching the official dataSource check.
+        match = _find_peloton_match(created_at, peloton_index) if (is_official or created_at) else None
+
+        if is_official or match is not None:
+            skipped_peloton += 1
+            if match is not None:
+                result = _augment_peloton_from_google_health(match, point)
+                if result["filled"]:
+                    augmented += 1
+                if result["google_missing"]:
+                    google_missing_fields.append({
+                        "peloton_workout_id": match.workout_id,
+                        "google_point_id": result["point_id"],
+                        "fields": result["google_missing"],
+                    })
+            elif is_official:
+                logger.info(
+                    "Google Health exercise %s is Peloton-sourced but no matching local "
+                    "Peloton workout found within the window — skipped, not augmented",
+                    point.get("name"),
+                )
+            continue
+
+        try:
+            was_created, was_updated = _upsert_google_health_exercise(point)
+            created += was_created
+            updated += was_updated
+        except Exception as e:
+            logger.warning("Google Health exercise upsert failed for %s: %s", point.get("name"), e)
+
+    from .models import Integration
+    Integration.objects.filter(key="google_health").update(last_synced_at=tz.now())
+    return {
+        "done": True,
+        "created": created,
+        "updated": updated,
+        "skipped_peloton_duplicates": skipped_peloton,
+        "peloton_augmented": augmented,
+        "google_missing_fields": google_missing_fields,
+    }
+
+
+def _run_google_health_exercise_sync_new() -> dict:
+    """Syncs since the most recent Google-Health-sourced workout (or the last
+    30 days if none exist yet)."""
+    latest = (
+        CachedWorkout.objects.filter(source="google_health")
+        .order_by("-created_at").values_list("created_at", flat=True).first()
+    )
+    start = (latest.date() - timedelta(days=1)) if latest else (date.today() - timedelta(days=30))
+    return _run_google_health_exercise_sync(start, date.today())
+
+
+def _run_google_health_exercise_sync_all() -> dict:
+    """Full historical backfill — 3 years back is generous for a Pixel Watch
+    account; the client's date-bounded pagination stops naturally once it
+    runs out of real data well before that."""
+    start = date.today() - timedelta(days=365 * 3)
+    return _run_google_health_exercise_sync(start, date.today())
+
+
+def _run_google_health_sync_new() -> dict:
+    dates = [date.today() - timedelta(days=i) for i in range(7)]
+    wellness = _run_google_health_wellness_sync(dates)
+    exercise = _run_google_health_exercise_sync_new()
+    return {"wellness": wellness, "exercise": exercise}
+
+
+def _run_google_health_sync_all() -> dict:
+    dates = [date.today() - timedelta(days=i) for i in range(365 * 3)]
+    wellness = _run_google_health_wellness_sync(dates)
+    exercise = _run_google_health_exercise_sync_all()
+    return {"wellness": wellness, "exercise": exercise}
+
+
+# ---------------------------------------------------------------------------
+# Google Health webhook endpoint
+#
+# Auth model (per developers.google.com/health/webhooks, confirmed live via
+# WebFetch 2026-08-17 — see google_health_client.py's docstring for the
+# broader pattern of trusting live-confirmed docs over guesses): the
+# `endpointAuthorization.secret` we set at subscriber-creation time is sent
+# as the literal `Authorization` header on EVERY notification, including the
+# two-step verification handshake Google performs when the subscriber is
+# created (first POST carries the secret and expects 200/201, second POST
+# carries no credentials and expects 401/403). We deliberately do NOT verify
+# the per-message GOOGLE-HEALTH-API-SIGNATURE (Tink/ECDSA, rotating keyset) —
+# the shared secret is judged sufficient for this single-user app; see the
+# 2026-08-17 conversation for the explicit scope decision.
+# ---------------------------------------------------------------------------
+
+# Only data types our sync functions actually know how to handle — a subset
+# of the ~24 types Google Health supports webhooks for. Types we don't
+# subscribe to (weight, nutrition-log, hydration-log, etc.) are irrelevant
+# here since a notification for them should never arrive.
+_GH_WELLNESS_WEBHOOK_TYPES = {
+    "daily-resting-heart-rate", "heart-rate-variability", "daily-heart-rate-variability",
+    "run-vo2-max", "daily-respiratory-rate", "respiratory-rate-sleep-summary",
+    "daily-oxygen-saturation", "sleep", "steps", "floors", "active-zone-minutes",
+}
+_GH_EXERCISE_WEBHOOK_TYPES = {"exercise"}
+
+
+def _gh_webhook_authorized(request) -> bool:
+    import os
+    secret = os.environ.get("GOOGLE_HEALTH_WEBHOOK_SECRET", "")
+    return bool(secret) and request.headers.get("Authorization", "") == secret
+
+
+@csrf_exempt
+@require_POST
+def google_health_webhook(request):
+    """
+    POST /webhooks/google-health/
+
+    Notify-then-fetch: the payload identifies the affected data type + time
+    range, not the values themselves — we fetch via the same sync functions
+    files 04/05 already built, scoped to just that range.
+
+    Always returns quickly. Internal sync failures are swallowed (logged,
+    200 returned) so they can't trigger subscription auto-cancellation —
+    same reasoning as the existing Withings webhook.
+    """
+    import json
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except ValueError:
+        return HttpResponse(status=400)
+
+    authorized = _gh_webhook_authorized(request)
+
+    if payload.get("type") == "verification":
+        # Google's own probe of our auth check during subscriber setup —
+        # respond 200/201 when authorized, 401/403 when not. Not an attack.
+        return HttpResponse(status=200 if authorized else 401)
+
+    if not authorized:
+        logger.warning("Google Health webhook: missing/incorrect Authorization header, rejecting")
+        return HttpResponse(status=401)
+
+    data = payload.get("data", {})
+    data_type = data.get("dataType", "")
+    operation = data.get("operation", "UPSERT")
+    intervals = data.get("intervals", [])
+
+    dates = set()
+    for interval in intervals:
+        pti = interval.get("physicalTimeInterval", {})
+        for key in ("startTime", "endTime"):
+            iso = pti.get(key)
+            if iso:
+                dates.add(datetime.fromisoformat(iso.replace("Z", "+00:00")).date())
+
+    if not dates:
+        logger.warning("Google Health webhook: no usable interval for dataType=%s, payload=%r", data_type, payload)
+        return HttpResponse(status=200)
+
+    date_list = sorted(dates)
+    logger.info("Google Health webhook: dataType=%s operation=%s dates=%s-%s",
+                data_type, operation, date_list[0], date_list[-1])
+
+    try:
+        if data_type in _GH_EXERCISE_WEBHOOK_TYPES:
+            _run_google_health_exercise_sync(date_list[0], date_list[-1])
+        elif data_type in _GH_WELLNESS_WEBHOOK_TYPES:
+            _run_google_health_wellness_sync(date_list)
+        else:
+            logger.info("Google Health webhook: dataType=%s not handled by any sync path, ignoring", data_type)
+    except Exception:
+        logger.exception("Google Health webhook: sync failed for dataType=%s dates=%s-%s",
+                          data_type, date_list[0], date_list[-1])
+
+    return HttpResponse(status=200)
 
 
 # ---------------------------------------------------------------------------
@@ -873,6 +1951,8 @@ def _run_withings_sync_new() -> dict:
     Pull measurements since last sync (lastupdate from max measured_at in DB,
     or 30 days ago if no rows exist). Returns summary dict.
     """
+    if not _integration_enabled("withings"):
+        return {**_integration_disabled_result("withings"), "created": 0, "updated": 0}
     from django.db.models import Max
     result = BodyMeasurement.objects.aggregate(max_date=Max("measured_at"))
     if result["max_date"]:
@@ -903,6 +1983,8 @@ def _run_withings_sync_all() -> dict:
     Pull ALL historical measurements via pagination. For first-time setup.
     Returns summary dict.
     """
+    if not _integration_enabled("withings"):
+        return {**_integration_disabled_result("withings"), "created": 0, "updated": 0}
     total_created = total_updated = 0
     try:
         client = _withings_client()
@@ -955,13 +2037,19 @@ def sync_withings_all(request):
     return JsonResponse(_run_withings_sync_all())
 
 
+def sync_google_health_new(request):
+    """POST /api/sync/google-health/new/"""
+    return JsonResponse(_run_google_health_sync_new())
+
+
+def sync_google_health_all(request):
+    """POST /api/sync/google-health/all/"""
+    return JsonResponse(_run_google_health_sync_all())
+
+
 # ---------------------------------------------------------------------------
 # Withings webhook endpoint
 # ---------------------------------------------------------------------------
-
-from django.http import HttpResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
 
 
 @csrf_exempt

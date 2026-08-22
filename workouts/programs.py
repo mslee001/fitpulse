@@ -827,7 +827,7 @@ def recovery_across_block(run):
                 if getattr(s, field, None) is not None]
         return round(mean(vals), 1) if vals else None
 
-    fields = ["hrv_last_night", "sleep_score", "body_battery_high", "training_readiness_score"]
+    fields = ["hrv_last_night", "sleep_score", "body_battery_high", "readiness_score"]
     first = {f: block_avg(start, start + timedelta(days=7), f) for f in fields}
     last = {f: block_avg(end - timedelta(days=7), end + timedelta(days=1), f) for f in fields}
     return {"first_week": first, "last_week": last}

@@ -3,6 +3,11 @@
 {% block title %}Body Analytics — FitPulse{% endblock %}
 {% block nav_body_group %}active{% endblock %}
 
+{% block chat_context %}
+<input type="hidden" name="ctx_page" value="body">
+<input type="hidden" name="ctx_range_days" value="{{ range_days }}">
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <div class="page-header-row">

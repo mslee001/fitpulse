@@ -17,6 +17,7 @@ class DailyStats(models.Model):
     sleep_deep_seconds = models.IntegerField(null=True, blank=True)
     sleep_light_seconds = models.IntegerField(null=True, blank=True)
     sleep_rem_seconds = models.IntegerField(null=True, blank=True)
+    sleep_baseline_seconds = models.FloatField(null=True, blank=True)  # trailing 30-day avg, for readiness_score
 
     # HRV
     hrv_weekly_avg = models.FloatField(null=True, blank=True)   # ms
@@ -25,6 +26,7 @@ class DailyStats(models.Model):
 
     # Resting HR & stress
     resting_hr = models.IntegerField(null=True, blank=True)
+    resting_hr_baseline = models.FloatField(null=True, blank=True)  # trailing 30-day avg, for readiness_score
     stress_avg = models.IntegerField(null=True, blank=True)
 
     # Training status & load (from get_training_status)
@@ -34,9 +36,21 @@ class DailyStats(models.Model):
     load_focus_high_aerobic = models.FloatField(null=True, blank=True)
     load_focus_low_aerobic = models.FloatField(null=True, blank=True)
 
-    # Training readiness (0–100 score + label)
+    # Training readiness (0–100 score + label) — real Garmin algorithm
     training_readiness_score = models.IntegerField(null=True, blank=True)
     training_readiness_label = models.CharField(max_length=64, blank=True)
+
+    # Readiness proxy computed from Google Health signals (HRV/sleep/RHR vs.
+    # personal baseline) for days with no real Garmin training_readiness_score.
+    # Populated by the Google Health wellness sync once wellness_days_synced
+    # clears the 7-day reliability floor. Use the readiness_score/
+    # readiness_label properties, not these fields, directly.
+    computed_readiness_score = models.IntegerField(null=True, blank=True)
+    computed_readiness_label = models.CharField(max_length=16, blank=True)
+
+    # Trailing 30-day count of days with any recovery signal (HRV, resting
+    # HR, or sleep) — gates whether computed_readiness_score is reliable.
+    wellness_days_synced = models.IntegerField(null=True, blank=True)
 
     # Activity volume
     steps = models.IntegerField(null=True, blank=True)
@@ -107,6 +121,31 @@ class DailyStats(models.Model):
     fat_g_total = models.FloatField(null=True, blank=True)
     fiber_g_total = models.FloatField(null=True, blank=True)
 
+    # Provenance for wellness fields shared across sources — see CLAUDE.md
+    # "No parallel Garmin/Google Health wellness sync" decision.
+    wellness_source = models.CharField(
+        max_length=16,
+        choices=[("garmin", "Garmin"), ("google_health", "Google Health")],
+        null=True, blank=True,
+    )
+    google_health_synced_at = models.DateTimeField(null=True, blank=True)
+
+    # Active Zone Minutes (Fitbit/Google Health weighted zone-minutes score) — Google Health only
+    active_zone_minutes = models.IntegerField(null=True, blank=True)
+
+    # Skin temperature vs. 30-day baseline — illness/recovery signal, Google Health only
+    skin_temp_c = models.FloatField(null=True, blank=True)
+    skin_temp_deviation_c = models.FloatField(null=True, blank=True)
+
+    # Time in heart rate zone (minutes/day) — Google Health only
+    hr_zone_light_minutes = models.IntegerField(null=True, blank=True)
+    hr_zone_moderate_minutes = models.IntegerField(null=True, blank=True)
+    hr_zone_vigorous_minutes = models.IntegerField(null=True, blank=True)
+    hr_zone_peak_minutes = models.IntegerField(null=True, blank=True)
+
+    # Sedentary time (minutes/day) — Google Health only
+    sedentary_minutes = models.IntegerField(null=True, blank=True)
+
     class Meta:
         ordering = ["-date"]
 
@@ -120,6 +159,110 @@ class DailyStats(models.Model):
     @property
     def hrv_status_display(self):
         return (self.hrv_status or "").replace("_", " ").title()
+
+    @property
+    def has_wellness_data(self):
+        """True if either a real Garmin wellness sync or a Google Health
+        wellness sync has ever populated this row. Use this to gate wellness
+        UI instead of checking synced_at directly — synced_at is stamped
+        only by the Garmin path, so gating on it alone hides Google
+        Health-only days entirely."""
+        return bool(self.synced_at or self.google_health_synced_at)
+
+    def compute_readiness_proxy(self):
+        """Heuristic 0-100 readiness proxy from Google Health recovery
+        signals, for days with no real Garmin training_readiness_score.
+        Compares sleep, resting HR, and HRV each against your own trailing
+        personal baseline (not an absolute number) and blends them at target
+        weights HRV 50 / sleep 30 / resting HR 20 — HRV is the most direct
+        autonomic recovery signal, resting HR corroborates it. Any missing
+        input's weight is redistributed across the ones present.
+
+        Requires at least 7 days of recent wellness history
+        (wellness_days_synced) before returning a score at all — a personal
+        baseline built from only a day or two isn't reliable. Returns
+        (score, label) or (None, None). Labels: Low 1-29 (prioritize
+        recovery — lower-intensity work like stretching/yoga), Moderate
+        30-64 (HR and sleep are about usual — body is balancing training
+        and stress with recovery), High 65-100 (well-rested and recovered).
+
+        Called by the Google Health sync to populate computed_readiness_score
+        /computed_readiness_label once the trailing baselines
+        (hrv_weekly_avg, sleep_baseline_seconds, resting_hr_baseline) are
+        current for this date — not meant to be called ad hoc elsewhere; use
+        the readiness_score/readiness_label properties instead."""
+        if (self.wellness_days_synced or 0) < 7:
+            return None, None
+
+        hrv_score = None
+        if self.hrv_last_night and self.hrv_weekly_avg:
+            ratio = self.hrv_last_night / self.hrv_weekly_avg
+            hrv_score = max(0, min(100, 70 + (ratio - 1.0) * 100))
+
+        sleep_score = None
+        if self.sleep_seconds and self.sleep_baseline_seconds:
+            ratio = self.sleep_seconds / self.sleep_baseline_seconds
+            sleep_score = max(0, min(100, 70 + (ratio - 1.0) * 100))
+
+        rhr_score = None
+        if self.resting_hr and self.resting_hr_baseline:
+            ratio = self.resting_hr / self.resting_hr_baseline
+            # Higher-than-baseline resting HR is a fatigue/illness signal, so
+            # this runs the opposite direction of the HRV/sleep ratios above.
+            rhr_score = max(0, min(100, 70 - (ratio - 1.0) * 100))
+
+        weighted = [(s, w) for s, w in
+                    [(hrv_score, 0.5), (sleep_score, 0.3), (rhr_score, 0.2)] if s is not None]
+        if not weighted:
+            return None, None
+
+        total_weight = sum(w for _, w in weighted)
+        composite = round(sum(s * w for s, w in weighted) / total_weight)
+        label = "High" if composite >= 65 else "Moderate" if composite >= 30 else "Low"
+        return composite, label
+
+    @property
+    def readiness_score(self):
+        """Garmin's own training_readiness_score when available (never
+        overridden); otherwise the Google Health-derived computed_readiness_score.
+        None if neither source has a value."""
+        if self.training_readiness_score is not None:
+            return self.training_readiness_score
+        return self.computed_readiness_score
+
+    @property
+    def readiness_label(self):
+        if self.training_readiness_score is not None:
+            return self.training_readiness_label
+        return self.computed_readiness_label or ""
+
+    @property
+    def readiness_is_computed(self):
+        """True when readiness_score is the Google Health-derived estimate
+        rather than Garmin's own algorithm — templates and AI prompts use
+        this to label the number as an estimate."""
+        return self.training_readiness_score is None and self.computed_readiness_score is not None
+
+    @property
+    def readiness_color(self):
+        """green/yellow/red for UI, using the label bands that actually
+        apply to whichever source produced the score — Garmin's own bands
+        (>=70/>=40) for a real score, the proxy's bands (>=65/>=30) for a
+        computed one, so color never contradicts readiness_label."""
+        score = self.readiness_score
+        if score is None:
+            return ""
+        if self.readiness_is_computed:
+            if score >= 65:
+                return "green"
+            if score >= 30:
+                return "yellow"
+            return "red"
+        if score >= 70:
+            return "green"
+        if score >= 40:
+            return "yellow"
+        return "red"
 
 
 class BodyMeasurement(models.Model):
@@ -386,6 +529,10 @@ class CachedWorkout(models.Model):
     # Cached so re-augmentation never needs a Garmin API call.
     garmin_activity_id = models.BigIntegerField(null=True, blank=True)
     garmin_activity_start = models.DateTimeField(null=True, blank=True)
+
+    # Google Health exercise data point ID (trailing segment of the resource
+    # name), for source="google_health" workouts. Mirrors garmin_activity_id.
+    google_health_activity_id = models.CharField(max_length=64, null=True, blank=True)
     garmin_form_json = models.JSONField(null=True, blank=True)  # raw metrics_by_slug at every_n=1
     # Seconds into the Garmin recording that corresponds to Peloton t=0.
     # Detected via HR cross-correlation in _apply_garmin_form.
@@ -495,9 +642,11 @@ class CachedWorkout(models.Model):
 
     @property
     def external_url(self):
-        """Link to this workout on Peloton.com or Garmin Connect."""
+        """Link to this workout on Peloton.com or Garmin Connect. None if no public link exists."""
         if self.source == "garmin":
             return f"https://connect.garmin.com/modern/activity/{self.workout_id.removeprefix('garmin_')}"
+        if self.source == "google_health":
+            return None
         return f"https://members.onepeloton.com/profile/workouts/{self.workout_id}"
 
     def apply_detail(self, detail: dict) -> None:
@@ -715,6 +864,7 @@ class FoodEntry(models.Model):
         "SavedMeal", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="logged_entries",
     )
+    google_health_nutrition_log_name = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["logged_at"]
@@ -922,6 +1072,58 @@ class PelotonAuth(models.Model):
         if not self.session_id or len(self.session_id) < 8:
             return "(empty)"
         return f"…{self.session_id[-4:]}"
+
+
+class GoogleHealthAuth(models.Model):
+    """
+    Singleton (pk=1). Stores Google Health API OAuth2 credentials in Postgres,
+    same pattern as WithingsAuth. Populated by the `google_health_login`
+    management command.
+    """
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    token_expires_at = models.DateTimeField()
+    scopes = models.TextField(blank=True, help_text="Space-separated granted scopes")
+
+    connected_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Google Health Auth"
+        verbose_name_plural = "Google Health Auth"
+
+    def __str__(self):
+        return f"GoogleHealthAuth(expires={self.token_expires_at})"
+
+    @classmethod
+    def get(cls):
+        """Returns the singleton row, or None if not yet seeded."""
+        return cls.objects.filter(pk=1).first()
+
+
+class Integration(models.Model):
+    """
+    Tracks each data-source integration (Peloton/Garmin/Withings/Google Health)
+    so the UI can toggle them on/off and show connection status, without
+    touching the sync logic for the ones left alone.
+    """
+    KEY_CHOICES = [
+        ("peloton", "Peloton"),
+        ("garmin", "Garmin"),
+        ("withings", "Withings"),
+        ("google_health", "Google Health"),
+    ]
+    key = models.CharField(max_length=32, unique=True, choices=KEY_CHOICES)
+    display_name = models.CharField(max_length=64)
+    is_enabled = models.BooleanField(default=True)
+    is_authenticated = models.BooleanField(default=False)
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["key"]
+
+    def __str__(self):
+        return f"Integration({self.key}, enabled={self.is_enabled})"
 
 
 class Program(models.Model):

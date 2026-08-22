@@ -2,7 +2,8 @@ from django.urls import path
 
 from .views import (
     dashboard, history, workout_detail, class_history, garmin_activity_history, compare,
-    set_ftp, set_athlete_profile, settings_page, analytics_page, calendar_view, day_view,
+    set_ftp, set_athlete_profile, settings_page, integrations_settings_page, integration_toggle,
+    analytics_page, calendar_view, day_view,
     interventions_list, intervention_edit, intervention_end, intervention_delete,
     intervention_detail, intervention_quick_dose,
     body_view, intervention_analysis_view, run_analysis_api, save_analysis_api, saved_analysis_detail, saved_analysis_delete,
@@ -16,12 +17,15 @@ from .views import (
     weekly_review_page,
     today_page,
     set_peloton_auth,
+    chat_message_api, chat_clear_api,
 )
 from .sync import (
     sync_new, sync_all, sync_new_workouts, sync_all_workouts,
     sync_garmin_new, sync_garmin_all, sync_garmin_wellness,
     sync_withings_new, sync_withings_all,
     withings_webhook,
+    sync_google_health_new, sync_google_health_all,
+    google_health_webhook,
 )
 from .ai import (
     analytics_generate_insights, analytics_check_insights,
@@ -51,6 +55,8 @@ urlpatterns = [
     path("api/set-ftp/", set_ftp, name="set_ftp"),
     path("api/set-athlete-profile/", set_athlete_profile, name="set_athlete_profile"),
     path("settings/", settings_page, name="settings"),
+    path("settings/integrations/", integrations_settings_page, name="integrations_settings"),
+    path("settings/integrations/<str:key>/toggle/", integration_toggle, name="integration_toggle"),
     path("analytics/", analytics_page, name="analytics"),
     path("api/analytics/insights/", analytics_generate_insights, name="analytics_generate_insights"),
     path("api/analytics/check-insights/", analytics_check_insights, name="analytics_check_insights"),
@@ -108,8 +114,15 @@ urlpatterns = [
     path("api/weekly-review/check/", weekly_review_check, name="weekly_review_check"),
     # Withings webhook
     path("api/withings/webhook/", withings_webhook, name="withings_webhook"),
+    # Google Health
+    path("api/sync/google-health/new/", sync_google_health_new, name="sync_google_health_new"),
+    path("api/sync/google-health/all/", sync_google_health_all, name="sync_google_health_all"),
+    path("webhooks/google-health/", google_health_webhook, name="google_health_webhook"),
     # Peloton credentials rotation
     path("api/peloton/auth/", set_peloton_auth, name="set_peloton_auth"),
+    # Stats chat sidebar
+    path("api/chat/message/", chat_message_api, name="chat_message_api"),
+    path("api/chat/clear/", chat_clear_api, name="chat_clear_api"),
     # Programs
     path("programs/", program_list, name="program_list"),
     path("programs/new/", program_new, name="program_new"),

@@ -43,3 +43,8 @@ sqlite_backup.json
 # Secrets / tokens
 *.keystore
 *.jks
+client_secret_*.apps.googleusercontent.com.json
+
+# Claude Code Prompts
+fitpulse-chat-sidebar-prompts/
+fitpulse-google-health-prompts/

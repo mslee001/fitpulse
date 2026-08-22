@@ -24,16 +24,19 @@
   <!-- Wellness panel -->
   <div class="day-sidebar">
 
-    {% if stats and stats.synced_at %}
+    {% if stats and stats.has_wellness_data %}
     <!-- Readiness + key signals -->
-    {% if stats.training_readiness_score %}
+    {% if stats.readiness_score is not None %}
     <div class="stat-card stat-card--hero" style="text-align:center;padding:1.5rem 1rem;">
       <div class="stat-label">Training Readiness</div>
-      <div class="readiness-ring {% if stats.training_readiness_score >= 70 %}readiness-ring--green{% elif stats.training_readiness_score >= 40 %}readiness-ring--yellow{% else %}readiness-ring--red{% endif %}">
-        {{ stats.training_readiness_score }}
+      <div class="readiness-ring readiness-ring--{{ stats.readiness_color }}">
+        {{ stats.readiness_score }}
       </div>
-      {% if stats.training_readiness_label %}
-      <div style="color:var(--text-muted);font-size:0.8rem;margin-top:0.5rem;">{{ stats.training_readiness_label|title }}</div>
+      {% if stats.readiness_label %}
+      <div style="color:var(--text-muted);font-size:0.8rem;margin-top:0.5rem;">{{ stats.readiness_label|title }}</div>
+      {% endif %}
+      {% if stats.readiness_is_computed %}
+      <div style="color:var(--text-muted);font-size:0.7rem;margin-top:0.25rem;">estimated from HRV, sleep &amp; resting HR (Google Health)</div>
       {% endif %}
     </div>
     {% endif %}

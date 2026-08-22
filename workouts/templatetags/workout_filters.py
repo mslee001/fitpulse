@@ -17,6 +17,14 @@ def last_daily_sync():
     return UserSettings.objects.filter(pk=1).values_list('last_daily_sync_at', flat=True).first()
 
 
+@register.simple_tag
+def enabled_integrations():
+    """Set of Integration.key values currently enabled — used to gate the nav
+    Sync dropdown so a disabled integration's buttons don't render at all."""
+    from workouts.models import Integration
+    return set(Integration.objects.filter(is_enabled=True).values_list('key', flat=True))
+
+
 @register.filter
 def split(value, delimiter=","):
     return value.split(delimiter)
@@ -388,6 +396,55 @@ def format_nutrition_insights(text):
         else:
             current_section.append(line)
     _flush(current_header, current_section)
+
+    return mark_safe(html)
+
+
+@register.filter
+def format_chat_answer(text):
+    """Render a stats-chat assistant reply: **bold** inline, - bullets grouped
+    into a list, blank-line-separated paragraphs. Same shape as the body
+    parsing in format_nutrition_insights, minus the ## section splitting —
+    chat answers are freeform prose, not headed sections."""
+    if not text:
+        return ""
+    import re
+    from django.utils.html import escape
+    from django.utils.safestring import mark_safe
+
+    def _apply_inline(s):
+        return re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', escape(s))
+
+    paragraphs = []  # list of ('para' | 'bullet', text)
+    current_para = []
+    for raw in text.strip().splitlines():
+        raw = raw.strip()
+        if not raw:
+            if current_para:
+                paragraphs.append(('para', ' '.join(current_para)))
+                current_para = []
+        elif (raw.startswith("- ") or raw.startswith("• ")
+              or (raw.startswith("* ") and not raw.startswith("**"))):
+            if current_para:
+                paragraphs.append(('para', ' '.join(current_para)))
+                current_para = []
+            paragraphs.append(('bullet', re.sub(r'^[-•*]\s+', '', raw)))
+        else:
+            current_para.append(raw)
+    if current_para:
+        paragraphs.append(('para', ' '.join(current_para)))
+
+    lines_out = []
+    for ptype, content in paragraphs:
+        rendered = _apply_inline(content)
+        if ptype == 'bullet':
+            lines_out.append(f'<li>{rendered}</li>')
+        else:
+            lines_out.append(f'<p>{rendered}</p>')
+    html = "".join(lines_out)
+    html = re.sub(r'(<li>.*?</li>)+',
+                   lambda m: f'<ul class="chat-list">{m.group(0)}</ul>',
+                   html, flags=re.DOTALL)
 
     return mark_safe(html)
 

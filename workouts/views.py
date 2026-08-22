@@ -28,7 +28,7 @@ from .models import (
     NutritionProfile, FoodEntry, SavedMeal, HungerCheck, SideEffectLog, TargetAdjustment,
     AthleteProfile,
 )
-from .sync import _client, _garmin_client
+from .sync import _client, _garmin_client, _integration_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -1163,6 +1163,22 @@ def settings_page(request):
     })
 
 
+def integrations_settings_page(request):
+    from .models import Integration
+    return render(request, "workouts/integrations_settings.html", {
+        "integrations": Integration.objects.all(),
+    })
+
+
+@require_POST
+def integration_toggle(request, key):
+    from .models import Integration
+    integration = get_object_or_404(Integration, key=key)
+    integration.is_enabled = not integration.is_enabled
+    integration.save(update_fields=["is_enabled"])
+    return render(request, "workouts/partials/integration_row.html", {"integration": integration})
+
+
 @require_POST
 def set_peloton_auth(request):
     from .models import PelotonAuth
@@ -1329,7 +1345,7 @@ def day_view(request, date_str):
         stats.synced_at is None or
         (is_today and (timezone.now() - stats.synced_at).total_seconds() > 7200)
     )
-    if created or stale:
+    if (created or stale) and _integration_enabled("garmin"):
         try:
             client = _garmin_client()
             data = client.get_wellness_data(date_str)
@@ -1727,6 +1743,7 @@ def body_view(request):
 
     return render(request, "workouts/body.html", {
         "range_param": range_param,
+        "range_days": range_days,
         "ranges": [("7d", "7D"), ("30d", "30D"), ("90d", "90D"), ("1y", "1Y"), ("all", "All")],
         "weight_data_json": weight_data_json,
         "recovery_data_json": recovery_data_json,
@@ -2164,7 +2181,7 @@ def nutrition_log_api(request):
     if not items:
         return redirect(f"/nutrition/?date={entry_date.isoformat()}")
 
-    FoodEntry.objects.create(
+    entry = FoodEntry.objects.create(
         date=entry_date,
         meal=request.POST.get("meal", ""),
         raw_text=request.POST.get("raw_text", ""),
@@ -2180,6 +2197,9 @@ def nutrition_log_api(request):
     )
     recompute_daily_nutrition(entry_date)
 
+    from .sync import _push_food_entry_to_google_health
+    _push_food_entry_to_google_health(entry)
+
     return redirect(f"/nutrition/?date={entry_date.isoformat()}")
 
 
@@ -2193,6 +2213,9 @@ def nutrition_delete_api(request, pk):
 
     entry = get_object_or_404(FoodEntry, pk=pk)
     entry_date = entry.date
+    if entry.google_health_nutrition_log_name:
+        from .sync import _delete_food_entry_from_google_health
+        _delete_food_entry_from_google_health(entry.google_health_nutrition_log_name)
     entry.delete()
     recompute_daily_nutrition(entry_date)
 
@@ -2358,7 +2381,7 @@ def nutrition_relog_api(request, pk):
 
     raw_text = saved.name if portion == 1.0 else f"{saved.name} ({portion * 100:.0f}% serving)"
 
-    FoodEntry.objects.create(
+    entry = FoodEntry.objects.create(
         date=entry_date,
         meal=saved.meal,
         raw_text=raw_text,
@@ -2374,6 +2397,9 @@ def nutrition_relog_api(request, pk):
     saved.times_logged = (saved.times_logged or 0) + 1
     saved.save(update_fields=["times_logged"])
     recompute_daily_nutrition(entry_date)
+
+    from .sync import _push_food_entry_to_google_health
+    _push_food_entry_to_google_health(entry)
 
     return redirect(f"/nutrition/?date={entry_date.isoformat()}")
 
@@ -2912,3 +2938,92 @@ def health(request):
     """
     return HttpResponse("ok", content_type="text/plain")
 
+
+
+# ---------------------------------------------------------------------------
+# Stats chat (sidebar)
+# ---------------------------------------------------------------------------
+
+MAX_CHAT_HISTORY_MESSAGES = 20
+
+
+def _chat_session_key(context):
+    """One history per distinct context so switching pages/intervention starts
+    fresh, but the same page+params keeps its thread."""
+    page = context.get("page", "unknown")
+    if page == "trends":
+        return f"chat_history:trends:{context.get('intervention_name', 'none')}"
+    if page == "body":
+        return f"chat_history:body:{context.get('range_days', 90)}"
+    if page == "history":
+        return f"chat_history:history:{context.get('discipline', 'all')}"
+    return f"chat_history:{page}"
+
+
+def _trim_chat_history(messages, max_messages=MAX_CHAT_HISTORY_MESSAGES):
+    """Trim only at real question boundaries (a top-level user text message),
+    never mid tool_use/tool_result pair, or the Anthropic API will reject the
+    truncated history on the next call."""
+    if len(messages) <= max_messages:
+        return messages
+    boundaries = [
+        i for i, m in enumerate(messages)
+        if m.get("role") == "user" and isinstance(m.get("content"), str)
+    ]
+    for b in boundaries:
+        if len(messages) - b <= max_messages:
+            return messages[b:]
+    return messages[boundaries[-1]:] if boundaries else messages
+
+
+@require_POST
+def chat_message_api(request):
+    from .ai import run_stats_chat
+
+    user_message = request.POST.get("message", "").strip()
+    if not user_message:
+        return render(request, "workouts/partials/chat_error.html", {"error": "Empty message."})
+
+    context = {
+        "page": request.POST.get("ctx_page", "unknown"),
+        "today": str(datetime.date.today()),
+    }
+    if request.POST.get("ctx_range_days"):
+        context["range_days"] = int(request.POST["ctx_range_days"])
+    if request.POST.get("ctx_intervention_name"):
+        context["intervention_name"] = request.POST["ctx_intervention_name"]
+    if request.POST.get("ctx_discipline"):
+        context["discipline"] = request.POST["ctx_discipline"]
+
+    session_key = _chat_session_key(context)
+    history = request.session.get(session_key, [])
+
+    try:
+        answer, updated_history = run_stats_chat(context, history, user_message)
+    except Exception as e:
+        logger.warning("Stats chat failed: %s", e)
+        return render(request, "workouts/partials/chat_error.html", {
+            "error": "Something went wrong reaching the AI service.",
+        })
+
+    request.session[session_key] = _trim_chat_history(updated_history)
+    request.session.modified = True
+
+    return render(request, "workouts/partials/chat_message_pair.html", {
+        "user_message": user_message,
+        "answer": answer,
+    })
+
+
+@require_POST
+def chat_clear_api(request):
+    context = {
+        "page": request.POST.get("ctx_page", "unknown"),
+        "range_days": request.POST.get("ctx_range_days"),
+        "intervention_name": request.POST.get("ctx_intervention_name"),
+        "discipline": request.POST.get("ctx_discipline"),
+    }
+    session_key = _chat_session_key(context)
+    request.session.pop(session_key, None)
+    request.session.modified = True
+    return render(request, "workouts/partials/chat_cleared.html")

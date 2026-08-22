@@ -2,6 +2,11 @@
 {% block title %}History — FitPulse{% endblock %}
 {% block nav_training %}active{% endblock %}
 
+{% block chat_context %}
+<input type="hidden" name="ctx_page" value="history">
+<input type="hidden" name="ctx_discipline" value="{{ filters.discipline|default:'all' }}">
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <h1 class="page-title">WORKOUT HISTORY</h1>

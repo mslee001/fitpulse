@@ -62,6 +62,19 @@ def call(prompt, *, model=HAIKU, max_tokens=400, system=None, timeout=30, messag
     return extract_text(resp.json()["content"]).strip()
 
 
+def call_raw(body, *, timeout=30):
+    """
+    Send an arbitrary request body (for multi-turn / tool-use conversations
+    where the caller needs the full response, not just the extracted text).
+    Fills in thinking-disable but leaves model/system/tools/messages to the
+    caller. Returns the parsed response JSON.
+    """
+    _disable_thinking(body.get("model", SONNET), body)
+    resp = requests.post(_BASE_URL, headers=_headers(), json=body, timeout=timeout)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def call_json(prompt, **kwargs):
     """Same as call() but strips ```json fences and parses. Raises ValueError on bad JSON."""
     text = call(prompt, **kwargs)

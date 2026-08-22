@@ -104,9 +104,11 @@
     </a>
     {% endif %}
     {% endif %}
+    {% if workout.external_url %}
     <a href="{{ workout.external_url }}" class="btn btn-ghost btn-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
       View on {% if workout.source == "garmin" %}Garmin Connect{% else %}Peloton{% endif %} ↗
     </a>
+    {% endif %}
     {% if workout.source == "peloton" and workout.garmin_activity_id %}
     <a href="https://connect.garmin.com/modern/activity/{{ workout.garmin_activity_id }}" class="btn btn-ghost btn-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
       View on Garmin Connect ↗

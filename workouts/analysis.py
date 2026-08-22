@@ -8,6 +8,8 @@ and the Trends page (web API).
 import statistics
 from datetime import date, timedelta
 
+from django.db.models.functions import Coalesce
+
 from workouts.models import DailyStats
 
 
@@ -18,7 +20,7 @@ from workouts.models import DailyStats
 
 METRIC_GROUPS = [
     ("RECOVERY", [
-        ("Training Readiness", "training_readiness_score", "higher", "",    0),
+        ("Training Readiness", "readiness_score", "higher", "",    0),
         ("Body Battery High",  "body_battery_high",        "higher", "",    0),
         ("Body Battery Charge","body_battery_charge",      "higher", "",    0),
         ("HRV Last Night",     "hrv_last_night",           "higher", "ms",  1),
@@ -67,6 +69,11 @@ SECONDS_FIELDS = {"sleep_seconds", "sleep_deep_seconds", "sleep_rem_seconds", "s
 
 
 def _vals(qs, field):
+    if field == "readiness_score":
+        # Not a real column — Garmin's own score where available, else
+        # FitPulse's Google Health-derived proxy. See DailyStats.readiness_score.
+        qs = qs.annotate(_readiness=Coalesce("training_readiness_score", "computed_readiness_score"))
+        return [v for v in qs.values_list("_readiness", flat=True) if v is not None]
     return [v for v in qs.values_list(field, flat=True) if v is not None]
 
 

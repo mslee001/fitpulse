@@ -27,7 +27,14 @@
       "Bash(venv/bin/python3 manage.py migrate)",
       "Bash(venv/bin/python3 manage.py shell -c \"from workouts.models import Intervention; print\\('Intervention count:', Intervention.objects.count\\(\\)\\)\")",
       "Bash(venv/bin/python3 manage.py analyze_intervention --start 2026-04-03 --label \"Tirz 2 start\" --window 28)",
-      "Bash(echo \"Exit code: $?\")"
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(venv/bin/python3 manage.py shell)",
+      "Bash(venv/bin/python3 -c \"import django, os; os.environ.setdefault\\('DJANGO_SETTINGS_MODULE','peloton_dashboard.settings'\\); django.setup\\(\\); import workouts.ai\")",
+      "Bash(lsof -ti:8000 -sTCP:LISTEN)",
+      "Bash(xargs -r kill)",
+      "Bash(nohup venv/bin/python3 manage.py runserver 127.0.0.1:8000)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(timeout 30 bash -c 'until curl -sf -o /dev/null http://127.0.0.1:8000/accounts/login/; do sleep 1; done')"
     ]
   }
 }

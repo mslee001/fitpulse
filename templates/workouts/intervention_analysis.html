@@ -3,6 +3,11 @@
 {% block title %}Intervention Analysis — FitPulse{% endblock %}
 {% block nav_insights_group %}active{% endblock %}
 
+{% block chat_context %}
+<input type="hidden" name="ctx_page" value="trends">
+<input type="hidden" id="chat-ctx-intervention" name="ctx_intervention_name" value="">
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <div class="page-header-row">
@@ -37,7 +42,8 @@
         {% for iv in interventions %}
         <option value="{{ iv.pk }}"
           data-start="{{ iv.start_date|date:'Y-m-d' }}"
-          data-end="{{ iv.end_date|date:'Y-m-d' }}">
+          data-end="{{ iv.end_date|date:'Y-m-d' }}"
+          data-name="{{ iv.name }}">
           {{ iv.name }} ({{ iv.start_date }})
         </option>
         {% endfor %}
@@ -197,6 +203,9 @@ function onInterventionChange() {
   const opt = sel.options[sel.selectedIndex];
   const ivPk = sel.value;
   const start = opt.dataset.start;
+
+  const chatIvField = document.getElementById('chat-ctx-intervention');
+  if (chatIvField) chatIvField.value = opt.dataset.name || '';
 
   // Clear dose timeline
   const timelineEl = document.getElementById('dose-timeline');

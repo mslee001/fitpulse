@@ -9,6 +9,7 @@ PUBLIC_PATHS = (
     "/api/mobile/",
     "/auth/withings/callback/",
     "/api/withings/webhook/",
+    "/webhooks/google-health/",
 )
 
 

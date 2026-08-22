@@ -19,15 +19,17 @@
 <!-- HERO: Readiness + Next workout rec -->
 <section class="today-hero">
   <div class="today-hero-readiness">
-    {% if daily.training_readiness_score %}
-      <div class="readiness-circle readiness-{{ daily.training_readiness_label|lower|default:'unknown' }}">
-        <div class="readiness-score">{{ daily.training_readiness_score }}</div>
-        <div class="readiness-label">{{ daily.training_readiness_label|default:"—" }}</div>
+    {% if daily.readiness_score is not None %}
+      <div class="readiness-circle readiness-{{ daily.readiness_label|lower|default:'unknown' }}">
+        <div class="readiness-score">{{ daily.readiness_score }}</div>
+        <div class="readiness-label">{{ daily.readiness_label|default:"—" }}</div>
       </div>
       <div class="readiness-meta">
         <div class="readiness-meta-title">TRAINING READINESS</div>
         {% if wellness_is_yesterday %}
         <div class="readiness-meta-sub">From yesterday — today's data not synced yet</div>
+        {% elif daily.readiness_is_computed %}
+        <div class="readiness-meta-sub">Estimated from HRV + sleep (Google Health)</div>
         {% else %}
         <div class="readiness-meta-sub">Updated this morning</div>
         {% endif %}
@@ -35,7 +37,7 @@
     {% else %}
       <div class="readiness-empty">
         <div class="readiness-meta-title">TRAINING READINESS</div>
-        <p class="muted">No readiness data yet today. Try syncing Garmin wellness.</p>
+        <p class="muted">No readiness data yet today. Try syncing Garmin or Google Health wellness.</p>
       </div>
     {% endif %}
   </div>
@@ -45,7 +47,7 @@
     {% if next_workout_text %}
       {{ next_workout_text|format_next_workout|safe }}
     {% else %}
-      <p class="muted">No recommendation yet. Sync Garmin wellness, then refresh from the Calendar page.</p>
+      <p class="muted">No recommendation yet. Once today's readiness score is available, refresh from the Calendar page.</p>
     {% endif %}
   </div>
 </section>

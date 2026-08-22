@@ -1,0 +1,23 @@
+<div id="integration-row-{{ integration.key }}" style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;border-bottom:1px solid var(--border)">
+  <div style="display:flex;flex-direction:column;gap:0.25rem">
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;font-weight:700;color:var(--text)">{{ integration.display_name }}</span>
+    <div style="display:flex;gap:0.75rem;align-items:center;font-size:0.75rem">
+      {% if integration.is_authenticated %}
+      <span style="color:#81C784">● Connected</span>
+      {% else %}
+      <span style="color:var(--text-dim)">○ Not connected</span>
+      {% endif %}
+      <span style="color:var(--text-dim)">
+        {% if integration.last_synced_at %}Last synced {{ integration.last_synced_at|date:"M j, Y g:i A" }}{% else %}Never synced{% endif %}
+      </span>
+    </div>
+  </div>
+
+  <form hx-post="{% url 'integration_toggle' integration.key %}"
+        hx-target="#integration-row-{{ integration.key }}" hx-swap="outerHTML">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm {% if integration.is_enabled %}btn-accent{% else %}btn-ghost{% endif %}">
+      {% if integration.is_enabled %}Enabled{% else %}Disabled{% endif %}
+    </button>
+  </form>
+</div>

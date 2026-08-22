@@ -16,8 +16,8 @@ import os
 from datetime import date, timedelta
 
 import requests
-from django.db.models import Avg, Count
-from django.db.models.functions import TruncWeek
+from django.db.models import Avg, Count, Q
+from django.db.models.functions import Coalesce, TruncWeek
 from django.http import HttpResponse, HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.utils import timezone as tz
@@ -25,6 +25,7 @@ from django.utils import timezone as tz
 from . import llm
 from .models import CachedWorkout, DailyStats, UserSettings, Intervention
 from .prompt_formats import HEADLINE_BULLETS_FORMAT, INTENSITY_ACTIVITY_REASON_FORMAT
+from .services.chat_tools import CHAT_TOOLS, TOOL_DISPATCH
 
 # Stricter headline guidance for the day-analysis prompt only.
 # compare_analysis keeps the looser HEADLINE_BULLETS_FORMAT because a comparison
@@ -599,17 +600,20 @@ def _build_insights_summary():
 
     wellness_fields = [
         "hrv_last_night", "sleep_score", "resting_hr",
-        "training_readiness_score", "body_battery_start", "training_load",
+        "readiness_score", "body_battery_start", "training_load",
     ]
+    # has_wellness_data isn't a DB field (it covers both the Garmin synced_at
+    # stamp and Google Health's), so filter on the two underlying timestamps directly.
+    _has_wellness = Q(synced_at__isnull=False) | Q(google_health_synced_at__isnull=False)
     recent_stats = list(
-        DailyStats.objects.filter(date__gte=today - datetime.timedelta(days=14), synced_at__isnull=False)
+        DailyStats.objects.filter(_has_wellness, date__gte=today - datetime.timedelta(days=14))
         .order_by("date")
     )
     prior_stats = list(
         DailyStats.objects.filter(
+            _has_wellness,
             date__gte=today - datetime.timedelta(days=28),
             date__lt=today - datetime.timedelta(days=14),
-            synced_at__isnull=False,
         ).order_by("date")
     )
 
@@ -635,7 +639,10 @@ def _build_insights_summary():
     if training_status_recent:
         wellness_trend["current_training_status"] = training_status_recent
     wellness_trend["note"] = (
-        "training_readiness_score: 0–100 (≥70 = ready, 40–69 = moderate, <40 = poor). "
+        "avg_readiness_score: 0-100, higher is better recovery. Comes from Garmin's own "
+        "training-readiness algorithm when available; on days with only Google Health data "
+        "it's FitPulse's own estimate from HRV/sleep/resting-HR vs. personal baseline instead "
+        "(same 0-100 scale, roughly comparable, but don't treat it as Garmin's proprietary number). "
         "hrv_last_night in ms — higher is better recovery. "
         "resting_hr in bpm — lower is better recovery. "
         "training_load is Garmin acute load — higher means more recent training stress. "
@@ -791,7 +798,7 @@ def build_insights_system() -> str:
         "Use week_over_week to detect the most recent 7-day shift — a jump or drop in training days "
         "or a discipline swap this week is the freshest signal available. "
         "When recovery_and_wellness is present, connect training load to recovery signals: "
-        "if training_load is rising while hrv_last_night is falling or training_readiness_score is "
+        "if training_load is rising while hrv_last_night is falling or avg_readiness_score is "
         "declining, flag the imbalance. If recovery metrics are stable or improving alongside "
         "consistent training, call that out as a positive sign. "
         "current_training_status (e.g. 'maintaining', 'productive', 'overreaching') is Garmin's "
@@ -993,8 +1000,9 @@ def _get_or_generate_day_analysis(day, workouts, stats):
             workout_lines.append(", ".join(parts))
 
         wellness_parts = []
-        if stats.training_readiness_score:
-            wellness_parts.append(f"Training readiness: {stats.training_readiness_score}/100 ({stats.training_readiness_label})")
+        if stats.readiness_score is not None:
+            est = " — estimated from HRV/sleep/resting HR, Google Health only" if stats.readiness_is_computed else ""
+            wellness_parts.append(f"Training readiness: {stats.readiness_score}/100 ({stats.readiness_label}){est}")
         if stats.hrv_last_night:
             wellness_parts.append(f"HRV last night: {stats.hrv_last_night:.0f} ms ({stats.hrv_status_display})")
         if stats.resting_hr:
@@ -1096,8 +1104,9 @@ def _get_or_generate_day_analysis(day, workouts, stats):
             s = prior_stats_by_date.get(d)
             parts = []
             if s:
-                if s.training_readiness_score:
-                    parts.append(f"readiness {s.training_readiness_score}")
+                if s.readiness_score is not None:
+                    tag = " (est.)" if s.readiness_is_computed else ""
+                    parts.append(f"readiness {s.readiness_score}{tag}")
                 if s.hrv_last_night:
                     parts.append(f"HRV {s.hrv_last_night:.0f}")
                 if s.sleep_score:
@@ -1127,10 +1136,16 @@ def _get_or_generate_day_analysis(day, workouts, stats):
         today_note = " Do not comment on missing body battery end-of-day value — it is only recorded after sleep and is not available for the current day." if is_today else ""
         persona = build_persona_block(date_range=(day, day))
         persona_section = f"\n\nABOUT THIS PERSON\n{persona}" if persona else ""
+        # Omit the whole section (don't even mention "recovery"/"wellness")
+        # rather than a "no data" placeholder — a present-but-empty section,
+        # or even a "not available" note, reads to the model as a gap worth
+        # flagging, which is exactly the "commenting on absence" failure
+        # mode we don't want (recovery data is legitimately unavailable on
+        # some days depending on which wellness source synced that day).
+        recovery_section = f"RECOVERY & READINESS\n{chr(10).join(wellness_parts)}\n\n" if wellness_parts else ""
         prompt = f"""Date: {day.strftime('%A, %B %-d, %Y')}
 
-RECOVERY & READINESS
-{chr(10).join(wellness_parts) if wellness_parts else 'No Garmin wellness data available.'}{nutrition_section}{intervention_section}{prior_section}
+{recovery_section}{nutrition_section}{intervention_section}{prior_section}
 
 WORKOUTS PERFORMED TODAY ({day.strftime('%B %-d, %Y')})
 {chr(10).join(workout_lines)}
@@ -1142,16 +1157,20 @@ ANALYSIS RULES
 1. Pattern threshold: A multi-day pattern requires at least 3 consecutive days moving in the same direction, OR the same metric staying in the same range (high/low/moderate) for at least 4 of the last 7 days. A single day's change from the previous day is not a pattern — it is a day-over-day change, and should be described as such.
 2. Cite values for every pattern claim: When making any trend, pattern, or multi-day observation, you MUST include the actual sequence of values inline. Example: "readiness has been 65, 68, 71 over the last three days (rising)" — not "readiness has been climbing." If you cannot show the values that support the pattern, do not make the pattern claim.
 3. No trend-inflation: Do not characterize a single day-over-day change as part of a longer trend unless the longer trend genuinely exists by Rule 1. Do not use phrases like "tracking a pattern of," "continues a trend of," "consistent with declining," or "second consecutive" to describe a single-day change. If the only signal is a one-day change, describe it as a one-day change.
-4. Metrics to cite: pace, HR, effort score, body battery, HRV, nutrition. If nutrition data is present, note connections like "calories were 300 below target" or "low carb day may have affected energy". If intervention data is present, note relevant context — e.g. if a supplement was just started, acknowledge it's day 1 and effects won't be immediate; if a medication dose changed recently, note that.
+4. Metrics to cite: pace, HR, effort score, HRV, nutrition, and whatever recovery metrics appear above under RECOVERY & READINESS (e.g. body battery, training readiness, training load — some days won't have all of these, depending on which device synced that day; only cite what's actually listed above, and never comment on a metric's absence). If nutrition data is present, note connections like "calories were 300 below target" or "low carb day may have affected energy". If intervention data is present, note relevant context — e.g. if a supplement was just started, acknowledge it's day 1 and effects won't be immediate; if a medication dose changed recently, note that.
 5. Meal timing: Do not attribute intentional timing or purpose to logged meals. Do not call a meal a "pre-workout snack," "recovery meal," or similar unless the food name explicitly says so. Describe timing factually instead — e.g. "eaten 90 minutes before the strength session."
 6. No inferred mental states: Do not speculate about the user's emotions, motivations, or what they "might have wanted to do." Stick to what the data shows. Do not characterize effort as "appropriate," "earned," "deserved," or similar — describe what happened, not whether it was the right choice.
 7. Intervention hedging: When connecting a metric to a medication, supplement, or other intervention, hedge appropriately. Use "may," "could," or "is consistent with" unless the data shows a clear before/after change of ≥20% sustained over multiple days. Do not assert causation from a single day's data.
+8. No commenting on missing data: If RECOVERY & READINESS is absent above, that means no wellness device synced data for this day — analyze the workouts on their own terms. Do not write anything like "no wellness data was available," "without recovery context," "readiness is unknown," or similar. Treat the absence as normal, not as a limitation worth mentioning.
 
 {DAY_HEADLINE_BULLETS_FORMAT}{today_note}"""
 
         # max_tokens bumped to 400: prior-context enables multi-day pattern bullets
         # that tend to run slightly longer than single-day observations.
-        return llm.call(prompt, model=llm.HAIKU, max_tokens=400)
+        # Sonnet, not Haiku: this cites specific workouts/days/metrics causally
+        # (fatigue attribution, intervention effects) and is cached 24h/7d, so
+        # the extra cost is negligible against the reliability gain.
+        return llm.call(prompt, model=llm.SONNET, max_tokens=400)
 
     # If a workout was synced after the last analysis, force a refresh
     force_regen = False
@@ -1176,6 +1195,9 @@ def next_workout_refresh(request):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     today_stats, _ = DailyStats.objects.get_or_create(date=date.today())
+    if today_stats.readiness_score is None:
+        # No readiness signal yet (Garmin or Google Health) — nothing to base a rec on.
+        return redirect("calendar")
     today_stats.ai_next_workout = None
     today_stats.ai_next_workout_generated_at = None
     today_stats.save(update_fields=["ai_next_workout", "ai_next_workout_generated_at"])
@@ -1238,8 +1260,9 @@ def _get_or_generate_next_workout(today_stats):
         stat_lines = []
         for s in recent_stats:
             parts = [str(s.date)]
-            if s.training_readiness_score:
-                parts.append(f"readiness {s.training_readiness_score}")
+            if s.readiness_score is not None:
+                tag = " (est.)" if s.readiness_is_computed else ""
+                parts.append(f"readiness {s.readiness_score}{tag}")
             if s.hrv_status:
                 parts.append(f"HRV {s.hrv_status}")
             if s.training_status:
@@ -1259,8 +1282,9 @@ def _get_or_generate_next_workout(today_stats):
         today_context = ""
         if today_rec:
             parts = []
-            if today_rec.training_readiness_score:
-                parts.append(f"Training readiness today: {today_rec.training_readiness_score}/100 ({today_rec.training_readiness_label})")
+            if today_rec.readiness_score is not None:
+                est = " — estimated from HRV trend + sleep, Google Health only, no Garmin training-readiness algorithm" if today_rec.readiness_is_computed else ""
+                parts.append(f"Training readiness today: {today_rec.readiness_score}/100 ({today_rec.readiness_label}){est}")
             if today_rec.hrv_last_night:
                 parts.append(f"HRV last night: {today_rec.hrv_last_night:.0f} ms ({today_rec.hrv_status_display})")
             if today_rec.sleep_score:
@@ -1289,20 +1313,26 @@ def _get_or_generate_next_workout(today_stats):
                 + ". Recommendation is for tomorrow."
             )
 
+        # Omit sections entirely rather than "No data" placeholders — a
+        # present-but-empty section reads as a gap worth flagging, which is
+        # exactly the "commenting on absence" failure mode to avoid (some
+        # days/weeks legitimately have no wellness data depending on which
+        # device synced, and that's normal, not a problem).
+        today_signals_section = f"\n\nTODAY'S RECOVERY SIGNALS\n{today_context}" if today_context else ""
+        wellness_trend_section = f"\n\nDAILY WELLNESS TREND (last 7 days)\n{chr(10).join(stat_lines)}" if stat_lines else ""
+
         persona = build_persona_block()
         prompt = f"""Today is {date.today().strftime('%A, %B %-d, %Y')}.
-{today_workout_note}
-
-TODAY'S RECOVERY SIGNALS
-{today_context or 'No data available yet.'}
+{today_workout_note}{today_signals_section}
 
 LAST 14 DAYS OF WORKOUTS
-{chr(10).join(workout_lines) if workout_lines else 'No recent workouts.'}
-
-DAILY WELLNESS TREND (last 7 days)
-{chr(10).join(stat_lines) if stat_lines else 'No wellness data.'}
+{chr(10).join(workout_lines) if workout_lines else 'No recent workouts.'}{wellness_trend_section}
 
 Based on this data, give a next-workout recommendation for {target_day}. {INTENSITY_ACTIVITY_REASON_FORMAT}
+
+Note: not every day has a readiness score, and some days/weeks have no wellness data at all — some wellness sources don't compute every metric. Base the recommendation on whatever recovery signals and recent training load are actually shown above. Do not write anything like "no wellness data was available," "readiness is unknown," or similar — treat the absence as normal, not as a limitation worth mentioning.
+
+IMPORTANT: Reference workouts only by the day and date exactly as listed in LAST 14 DAYS OF WORKOUTS above. Do not invent a session on a day that isn't listed, and do not restate the same workout under a different day — if only one strength session is listed, attribute fatigue to that single session and its actual date, not to a separate "day before" session that doesn't appear in the data.
 
 CARDIO GUIDANCE: When recommending cardio, use these rules:
 - Running: good when readiness ≥70 and no heavy posterior chain (glutes/hamstrings/quads) fatigue from recent strength work
@@ -1318,7 +1348,10 @@ STRENGTH GUIDANCE: When recommending strength:
 - IMPORTANT: Any session tagged [PT/REHAB] is physical therapy, not a training session. Do NOT count it toward fatigue or recovery time for any muscle group.
 {f"{chr(10)}{persona}" if persona else ""}"""
 
-        return llm.call(prompt, model=llm.HAIKU, max_tokens=350)
+        # Sonnet, not Haiku: cached 24h, and this attributes fatigue/readiness
+        # to specific workouts and days — the exact class of causal claim that
+        # was hallucinating a nonexistent session under Haiku.
+        return llm.call(prompt, model=llm.SONNET, max_tokens=350)
 
     return cached_daily_stats_field(today_stats, "ai_next_workout", 24, _gen)
 
@@ -1522,11 +1555,26 @@ def _get_or_generate_body_commentary(force=False) -> str:
             for s in stats_30d if s.weight_lb
         ]
 
-        # 7-day recovery averages
+        # 7-day recovery averages — only include metrics that actually have
+        # data this week (sleep score and body battery have no Google Health
+        # equivalent, so a Google-Health-only week legitimately has neither).
         avg_hrv = _avg([s.hrv_last_night for s in stats_7d])
         avg_rhr  = _avg([s.resting_hr for s in stats_7d])
         avg_sleep = _avg([s.sleep_score for s in stats_7d])
         avg_bb    = _avg([s.body_battery_high for s in stats_7d])
+        recovery_parts = []
+        if avg_hrv is not None:
+            recovery_parts.append(f"HRV: {avg_hrv} ms")
+        if avg_rhr is not None:
+            recovery_parts.append(f"Resting HR: {avg_rhr} bpm")
+        if avg_sleep is not None:
+            recovery_parts.append(f"Sleep score: {avg_sleep}")
+        if avg_bb is not None:
+            recovery_parts.append(f"Body battery high: {avg_bb}")
+        # Omit the whole section rather than a "no data" placeholder — same
+        # reasoning as _get_or_generate_day_analysis's recovery_section: a
+        # present-but-empty section reads as a gap worth flagging.
+        recovery_section = f"\n\n7-DAY RECOVERY AVERAGES\n{' | '.join(recovery_parts)}" if recovery_parts else ""
 
         # Interventions context
         iv_ctx = _interventions_context(cutoff_30d, today)
@@ -1571,10 +1619,7 @@ Weight: {_delta(latest_weight, wk_weight)}lb | Fat mass: {_delta(latest_fat_lb, 
 Weight: {_delta(latest_weight, mo_weight)}lb | Fat mass: {_delta(latest_fat_lb, mo_fat_lb)}lb | Lean mass: {_delta(latest_lean_lb, mo_lean_lb)}lb
 
 LAST 30 DAYS WEIGHT (daily, skip nulls)
-{chr(10).join(weight_series) if weight_series else 'No data.'}{nutrition_section}
-
-7-DAY RECOVERY AVERAGES
-HRV: {avg_hrv or 'n/a'} ms | Resting HR: {avg_rhr or 'n/a'} bpm | Sleep score: {avg_sleep or 'n/a'} | Body battery high: {avg_bb or 'n/a'}
+{chr(10).join(weight_series) if weight_series else 'No data.'}{nutrition_section}{recovery_section}
 
 ACTIVE INTERVENTIONS
 {iv_ctx}
@@ -1583,6 +1628,7 @@ ANALYSIS RULES
 A. No subjective-effect fabrication: The intervention list shows what medications, supplements, or protocols are being taken. It does NOT show how the user is responding subjectively. Do not claim or infer that any intervention has produced mood changes, anxiety changes, energy changes, mental clarity improvements, tolerability signals, or effectiveness ("coping well," "well-tolerated," "appears to be working," "is helping with X") — none of those are in the data. You may note that an intervention's start date or dose change aligns in time with an observed objective change (weight, HRV, sleep score) — hedged as a possible mechanism, never asserted as causation. Banned phrases: "since starting X you've experienced Y," "X is helping with Y," "your system is coping well," "the medication appears to be working," "well-tolerated."
 B. Filler adjectives are banned; grounded interpretation is encouraged: Do not use filler adjectives not earned by an explicit comparison or threshold. Banned: "solid," "good," "great," "encouraging," "excellent," "favorable," "strong," "healthy," "nice," "impressive." If a metric is notable, name what makes it notable — the value it changed from, the threshold it crossed, or the target it hit. You may and should offer interpretation that names a likely cause, mechanism, or context for what the data shows, AS LONG AS the interpretation is supported by the data in the prompt. Interpretation that names mechanisms ("likely water retention rather than real fat gain," "consistent with a sustained caloric deficit," "matches the timing of the dose increase") is valuable and should appear when the data supports it. The test: can you point to the specific data in the prompt that supports the interpretation? If yes, include it. If you are reaching for an interpretation to fill space, leave it out and just describe the data. Examples — banned: "solid weight loss," "excellent HRV," "healthy plateau." Allowed: "weight loss of 3.4 lb, consistent with a sustained caloric deficit"; "this 0.8 lb weekly gain is small enough to likely reflect water retention rather than real fat gain"; "HRV at 34 ms, above the recent baseline of 28 ms"; "weight has held in a narrow band for 10 days, suggesting the recent loss has stalled."
 C. No clinical framings or directives: Do not use clinical assessments or soft directives. Banned: "monitor closely," "healthy plateau," "your system is coping," "well-tolerated," "appears to be working," "concerning," "needs attention." Reframe directives as observations: "worth watching whether..." instead of "monitor closely." Reframe assessments as data: "weight has held in the X–Y lb range for N days" instead of "healthy plateau."
+D. No commenting on missing data: If 7-DAY RECOVERY AVERAGES is absent above, that means no wellness device synced recovery data this week — write the ## Body Composition and ## To Watch sections and omit ## Recovery entirely. Do not write anything like "no recovery data was available," "HRV wasn't tracked this week," or similar. Treat the absence as normal, not as a limitation worth mentioning.
 
 Write the commentary in exactly this structure. Each section: 1-2 sentences of flowing text, no bullet points. Use **bold** for specific numbers only — not for qualitative assessments.
 
@@ -1590,7 +1636,7 @@ Write the commentary in exactly this structure. Each section: 1-2 sentences of f
 Weight and fat/lean mass changes over 7 and 30 days, referencing the actual values.
 
 ## Recovery
-HRV, resting HR, sleep score, and body battery over the last 7 days, referencing the actual values.
+Only include this section if 7-DAY RECOVERY AVERAGES is present above. Discuss whatever metrics are listed there, referencing the actual values — different weeks may have a different subset available depending on which device synced that week.
 
 ## To Watch
 The single most objective signal worth noting — a continued trend, a stall, or a gap between expected and observed. If an intervention's start date or dose change aligns with an objective change in the data above, note the timing and hedge it (e.g. "weight dropped 1.2 lb in the week after the dose increase — possibly related"). If nutrition data is present, connect calorie or protein intake to the body composition data. No directives."""
@@ -2507,7 +2553,9 @@ def _build_pattern_insights_prompt() -> str:
             avg_sleep=Avg("sleep_score"),
             avg_bb=Avg("body_battery_high"),
             avg_stress=Avg("stress_avg"),
-            avg_readiness=Avg("training_readiness_score"),
+            # Garmin's real score when a day has one, else FitPulse's Google
+            # Health-derived proxy — see DailyStats.readiness_score.
+            avg_readiness=Avg(Coalesce("training_readiness_score", "computed_readiness_score")),
         )
         .order_by("week")
     )
@@ -2584,7 +2632,8 @@ def _build_pattern_insights_prompt() -> str:
         "WEIGHT & BODY COMPOSITION (last 60 days — daily)",
         "\n".join(weight_lines) if weight_lines else "  No weight data",
         "",
-        "RECOVERY METRICS (weekly averages)",
+        "RECOVERY METRICS (weekly averages; readiness is Garmin's own score where available, "
+        "otherwise FitPulse's Google Health-derived estimate from HRV/sleep/resting HR vs. baseline)",
         "\n".join(recovery_full) if recovery_full else "  No recovery data",
         "",
         "NUTRITION (daily logged days)",
@@ -2802,9 +2851,14 @@ def _build_weekly_review_prompt(week_start) -> str:
     hrv_vals = [d.hrv_last_night for d in daily_qs if d.hrv_last_night]
     sleep_vals = [d.sleep_seconds / 3600 for d in daily_qs if d.sleep_seconds]
     rhr_vals = [d.resting_hr for d in daily_qs if d.resting_hr]
-    sleep_str = f"  Avg sleep: {sum(sleep_vals)/len(sleep_vals):.1f}h" if sleep_vals else "  Avg sleep: n/a"
-    hrv_str = f", avg HRV: {sum(hrv_vals)/len(hrv_vals):.0f} ms" if hrv_vals else ""
-    rhr_str = f", avg RHR: {sum(rhr_vals)/len(rhr_vals):.0f} bpm" if rhr_vals else ""
+    recovery_bits = []
+    if sleep_vals:
+        recovery_bits.append(f"Avg sleep: {sum(sleep_vals)/len(sleep_vals):.1f}h")
+    if hrv_vals:
+        recovery_bits.append(f"avg HRV: {sum(hrv_vals)/len(hrv_vals):.0f} ms")
+    if rhr_vals:
+        recovery_bits.append(f"avg RHR: {sum(rhr_vals)/len(rhr_vals):.0f} bpm")
+    recovery_str = "  " + ", ".join(recovery_bits) if recovery_bits else "  (no recovery data logged this week)"
 
     hunger_qs = HungerCheck.objects.filter(date__gte=week_start, date__lte=week_end)
     morning_hunger = [h.hunger_level for h in hunger_qs if h.context == "morning"]
@@ -2842,7 +2896,7 @@ WORKOUTS:
 {workouts_str}
 
 RECOVERY:
-{sleep_str}{hrv_str}{rhr_str}
+{recovery_str}
 
 HUNGER TRACKING:
 {hunger_str}
@@ -3046,3 +3100,136 @@ Respond using these markdown headers exactly:
     run.retrospective_model = llm.SONNET
     run.save(update_fields=["retrospective", "retrospective_generated_at", "retrospective_model"])
     return text
+
+
+# ---------------------------------------------------------------------------
+# Stats chat (sidebar)
+# ---------------------------------------------------------------------------
+
+MAX_CHAT_TOOL_ROUNDS = 5
+
+_CHAT_PAGE_HINTS = {
+    "dashboard": "The user is looking at their workout dashboard overview.",
+    "body": "The user is looking at the Body page, currently showing the last {range_days} days.",
+    "trends": "The user is on the Trends page, currently focused on the intervention: {intervention_name}.",
+    "nutrition": "The user is looking at their daily nutrition log.",
+    "nutrition_analytics": "The user is looking at nutrition analytics.",
+    "history": "The user is looking at their workout history, filtered to: {discipline}.",
+    "insights": "The user is looking at their AI pattern insights page.",
+    "review": "The user is looking at their weekly review.",
+}
+
+
+def _build_chat_system_prompt(context):
+    template = _CHAT_PAGE_HINTS.get(context.get("page"))
+    if template:
+        page_hint = template.format(
+            range_days=context.get("range_days", 90),
+            intervention_name=context.get("intervention_name") or "none selected",
+            discipline=context.get("discipline") or "all disciplines",
+        )
+    else:
+        page_hint = "The user is somewhere in their fitness dashboard."
+
+    return f"""You are the stats assistant embedded in FitPulse, a personal \
+health and fitness dashboard. Today's date is {context.get('today')}.
+
+{page_hint}
+
+You answer questions about the user's own workout, recovery, body \
+composition, nutrition, and intervention data by calling the provided \
+tools. Ground every claim in numbers the tools return — never estimate, \
+round dramatically, or state a trend you haven't pulled data for.
+
+Rules:
+- Every specific numeric or trend claim must cite a value that came from a \
+tool result. If you haven't called a tool for it, don't state it.
+- If a tool returns a small sample size (few days of data, few workouts), \
+say so and hedge ("worth checking, but only N days of data") rather than \
+stating it as settled.
+- No filler adjectives ("amazing", "concerning", "impressive"). State the \
+number and let it speak.
+- No clinical or diagnostic framing — this is a personal tracker, not a \
+medical read.
+- Don't invent subjective states ("you must have felt tired") the user \
+hasn't told you about.
+- Calibrate causal language to how strong the evidence actually is. "X \
+dropped after Y" is not "X dropped because of Y" unless the tool result \
+supports a real before/after comparison.
+- If the question is ambiguous about date range, default to what's \
+currently in view (see above) rather than asking — but say what range \
+you used in your answer.
+- Keep answers short: a few sentences or a tight bullet list, not a report."""
+
+
+def _chat_tools_with_cache():
+    """CHAT_TOOLS with a cache_control breakpoint on the last entry, so the
+    (static) system prompt + tool schemas are cached together across turns."""
+    tools = [dict(t) for t in CHAT_TOOLS]
+    tools[-1] = {**tools[-1], "cache_control": {"type": "ephemeral"}}
+    return tools
+
+
+def run_stats_chat(context, history, user_message):
+    """
+    context: dict describing what page/range/intervention is in view
+    history: list of prior {"role": ..., "content": ...} message dicts
+             (already in Anthropic message format; empty list for a new
+             conversation)
+    user_message: str
+
+    Returns: (answer_text: str, updated_history: list)
+    """
+    system_prompt = _build_chat_system_prompt(context)
+    messages = history + [{"role": "user", "content": user_message}]
+
+    for _round in range(MAX_CHAT_TOOL_ROUNDS):
+        body = {
+            "model": llm.SONNET,
+            "max_tokens": 1024,
+            "system": [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            "tools": _chat_tools_with_cache(),
+            "messages": messages,
+        }
+        data = llm.call_raw(body, timeout=30)
+
+        messages.append({"role": "assistant", "content": data["content"]})
+
+        if data.get("stop_reason") != "tool_use":
+            answer_text = "".join(
+                block["text"] for block in data["content"] if block["type"] == "text"
+            ).strip()
+            return answer_text, messages
+
+        tool_results = []
+        for block in data["content"]:
+            if block["type"] != "tool_use":
+                continue
+            fn = TOOL_DISPATCH.get(block["name"])
+            try:
+                if fn is None:
+                    raise ValueError(f"unknown tool {block['name']}")
+                result = fn(**block["input"])
+                content = json.dumps(result, default=str)
+            except Exception as e:
+                logger.warning("Chat tool %s failed: %s", block["name"], e)
+                content = json.dumps({"error": str(e)})
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": block["id"],
+                "content": content,
+            })
+        messages.append({"role": "user", "content": tool_results})
+
+    return (
+        "I wasn't able to pull together a complete answer to that in the "
+        "allotted number of steps — try narrowing the question (e.g. a "
+        "specific date range or metric).",
+        messages,
+    )

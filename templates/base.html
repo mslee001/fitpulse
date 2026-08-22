@@ -62,6 +62,7 @@
           <a class="nav-dropdown-item" href="{% url 'program_list' %}">Programs</a>
           <div class="nav-dropdown-divider"></div>
           <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'settings' %}">Settings</a>
+          <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'integrations_settings' %}">Integrations</a>
         </div>
       </div>
 
@@ -119,6 +120,7 @@
         ↻ Sync ▾
       </button>
       <div class="sync-dropdown">
+        {% enabled_integrations as enabled %}
         {% last_synced as ls %}{% if ls %}
         <div class="sync-option-label">Last synced: {{ ls|date:"M j, Y g:i A" }}</div>
         {% endif %}
@@ -126,6 +128,7 @@
         <div class="sync-option-label">Last auto-sync: {{ lds|date:"M j, Y g:i A" }}</div>
         {% endif %}
         {% if ls or lds %}<div class="sync-divider"></div>{% endif %}
+        {% if 'peloton' in enabled or 'garmin' in enabled %}
         <a class="sync-option" href="{% url 'sync_new' %}" target="_blank">
           <strong>Sync New</strong>
           <span>New Peloton &amp; Garmin + today's wellness</span>
@@ -134,6 +137,8 @@
           <strong>Sync All</strong>
           <span>Full backfill — slow</span>
         </a>
+        {% endif %}
+        {% if 'withings' in enabled %}
         <div class="sync-divider"></div>
         <a class="sync-option" href="{% url 'sync_withings_new' %}" target="_blank">
           <strong>Withings Sync New</strong>
@@ -143,6 +148,18 @@
           <strong>Withings Sync All</strong>
           <span>Full backfill — slow</span>
         </a>
+        {% endif %}
+        {% if 'google_health' in enabled %}
+        <div class="sync-divider"></div>
+        <a class="sync-option" href="{% url 'sync_google_health_new' %}" target="_blank">
+          <strong>Google Health Sync New</strong>
+          <span>Sync new wellness &amp; exercise data</span>
+        </a>
+        <a class="sync-option sync-option--danger" href="{% url 'sync_google_health_all' %}" target="_blank">
+          <strong>Google Health Sync All</strong>
+          <span>Full backfill — slow</span>
+        </a>
+        {% endif %}
       </div>
     </div>
   </nav>
@@ -150,6 +167,59 @@
   <main class="main">
     {% block content %}{% endblock %}
   </main>
+
+  <div id="chat-sidebar" class="chat-sidebar" data-open="false">
+    <div id="chat-backdrop" class="chat-backdrop"></div>
+
+    <button id="chat-toggle" class="chat-toggle" aria-label="Toggle stats chat">
+      ASK
+    </button>
+
+    <div class="chat-panel">
+      <div class="chat-panel-header">
+        <span>ASK YOUR STATS</span>
+        <div class="chat-header-actions">
+          <button
+            class="chat-clear-btn"
+            hx-post="{% url 'chat_clear_api' %}"
+            hx-target="#chat-log"
+            hx-swap="innerHTML"
+            hx-include="#chat-context-fields"
+          >clear</button>
+          <button id="chat-close" class="chat-close-btn" aria-label="Close stats chat">&times;</button>
+        </div>
+      </div>
+
+      <div id="chat-log" class="chat-log">
+        <div class="chat-empty">Ask something about your stats.</div>
+      </div>
+
+      <form
+        id="chat-form"
+        class="chat-form"
+        hx-post="{% url 'chat_message_api' %}"
+        hx-target="#chat-log"
+        hx-swap="beforeend"
+        hx-on::after-request="this.reset()"
+      >
+        <div id="chat-context-fields">
+          {% csrf_token %}
+          {% block chat_context %}
+          <input type="hidden" name="ctx_page" value="unknown">
+          {% endblock %}
+        </div>
+        <input
+          type="text"
+          name="message"
+          class="chat-input"
+          placeholder="e.g. how's my sleep this week?"
+          autocomplete="off"
+          required
+        >
+        <button type="submit" class="chat-send-btn">Send</button>
+      </form>
+    </div>
+  </div>
 
   <script>
     document.addEventListener('click', e => {
@@ -199,6 +269,54 @@
       btn.addEventListener('click', function() {
         var current = document.documentElement.getAttribute('data-theme') || 'dark';
         applyTheme(current === 'dark' ? 'light' : 'dark');
+      });
+    })();
+
+    (function() {
+      var sidebar = document.getElementById('chat-sidebar');
+      var toggle = document.getElementById('chat-toggle');
+      var closeBtn = document.getElementById('chat-close');
+      var backdrop = document.getElementById('chat-backdrop');
+
+      function setChatOpen(open) {
+        sidebar.setAttribute('data-open', open ? 'true' : 'false');
+      }
+
+      if (toggle) {
+        toggle.addEventListener('click', function() {
+          setChatOpen(sidebar.getAttribute('data-open') !== 'true');
+        });
+      }
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function() { setChatOpen(false); });
+      }
+      if (backdrop) {
+        backdrop.addEventListener('click', function() { setChatOpen(false); });
+      }
+      document.addEventListener('keydown', function(evt) {
+        if (evt.key === 'Escape' && sidebar.getAttribute('data-open') === 'true') {
+          setChatOpen(false);
+        }
+      });
+
+      document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail.target.id === 'chat-log') {
+          var log = document.getElementById('chat-log');
+          log.scrollTop = log.scrollHeight;
+        }
+      });
+
+      document.body.addEventListener('htmx:beforeRequest', function(evt) {
+        if (evt.detail.elt && evt.detail.elt.id === 'chat-form') {
+          var btn2 = evt.detail.elt.querySelector('.chat-send-btn');
+          if (btn2) { btn2.disabled = true; btn2.textContent = '...'; }
+        }
+      });
+      document.body.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.elt && evt.detail.elt.id === 'chat-form') {
+          var btn2 = evt.detail.elt.querySelector('.chat-send-btn');
+          if (btn2) { btn2.disabled = false; btn2.textContent = 'Send'; }
+        }
       });
     })();
   </script>
