@@ -31,14 +31,70 @@ supported: rollup, dailyRollup" in the message. Trust that over assumption.
 import logging
 import os
 import time
+import urllib.parse
 from datetime import date as date_cls, datetime, timedelta, timezone
 
 import requests
+from django.utils import timezone as dj_timezone
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://health.googleapis.com/v4/users/me/"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
+AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+
+# https://developers.google.com/health/scopes
+# activity_and_fitness.writeonly added 2026-08-18 to support writing Peloton
+# data back into Google Health for workouts where Google's own copy is
+# missing fields Peloton has (see _push_peloton_to_google_health in sync.py).
+# nutrition.writeonly added 2026-08-19 to support exporting FitPulse FoodEntry
+# logs to Google Health (see _push_food_entry_to_google_health in sync.py).
+SCOPES = [
+    "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
+    "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.writeonly",
+    "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
+    "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
+    "https://www.googleapis.com/auth/googlehealth.nutrition.writeonly",
+]
+
+
+def build_google_health_auth_url(redirect_uri: str, state: str, client_id: str = None) -> str:
+    """Build the Google OAuth consent-screen URL for the Health API scopes.
+    Shared by google_health_login (CLI, static redirect_uri from the
+    GOOGLE_HEALTH_REDIRECT_URI env var) and the web reconnect flow
+    (dynamic redirect_uri derived from the request, so it's correct on
+    both localhost and the deployed host without a DEBUG-flag branch)."""
+    client_id = client_id or os.environ.get("GOOGLE_HEALTH_CLIENT_ID", "")
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "access_type": "offline",
+        "scope": " ".join(SCOPES),
+        "prompt": "consent",
+        "state": state,
+    }
+    return AUTH_URL + "?" + urllib.parse.urlencode(params)
+
+
+def exchange_google_health_code(code: str, redirect_uri: str, client_id: str = None, client_secret: str = None) -> dict:
+    """Exchange an authorization code for tokens. Pure HTTP call — does not
+    persist anything; callers (GoogleHealthClient.exchange_code, used by
+    both the CLI and the web callback view) decide what to do with the
+    result. Returns the parsed token response (access_token, refresh_token,
+    expires_in, scope). Raises RuntimeError on a non-200 response."""
+    client_id = client_id or os.environ.get("GOOGLE_HEALTH_CLIENT_ID", "")
+    client_secret = client_secret or os.environ.get("GOOGLE_HEALTH_CLIENT_SECRET", "")
+    resp = requests.post(TOKEN_URL, data={
+        "grant_type": "authorization_code",
+        "code": code,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+    })
+    if resp.status_code != 200:
+        raise RuntimeError(f"Google Health token exchange failed ({resp.status_code}): {resp.text}")
+    return resp.json()
 
 LIST = "list"
 ROLLUP = "dailyRollUp"
@@ -163,19 +219,27 @@ class GoogleHealthClient:
             "scopes": auth.scopes,
         }
 
-    def _save_tokens(self) -> None:
-        """Persist tokens to the GoogleHealthAuth DB singleton."""
+    def _save_tokens(self, mark_reconnected: bool = False) -> None:
+        """Persist tokens to the GoogleHealthAuth DB singleton.
+
+        mark_reconnected=True stamps connected_at to now — only appropriate
+        for a fresh OAuth authorization (exchange_code), not a routine
+        access-token refresh (refresh_tokens), since connected_at exists
+        specifically to show "how close to the 7-day refresh-token expiry
+        are we" on the Integrations page. connected_at is a plain field
+        (not auto_now_add) precisely so this can update on reconnect rather
+        than being frozen at whenever the row was first created."""
         from workouts.models import GoogleHealthAuth
         expires_at = datetime.fromtimestamp(self._tokens["expires_at"], tz=timezone.utc)
-        GoogleHealthAuth.objects.update_or_create(
-            pk=1,
-            defaults={
-                "access_token": self._tokens["access_token"],
-                "refresh_token": self._tokens["refresh_token"],
-                "token_expires_at": expires_at,
-                "scopes": self._tokens.get("scopes", ""),
-            },
-        )
+        defaults = {
+            "access_token": self._tokens["access_token"],
+            "refresh_token": self._tokens["refresh_token"],
+            "token_expires_at": expires_at,
+            "scopes": self._tokens.get("scopes", ""),
+        }
+        if mark_reconnected:
+            defaults["connected_at"] = dj_timezone.now()
+        GoogleHealthAuth.objects.update_or_create(pk=1, defaults=defaults)
 
     def _ensure_token_valid(self) -> None:
         """Load from DB if needed, then auto-refresh if within 5 minutes of expiry."""
@@ -186,18 +250,18 @@ class GoogleHealthClient:
 
     # ── OAuth helpers ─────────────────────────────────────────────────────────
 
-    def exchange_code(self, code: str) -> dict:
-        """Exchange an authorization code for tokens and save to DB."""
-        resp = requests.post(TOKEN_URL, data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "redirect_uri": self.redirect_uri,
-        })
-        if resp.status_code != 200:
-            raise RuntimeError(f"Google Health token exchange failed ({resp.status_code}): {resp.text}")
-        token_data = resp.json()
+    def exchange_code(self, code: str, redirect_uri: str = None) -> dict:
+        """Exchange an authorization code for tokens and save to DB — this
+        is always a fresh reconnect, so connected_at is stamped to now.
+
+        redirect_uri defaults to self.redirect_uri (the static
+        GOOGLE_HEALTH_REDIRECT_URI env var — what google_health_login uses).
+        The web reconnect flow passes its own request-derived redirect_uri
+        instead, since a single fixed env var can't be correct for both
+        localhost and the deployed host."""
+        token_data = exchange_google_health_code(
+            code, redirect_uri or self.redirect_uri, self.client_id, self.client_secret
+        )
         self._tokens = {
             "access_token": token_data["access_token"],
             "refresh_token": token_data.get("refresh_token", self._tokens.get("refresh_token")),
@@ -209,7 +273,7 @@ class GoogleHealthClient:
                 "Google Health token exchange returned no refresh_token. "
                 "Retry with prompt=consent and access_type=offline in the authorization URL."
             )
-        self._save_tokens()
+        self._save_tokens(mark_reconnected=True)
         return self._tokens
 
     def refresh_tokens(self) -> None:

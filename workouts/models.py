@@ -1,5 +1,6 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 
 class DailyStats(models.Model):
@@ -1078,14 +1079,22 @@ class GoogleHealthAuth(models.Model):
     """
     Singleton (pk=1). Stores Google Health API OAuth2 credentials in Postgres,
     same pattern as WithingsAuth. Populated by the `google_health_login`
-    management command.
+    management command, or by the web reconnect flow at
+    /auth/google-health/connect/ (see google_health_oauth_connect/
+    google_health_oauth_callback in views.py).
     """
     access_token = models.TextField()
     refresh_token = models.TextField()
     token_expires_at = models.DateTimeField()
     scopes = models.TextField(blank=True, help_text="Space-separated granted scopes")
 
-    connected_at = models.DateTimeField(auto_now_add=True)
+    # Deliberately NOT auto_now_add — that would freeze this at whenever the
+    # row was first created and never move again, which defeats the point:
+    # this exists to show "how close to the 7-day refresh-token expiry are
+    # we" on the Integrations page, so it must advance every time the user
+    # actually reconnects (GoogleHealthClient._save_tokens(mark_reconnected=True),
+    # called from exchange_code — NOT from routine refresh_tokens() calls).
+    connected_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1099,6 +1108,10 @@ class GoogleHealthAuth(models.Model):
     def get(cls):
         """Returns the singleton row, or None if not yet seeded."""
         return cls.objects.filter(pk=1).first()
+
+    @property
+    def days_since_connected(self):
+        return (timezone.now() - self.connected_at).days
 
 
 class Integration(models.Model):

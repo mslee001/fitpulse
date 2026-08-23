@@ -23,28 +23,12 @@ import urllib.parse
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-
-# https://developers.google.com/health/scopes
-# activity_and_fitness.writeonly added 2026-08-18 to support writing Peloton
-# data back into Google Health for workouts where Google's own copy is
-# missing fields Peloton has (see _push_peloton_to_google_health in sync.py).
-# nutrition.writeonly added 2026-08-19 to support exporting FitPulse FoodEntry
-# logs to Google Health (see _push_food_entry_to_google_health in sync.py).
-SCOPES = [
-    "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
-    "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.writeonly",
-    "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
-    "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
-    "https://www.googleapis.com/auth/googlehealth.nutrition.writeonly",
-]
-
 
 class Command(BaseCommand):
     help = "Authenticate with the Google Health API and save OAuth tokens for sync."
 
     def handle(self, *args, **options):
-        from workouts.services.google_health_client import GoogleHealthClient
+        from workouts.services.google_health_client import GoogleHealthClient, build_google_health_auth_url
         from workouts.models import Integration
 
         client = GoogleHealthClient()
@@ -66,16 +50,7 @@ class Command(BaseCommand):
             return
 
         state = secrets.token_urlsafe(16)
-        params = {
-            "client_id": client.client_id,
-            "redirect_uri": client.redirect_uri,
-            "response_type": "code",
-            "access_type": "offline",
-            "scope": " ".join(SCOPES),
-            "prompt": "consent",
-            "state": state,
-        }
-        auth_url = AUTH_URL + "?" + urllib.parse.urlencode(params)
+        auth_url = build_google_health_auth_url(client.redirect_uri, state, client.client_id)
 
         self.stdout.write("\nOpen this URL in your browser, authorize, then paste the full callback URL here:")
         self.stdout.write(f"\n  {auth_url}\n")

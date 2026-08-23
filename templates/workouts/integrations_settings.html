@@ -7,6 +7,14 @@
   <p class="page-sub">Enable or disable each data source — disabled integrations disappear from the Sync menu and their sync functions no-op</p>
 </div>
 
+{% if messages %}
+<div style="margin-bottom:1rem">
+  {% for message in messages %}
+  <div class="peloton-msg peloton-msg--{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="integrations-row">
   <div class="chart-card">
     <div class="chart-header">

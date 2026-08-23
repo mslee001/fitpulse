@@ -1164,21 +1164,110 @@ def settings_page(request):
 
 
 def integrations_settings_page(request):
-    from .models import Integration, WebhookError
+    from .models import GoogleHealthAuth, Integration, WebhookError
     return render(request, "workouts/integrations_settings.html", {
         "integrations": Integration.objects.all(),
         "webhook_error_count": WebhookError.objects.count(),
         "webhook_retention_days": WebhookError.RETENTION_DAYS,
+        "google_health_auth": GoogleHealthAuth.get(),
     })
 
 
 @require_POST
 def integration_toggle(request, key):
-    from .models import Integration
+    from .models import GoogleHealthAuth, Integration
     integration = get_object_or_404(Integration, key=key)
     integration.is_enabled = not integration.is_enabled
     integration.save(update_fields=["is_enabled"])
-    return render(request, "workouts/partials/integration_row.html", {"integration": integration})
+    return render(request, "workouts/partials/integration_row.html", {
+        "integration": integration,
+        "google_health_auth": GoogleHealthAuth.get(),
+    })
+
+
+def google_health_oauth_connect(request):
+    """GET /auth/google-health/connect/ — kick off the Google OAuth consent
+    flow. A plain full-page redirect, not HTMX: OAuth needs a genuine
+    browser navigation to Google's consent screen and back, which can't be
+    done as a partial swap."""
+    import secrets
+    from django.urls import reverse
+    from .services.google_health_client import build_google_health_auth_url
+
+    state = secrets.token_urlsafe(32)
+    session_key_before = request.session.session_key
+    request.session["google_health_oauth_state"] = state
+    # Force an explicit save rather than relying solely on SessionMiddleware's
+    # automatic save-on-response — this is about to redirect straight to an
+    # external domain, so there's no room for doubt about whether the
+    # modified session actually persisted before the browser navigates away.
+    request.session.save()
+    logger.info(
+        "Google Health OAuth connect: stashed state=%r, session_key before=%r after=%r",
+        state, session_key_before, request.session.session_key,
+    )
+    redirect_uri = request.build_absolute_uri(reverse("google_health_oauth_callback"))
+    auth_url = build_google_health_auth_url(redirect_uri, state)
+    return redirect(auth_url)
+
+
+def google_health_oauth_callback(request):
+    """GET /auth/google-health/callback/ — Google redirects the browser
+    back here after the consent screen. Always redirects on to
+    /settings/integrations/ (success or failure) rather than rendering
+    anything directly here — the developer lands on this exact URL
+    straight from Google, so it must degrade gracefully rather than show
+    a raw error page for any of the several ways this can fail."""
+    from django.urls import reverse
+    from .models import Integration
+    from .services.google_health_client import GoogleHealthClient
+
+    try:
+        expected_state = request.session.pop("google_health_oauth_state", None)
+        returned_state = request.GET.get("state")
+        if not expected_state or returned_state != expected_state:
+            # CSRF protection for this flow — the state value round-trips
+            # through Google and must match what we stashed in the session
+            # right before redirecting there. Logged with enough detail to
+            # tell apart "session had nothing stashed at all" (cookie/session
+            # didn't survive the round trip to Google and back) from "session
+            # had a *different* state" (e.g. a second connect attempt
+            # overwrote the first's stashed value before it completed).
+            logger.warning(
+                "Google Health OAuth state mismatch: expected=%r returned=%r "
+                "session_key=%r has_session_cookie=%s",
+                expected_state, returned_state,
+                request.session.session_key, bool(request.session.session_key),
+            )
+            messages.error(
+                request,
+                "Google Health reconnect failed: security check didn't match "
+                "(the link may have expired, or been opened in a different "
+                "browser session). Try Reconnect again.",
+            )
+            return redirect("integrations_settings")
+
+        error = request.GET.get("error")
+        if error:
+            messages.error(request, f"Google Health reconnect failed: Google returned an error ({error}).")
+            return redirect("integrations_settings")
+
+        code = request.GET.get("code")
+        if not code:
+            messages.error(request, "Google Health reconnect failed: no authorization code was returned.")
+            return redirect("integrations_settings")
+
+        redirect_uri = request.build_absolute_uri(reverse("google_health_oauth_callback"))
+        client = GoogleHealthClient()
+        client.exchange_code(code, redirect_uri=redirect_uri)
+
+        Integration.objects.filter(key="google_health").update(is_authenticated=True)
+        messages.success(request, "Google Health reconnected successfully.")
+    except Exception as e:
+        logger.exception("Google Health OAuth callback failed")
+        messages.error(request, f"Google Health reconnect failed: {e}")
+
+    return redirect("integrations_settings")
 
 
 def webhook_errors_page(request):

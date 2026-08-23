@@ -3,7 +3,7 @@ from django.urls import path
 from .views import (
     dashboard, history, workout_detail, class_history, garmin_activity_history, compare,
     set_ftp, set_athlete_profile, settings_page, integrations_settings_page, integration_toggle,
-    webhook_errors_page,
+    webhook_errors_page, google_health_oauth_connect, google_health_oauth_callback,
     analytics_page, calendar_view, day_view,
     interventions_list, intervention_edit, intervention_end, intervention_delete,
     intervention_detail, intervention_quick_dose,
@@ -57,6 +57,8 @@ urlpatterns = [
     path("settings/integrations/", integrations_settings_page, name="integrations_settings"),
     path("settings/integrations/errors/", webhook_errors_page, name="webhook_errors"),
     path("settings/integrations/<str:key>/toggle/", integration_toggle, name="integration_toggle"),
+    path("auth/google-health/connect/", google_health_oauth_connect, name="google_health_oauth_connect"),
+    path("auth/google-health/callback/", google_health_oauth_callback, name="google_health_oauth_callback"),
     path("analytics/", analytics_page, name="analytics"),
     path("api/analytics/insights/", analytics_generate_insights, name="analytics_generate_insights"),
     path("api/analytics/check-insights/", analytics_check_insights, name="analytics_check_insights"),
