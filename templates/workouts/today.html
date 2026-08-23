@@ -98,6 +98,49 @@
       <div class="stat-value">{{ daily.stress_avg }}</div>
     </div>
     {% endif %}
+    {% if daily.steps %}
+    <div class="stat-card">
+      <div class="stat-label">Steps</div>
+      <div class="stat-value">{{ daily.steps }}</div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<!-- ACTIVITY row -->
+{% if daily.floors_climbed or daily.active_calories or daily.active_zone_minutes or daily.moderate_intensity_minutes or daily.vigorous_intensity_minutes %}
+<section class="today-section">
+  <div class="today-section-header">
+    <h2 class="section-title">ACTIVITY</h2>
+    <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="section-link">Full day view →</a>
+  </div>
+  <div class="stat-grid">
+    {% if daily.floors_climbed %}
+    <div class="stat-card">
+      <div class="stat-label">Floors Climbed</div>
+      <div class="stat-value">{{ daily.floors_climbed }}</div>
+    </div>
+    {% endif %}
+    {% if daily.active_calories %}
+    <div class="stat-card">
+      <div class="stat-label">Active Calories</div>
+      <div class="stat-value">{{ daily.active_calories }}<span class="stat-unit">kcal</span></div>
+    </div>
+    {% endif %}
+    {% if daily.active_zone_minutes %}
+    <div class="stat-card">
+      <div class="stat-label">Active Zone Minutes</div>
+      <div class="stat-value">{{ daily.active_zone_minutes }}</div>
+    </div>
+    {% endif %}
+    {% if daily.moderate_intensity_minutes or daily.vigorous_intensity_minutes %}
+    <div class="stat-card">
+      <div class="stat-label">Intensity Minutes</div>
+      <div class="stat-value">{{ daily.moderate_intensity_minutes|default:0 }}<span class="stat-unit">mod</span></div>
+      <div class="stat-sub">{{ daily.vigorous_intensity_minutes|default:0 }} vigorous</div>
+    </div>
+    {% endif %}
   </div>
 </section>
 {% endif %}

@@ -58,6 +58,12 @@
           <span class="cal-signal-value">{{ stats.hrv_weekly_avg|floatformat:0 }} ms</span>
         </div>
         {% endif %}
+        {% if stats.hrv_min and stats.hrv_max %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">HRV Range</span>
+          <span class="cal-signal-value">{{ stats.hrv_min }}–{{ stats.hrv_max }} ms</span>
+        </div>
+        {% endif %}
         {% if stats.resting_hr %}
         <div class="cal-signal-row">
           <span class="cal-signal-label">Resting HR</span>
@@ -90,6 +96,12 @@
           <span class="cal-signal-value">{{ stats.sleep_rem_seconds|div:60|floatformat:0 }}m</span>
         </div>
         {% endif %}
+        {% if stats.sleep_light_seconds %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Light Sleep</span>
+          <span class="cal-signal-value">{{ stats.sleep_light_seconds|div:60|floatformat:0 }}m</span>
+        </div>
+        {% endif %}
         {% if stats.stress_avg %}
         <div class="cal-signal-row">
           <span class="cal-signal-label">Avg Stress</span>
@@ -110,8 +122,128 @@
           </span>
         </div>
         {% endif %}
+        {% if stats.vo2_max_running %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">VO2 Max (Running)</span>
+          <span class="cal-signal-value">{{ stats.vo2_max_running|floatformat:1 }}</span>
+        </div>
+        {% endif %}
+        {% if stats.respiration_avg %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Respiration Avg</span>
+          <span class="cal-signal-value">{{ stats.respiration_avg|floatformat:1 }} br/min</span>
+        </div>
+        {% endif %}
+        {% if stats.respiration_sleep_avg %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Respiration (sleep)</span>
+          <span class="cal-signal-value">{{ stats.respiration_sleep_avg|floatformat:1 }} br/min</span>
+        </div>
+        {% endif %}
+        {% if stats.spo2_sleep_avg %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">SpO2 Avg (sleep)</span>
+          <span class="cal-signal-value {% if stats.spo2_sleep_avg < 90 %}cal-sig-red{% elif stats.spo2_sleep_avg < 95 %}cal-sig-yellow{% else %}cal-sig-green{% endif %}">
+            {{ stats.spo2_sleep_avg|floatformat:1 }}%
+          </span>
+        </div>
+        {% endif %}
+        {% if stats.spo2_sleep_low %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">SpO2 Low (sleep)</span>
+          <span class="cal-signal-value {% if stats.spo2_sleep_low < 90 %}cal-sig-red{% elif stats.spo2_sleep_low < 95 %}cal-sig-yellow{% else %}cal-sig-green{% endif %}">
+            {{ stats.spo2_sleep_low }}%
+          </span>
+        </div>
+        {% endif %}
+        {% if stats.skin_temp_c %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Skin Temp</span>
+          <span class="cal-signal-value">
+            {{ stats.skin_temp_c|floatformat:1 }}°C
+            {% if stats.skin_temp_deviation_c %}
+              <span class="{% if stats.skin_temp_deviation_c >= 0.5 %}cal-sig-red{% elif stats.skin_temp_deviation_c <= -0.5 %}cal-sig-yellow{% endif %}">
+                ({{ stats.skin_temp_deviation_c|floatformat:1 }} vs baseline)
+              </span>
+            {% endif %}
+          </span>
+        </div>
+        {% endif %}
       </div>
     </div>
+
+    {% if stats.steps or stats.floors_climbed or stats.active_calories or stats.total_calories or stats.moderate_intensity_minutes or stats.vigorous_intensity_minutes or stats.active_zone_minutes or stats.sedentary_minutes or stats.hr_zone_light_minutes or stats.hr_zone_moderate_minutes or stats.hr_zone_vigorous_minutes or stats.hr_zone_peak_minutes %}
+    <div class="stat-card" style="margin-top:1rem;">
+      <div class="stat-label">Activity</div>
+      <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.6rem;">
+        {% if stats.steps %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Steps</span>
+          <span class="cal-signal-value">{{ stats.steps }}</span>
+        </div>
+        {% endif %}
+        {% if stats.floors_climbed %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Floors Climbed</span>
+          <span class="cal-signal-value">{{ stats.floors_climbed }}</span>
+        </div>
+        {% endif %}
+        {% if stats.active_calories %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Active Calories</span>
+          <span class="cal-signal-value">{{ stats.active_calories }} kcal</span>
+        </div>
+        {% endif %}
+        {% if stats.total_calories %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Total Calories</span>
+          <span class="cal-signal-value">{{ stats.total_calories }} kcal</span>
+        </div>
+        {% endif %}
+        {% if stats.moderate_intensity_minutes or stats.vigorous_intensity_minutes %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Intensity Minutes</span>
+          <span class="cal-signal-value">{{ stats.moderate_intensity_minutes|default:0 }} moderate · {{ stats.vigorous_intensity_minutes|default:0 }} vigorous</span>
+        </div>
+        {% endif %}
+        {% if stats.active_zone_minutes %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Active Zone Minutes</span>
+          <span class="cal-signal-value">{{ stats.active_zone_minutes }}</span>
+        </div>
+        {% endif %}
+        {% if stats.sedentary_minutes %}
+        <div class="cal-signal-row">
+          <span class="cal-signal-label">Sedentary Time</span>
+          <span class="cal-signal-value">{{ stats.sedentary_minutes|div:60|floatformat:0 }}h {{ stats.sedentary_minutes|mod:60 }}m</span>
+        </div>
+        {% endif %}
+        {% if stats.hr_zone_light_minutes or stats.hr_zone_moderate_minutes or stats.hr_zone_vigorous_minutes or stats.hr_zone_peak_minutes %}
+        <div style="margin-top:0.25rem;">
+          <div class="cal-signal-label" style="margin-bottom:0.4rem;">Time in HR Zone (min)</div>
+          <div class="cal-load-focus">
+            <div class="cal-load-bar">
+              <span class="cal-load-label">Light</span>
+              <span class="cal-load-val">{{ stats.hr_zone_light_minutes|default:"—" }}</span>
+            </div>
+            <div class="cal-load-bar">
+              <span class="cal-load-label">Moderate</span>
+              <span class="cal-load-val">{{ stats.hr_zone_moderate_minutes|default:"—" }}</span>
+            </div>
+            <div class="cal-load-bar">
+              <span class="cal-load-label">Vigorous</span>
+              <span class="cal-load-val">{{ stats.hr_zone_vigorous_minutes|default:"—" }}</span>
+            </div>
+            <div class="cal-load-bar">
+              <span class="cal-load-label">Peak</span>
+              <span class="cal-load-val">{{ stats.hr_zone_peak_minutes|default:"—" }}</span>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     {% if stats.training_status or stats.training_load %}
     <div class="stat-card" style="margin-top:1rem;">
@@ -156,8 +288,14 @@
     <div class="stat-card">
       <div class="stat-label">Wellness Data</div>
       <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">
-        No Garmin wellness data for this day.
-        <a href="{% url 'sync_garmin_wellness' %}?date={{ day|date:'Y-m-d' }}" target="_blank" style="display:block;margin-top:0.5rem;">Sync this day →</a>
+        No wellness data for this day yet.
+        {% enabled_integrations as enabled %}
+        {% if 'garmin' in enabled %}
+        <a href="{% url 'sync_garmin_wellness' %}?date={{ day|date:'Y-m-d' }}" target="_blank" style="display:block;margin-top:0.5rem;">Sync this day (Garmin) →</a>
+        {% endif %}
+        {% if 'google_health' in enabled %}
+        <a href="{% url 'sync_google_health_new' %}" target="_blank" style="display:block;margin-top:0.5rem;">Sync recent days (Google Health) →</a>
+        {% endif %}
       </p>
     </div>
     {% endif %}
