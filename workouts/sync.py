@@ -1991,17 +1991,34 @@ def google_health_webhook(request):
         return HttpResponse(status=401)
 
     data = payload.get("data", {})
-    data_type = data.get("dataType", "")
-    operation = data.get("operation", "UPSERT")
-    intervals = data.get("intervals", [])
+    try:
+        data_type = data.get("dataType", "")
+        operation = data.get("operation", "UPSERT")
+        intervals = data.get("intervals", [])
 
-    dates = set()
-    for interval in intervals:
-        pti = interval.get("physicalTimeInterval", {})
-        for key in ("startTime", "endTime"):
-            iso = pti.get(key)
-            if iso:
-                dates.add(datetime.fromisoformat(iso.replace("Z", "+00:00")).date())
+        dates = set()
+        for interval in intervals:
+            pti = interval.get("physicalTimeInterval", {})
+            for key in ("startTime", "endTime"):
+                iso = pti.get(key)
+                if iso:
+                    dates.add(datetime.fromisoformat(iso.replace("Z", "+00:00")).date())
+    except Exception:
+        # Verification/auth already passed at this point, so this is a
+        # genuinely malformed-for-us (real) payload, not an attack — the
+        # assumed shape (see docstring) doesn't match what Google actually
+        # sent. Log the raw payload + traceback so it's diagnosable from
+        # /settings/integrations/errors/ instead of only Render's log
+        # stream, and acknowledge anyway: a non-204 here just makes Google
+        # retry a payload that will never parse differently, burning its
+        # 7-day retry budget for nothing.
+        logger.exception("Google Health webhook: failed to parse notification, payload=%r", payload)
+        WebhookError.record(
+            source="google_health",
+            summary="Failed to parse incoming notification — see detail for raw payload",
+            detail=f"payload={payload!r}\n\n{traceback.format_exc()}",
+        )
+        return HttpResponse(status=204)
 
     if not dates:
         logger.warning("Google Health webhook: no usable interval for dataType=%s, payload=%r", data_type, payload)
