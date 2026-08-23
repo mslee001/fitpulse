@@ -1865,10 +1865,15 @@ def _run_google_health_sync_all() -> dict:
 # notification must get 204 No Content, sent immediately before any
 # processing (see google_health_webhook's docstring for why).
 #
-# Batching: confirmed live 2026-08-23 that each webhook POST carries exactly
-# ONE notification — Google's "up to 99 messages per batch" are delivered as
-# separate sequential POSTs, not one payload with an array. No
-# batch-unwrapping logic needed here.
+# Batching: CORRECTED 2026-08-23 — an earlier WebFetch summary of this same
+# guide claimed each POST carries exactly one bare notification object, no
+# array. That was wrong: a real captured notification (via WebhookError,
+# after it 500'd) showed the top-level payload is a JSON ARRAY of envelopes
+# even for a single notification. google_health_webhook normalizes to a
+# list either way and processes each item independently. Whether Google's
+# "up to 99 messages per batch" ever actually puts >1 item in that array
+# (vs. separate sequential POSTs each wrapping one item) is still
+# unconfirmed — the per-item loop handles either case the same way.
 #
 # We deliberately do NOT verify the per-message GOOGLE-HEALTH-API-SIGNATURE
 # (Base64-encoded Tink/ECDSA-P256 signature over the raw payload, verifiable
@@ -1924,6 +1929,43 @@ def _gh_webhook_authorized(request) -> bool:
     return hmac.compare_digest(request.headers.get("Authorization", ""), secret)
 
 
+def _gh_webhook_interval_dates(interval: dict) -> set:
+    """Extract calendar date(s) from one notification interval.
+
+    CONFIRMED LIVE 2026-08-23 from a real notification (captured via
+    WebhookError after it 500'd): the actual interval shape is
+    civilIso8601TimeInterval ({startTime, endTime} as ISO strings with no
+    'Z' suffix) alongside civilDateTimeInterval (structured
+    {startDateTime: {date: {year,month,day}, time: {...}}, endDateTime: ...}).
+    physicalTimeInterval — the only shape shown in the webhooks guide's
+    documented example, which the original implementation assumed — never
+    actually appeared; kept as a fallback in case some other data type uses
+    it. Tries all three; returns whatever dates could be extracted (0, 1, or
+    2), never raises."""
+    found = set()
+
+    iso = interval.get("civilIso8601TimeInterval") or interval.get("physicalTimeInterval") or {}
+    for key in ("startTime", "endTime"):
+        val = iso.get(key)
+        if val:
+            try:
+                found.add(datetime.fromisoformat(val.replace("Z", "+00:00")).date())
+            except ValueError:
+                pass
+
+    if not found:
+        civil = interval.get("civilDateTimeInterval", {})
+        for key in ("startDateTime", "endDateTime"):
+            d = civil.get(key, {}).get("date", {})
+            if d.get("year") and d.get("month") and d.get("day"):
+                try:
+                    found.add(date(d["year"], d["month"], d["day"]))
+                except ValueError:
+                    pass
+
+    return found
+
+
 def _process_google_health_notification(data_type, date_list):
     """Background-thread body for google_health_webhook — runs after the
     204 response has already been sent, so an exception here can't affect
@@ -1973,61 +2015,79 @@ def google_health_webhook(request):
     _upsert_google_health_exercise upserts by workout_id (unique) with an
     IntegrityError fallback for the case where two overlapping background
     threads race on the same point — see that function's docstring.
+
+    CONFIRMED LIVE 2026-08-23 from a real notification: the top-level
+    payload is a JSON ARRAY of notification envelopes (e.g. [{"data": ...}]),
+    not a bare object — contradicting the earlier assumption (sourced from a
+    WebFetch summary, not directly verified) that each POST carries exactly
+    one bare object. That mismatch is what caused every real delivery to
+    500: payload.get(...) on a list raises AttributeError. Normalized below
+    to a list either way, and each item is processed (and error-isolated)
+    independently, so one malformed item in a batch doesn't drop the rest.
     """
     try:
         payload = json.loads(request.body or b"{}")
     except ValueError:
         return HttpResponse(status=400)
 
+    items = payload if isinstance(payload, list) else [payload]
+
     # Everything past this point is wrapped in one broad safety net.
     # Verification/auth are simple enough to have already been proven
     # reliable (curl-verified against production), but ANY unexpected
-    # payload shape or runtime condition below — not just the interval
-    # parsing — must never surface as a 500. A non-204/200/401 response
-    # here just makes Google retry a request that will fail the same way
-    # every time, burning its 7-day retry budget for nothing, so on any
-    # unexpected exception we log the raw payload + traceback to
-    # WebhookError (visible at /settings/integrations/errors/, unlike
-    # Render's own log stream which has no retrievable history for this)
-    # and acknowledge anyway.
+    # payload shape or runtime condition below must never surface as a
+    # 500. A non-204/200/401 response here just makes Google retry a
+    # request that will fail the same way every time, burning its 7-day
+    # retry budget for nothing, so on any unexpected exception we log the
+    # raw payload + traceback to WebhookError (visible at
+    # /settings/integrations/errors/, unlike Render's own log stream
+    # which has no retrievable history for this) and acknowledge anyway.
     try:
         authorized = _gh_webhook_authorized(request)
 
-        if payload.get("type") == "verification":
-            # Google's own probe of our auth check during subscriber setup —
-            # respond 200/201 when authorized, 401/403 when not. Not an attack.
-            return HttpResponse(status=200 if authorized else 401)
+        # A verification probe, if present, is the entire point of this
+        # delivery — handle it and return immediately rather than also
+        # trying to process it as a notification.
+        for item in items:
+            if isinstance(item, dict) and item.get("type") == "verification":
+                return HttpResponse(status=200 if authorized else 401)
 
         if not authorized:
             logger.warning("Google Health webhook: missing/incorrect Authorization header, rejecting")
             return HttpResponse(status=401)
 
-        data = payload.get("data", {})
-        data_type = data.get("dataType", "")
-        operation = data.get("operation", "UPSERT")
-        intervals = data.get("intervals", [])
+        for item in items:
+            try:
+                data = item.get("data", {}) if isinstance(item, dict) else {}
+                data_type = data.get("dataType", "")
+                operation = data.get("operation", "UPSERT")
+                intervals = data.get("intervals", [])
 
-        dates = set()
-        for interval in intervals:
-            pti = interval.get("physicalTimeInterval", {})
-            for key in ("startTime", "endTime"):
-                iso = pti.get(key)
-                if iso:
-                    dates.add(datetime.fromisoformat(iso.replace("Z", "+00:00")).date())
+                dates = set()
+                for interval in intervals:
+                    dates |= _gh_webhook_interval_dates(interval)
 
-        if not dates:
-            logger.warning("Google Health webhook: no usable interval for dataType=%s, payload=%r", data_type, payload)
-            return HttpResponse(status=204)
+                if not dates:
+                    logger.warning("Google Health webhook: no usable interval for dataType=%s, item=%r", data_type, item)
+                    continue
 
-        date_list = sorted(dates)
-        logger.info("Google Health webhook: dataType=%s operation=%s dates=%s-%s",
-                    data_type, operation, date_list[0], date_list[-1])
+                date_list = sorted(dates)
+                logger.info("Google Health webhook: dataType=%s operation=%s dates=%s-%s",
+                            data_type, operation, date_list[0], date_list[-1])
 
-        threading.Thread(
-            target=_process_google_health_notification,
-            args=(data_type, date_list),
-            daemon=True,
-        ).start()
+                threading.Thread(
+                    target=_process_google_health_notification,
+                    args=(data_type, date_list),
+                    daemon=True,
+                ).start()
+            except Exception:
+                logger.exception("Google Health webhook: failed to process notification item=%r", item)
+                WebhookError.record(
+                    source="google_health",
+                    summary="Failed to process one notification in a batch — see detail for raw item",
+                    detail=f"item={item!r}\n\n{traceback.format_exc()}",
+                )
+                # Keep going — the rest of the batch may still be processable.
 
         return HttpResponse(status=204)
     except Exception:
