@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     dashboard, history, workout_detail, class_history, garmin_activity_history, compare,
     set_ftp, set_athlete_profile, settings_page, integrations_settings_page, integration_toggle,
+    webhook_errors_page,
     analytics_page, calendar_view, day_view,
     interventions_list, intervention_edit, intervention_end, intervention_delete,
     intervention_detail, intervention_quick_dose,
@@ -54,6 +55,7 @@ urlpatterns = [
     path("api/set-athlete-profile/", set_athlete_profile, name="set_athlete_profile"),
     path("settings/", settings_page, name="settings"),
     path("settings/integrations/", integrations_settings_page, name="integrations_settings"),
+    path("settings/integrations/errors/", webhook_errors_page, name="webhook_errors"),
     path("settings/integrations/<str:key>/toggle/", integration_toggle, name="integration_toggle"),
     path("analytics/", analytics_page, name="analytics"),
     path("api/analytics/insights/", analytics_generate_insights, name="analytics_generate_insights"),

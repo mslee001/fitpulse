@@ -1140,6 +1140,48 @@ class Integration(models.Model):
         return self.SYNC_ALL_URL_NAMES.get(self.key)
 
 
+class WebhookError(models.Model):
+    """
+    A failed webhook-triggered background sync (currently: Google Health
+    notification processing — see _process_google_health_notification in
+    sync.py). Webhooks respond before processing happens, so a failure here
+    has no other visible trace — the sender already got its 200/204 and
+    won't retry. This table exists purely so a failure is visible somewhere
+    instead of only in server logs. Shown newest-first at
+    /settings/integrations/errors/, linked from the Integrations page.
+
+    Self-pruning: RETENTION_DAYS old rows are deleted both when a new error
+    is recorded and when the errors page is viewed, so this never needs a
+    separate scheduled cleanup job.
+    """
+    RETENTION_DAYS = 14
+
+    source = models.CharField(max_length=32)  # e.g. "google_health"
+    summary = models.CharField(max_length=255)
+    detail = models.TextField(blank=True)  # traceback, if available
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"WebhookError({self.source}, {self.created_at:%Y-%m-%d %H:%M})"
+
+    @classmethod
+    def record(cls, source: str, summary: str, detail: str = "") -> None:
+        """Log a failure and prune anything past the retention window in
+        the same call — the self-cleaning half of this model's contract."""
+        cls.objects.create(source=source, summary=summary, detail=detail)
+        cls.prune()
+
+    @classmethod
+    def prune(cls) -> None:
+        from datetime import timedelta
+        from django.utils import timezone as _tz
+        cutoff = _tz.now() - timedelta(days=cls.RETENTION_DAYS)
+        cls.objects.filter(created_at__lt=cutoff).delete()
+
+
 class Program(models.Model):
     """Durable definition of a plan / collection / split. Created once, reused across runs."""
     KIND_CHOICES = [("plan", "Plan"), ("collection", "Collection"), ("split", "Split")]

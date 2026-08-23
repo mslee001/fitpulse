@@ -1164,9 +1164,11 @@ def settings_page(request):
 
 
 def integrations_settings_page(request):
-    from .models import Integration
+    from .models import Integration, WebhookError
     return render(request, "workouts/integrations_settings.html", {
         "integrations": Integration.objects.all(),
+        "webhook_error_count": WebhookError.objects.count(),
+        "webhook_retention_days": WebhookError.RETENTION_DAYS,
     })
 
 
@@ -1177,6 +1179,15 @@ def integration_toggle(request, key):
     integration.is_enabled = not integration.is_enabled
     integration.save(update_fields=["is_enabled"])
     return render(request, "workouts/partials/integration_row.html", {"integration": integration})
+
+
+def webhook_errors_page(request):
+    from .models import WebhookError
+    WebhookError.prune()
+    return render(request, "workouts/webhook_errors.html", {
+        "errors": WebhookError.objects.all(),
+        "webhook_retention_days": WebhookError.RETENTION_DAYS,
+    })
 
 
 @require_POST

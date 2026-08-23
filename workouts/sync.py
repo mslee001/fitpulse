@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import threading
+import traceback
 from datetime import date, datetime, timedelta, timezone
 
 from django.db import IntegrityError
@@ -22,7 +23,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from . import programs as _programs
-from .models import BodyMeasurement, CachedWorkout, DailyStats, Integration, UserSettings
+from .models import BodyMeasurement, CachedWorkout, DailyStats, Integration, UserSettings, WebhookError
 from .services.garmin_client import GarminClient
 from .services.peloton_client import PelotonClient
 from .services.withings_client import WithingsClient
@@ -1926,7 +1927,10 @@ def _gh_webhook_authorized(request) -> bool:
 def _process_google_health_notification(data_type, date_list):
     """Background-thread body for google_health_webhook — runs after the
     204 response has already been sent, so an exception here can't affect
-    what Google sees on the wire (only logged)."""
+    what Google sees on the wire: the notification is already acknowledged
+    as delivered and Google won't retry it. WebhookError.record() logs the
+    failure to the DB (visible at /settings/integrations/errors/) so it
+    isn't only a line in the server log — see that model's docstring."""
     try:
         if data_type in _GH_EXERCISE_WEBHOOK_TYPES:
             _run_google_health_exercise_sync(date_list[0], date_list[-1])
@@ -1937,6 +1941,11 @@ def _process_google_health_notification(data_type, date_list):
     except Exception:
         logger.exception("Google Health webhook: sync failed for dataType=%s dates=%s-%s",
                           data_type, date_list[0], date_list[-1])
+        WebhookError.record(
+            source="google_health",
+            summary=f"dataType={data_type} dates={date_list[0]}–{date_list[-1]}",
+            detail=traceback.format_exc(),
+        )
 
 
 @csrf_exempt

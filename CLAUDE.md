@@ -226,6 +226,15 @@ Singleton (pk=1). Stores Peloton session cookie in DB.
 ### UserSettings (additional field)
 - `last_daily_sync_at` — `DateTimeField(null=True)`. Stamped by the `sync_daily` management command on full success. Used in the nav sync dropdown and settings page footer.
 
+### WebhookError Model
+Log of failed webhook-triggered background syncs — currently only Google Health notification processing (`_process_google_health_notification` in sync.py), which responds `204` *before* processing, so a failure there has no other visible trace: the sender already got a success response and won't retry.
+
+**Fields:** `source` (e.g. `"google_health"`), `summary`, `detail` (traceback), `created_at`
+
+**Self-pruning:** `RETENTION_DAYS = 14`. `WebhookError.record(source, summary, detail)` creates a row and prunes anything past the window in the same call; `WebhookError.prune()` also runs on every load of the errors page — no separate scheduled cleanup job needed.
+
+**UI:** `/settings/integrations/errors/`, linked from the Integrations page with an error-count badge. Newest first.
+
 ### BodyMeasurement Model
 Raw per-weigh-in records from Withings. Multiple per day is normal. Deduped by `withings_grpid` (Withings assigns one grpid per step-on session).
 
@@ -452,3 +461,4 @@ DJANGO_DEBUG=True
 - **Subscribe Withings webhook**: `venv/bin/python3 manage.py subscribe_withings_webhook`
 - **Run daily sync manually**: `venv/bin/python3 manage.py sync_daily`
 - **Run daily sync only if stale**: `venv/bin/python3 manage.py sync_daily --if-stale 8`
+- **Check/clear webhook errors**: visit `/settings/integrations/errors/`, or in shell: `from workouts.models import WebhookError; WebhookError.objects.all().delete()`

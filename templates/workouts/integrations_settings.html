@@ -23,4 +23,21 @@
     "Sync All" runs a full historical backfill and can be slow — the Sync menu in the nav only offers "Sync New" for regular use.
   </p>
 </div>
+
+<div class="chart-card" style="max-width:640px;margin-top:1rem;">
+  <div class="chart-header">
+    <h3 class="chart-title">WEBHOOK ERRORS</h3>
+    {% if webhook_error_count %}
+    <span class="badge" style="background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);">{{ webhook_error_count }}</span>
+    {% endif %}
+  </div>
+  <p style="font-size:0.85rem;color:var(--text-muted);margin:0.75rem 0 1rem;">
+    {% if webhook_error_count %}
+      {{ webhook_error_count }} failed background sync{{ webhook_error_count|pluralize }} from incoming webhooks in the last {{ webhook_retention_days }} days.
+    {% else %}
+      No webhook processing failures in the last {{ webhook_retention_days }} days.
+    {% endif %}
+  </p>
+  <a href="{% url 'webhook_errors' %}" class="btn btn-sm btn-ghost">View errors</a>
+</div>
 {% endblock %}
