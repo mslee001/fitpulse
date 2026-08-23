@@ -1,8 +1,8 @@
 # FitPulse
 
-A personal fitness dashboard built with Django. Syncs workout data from Peloton and Garmin Connect to a local SQLite cache and surfaces detailed stats, charts, and AI-powered insights that the default apps don't provide.
+A personal fitness dashboard built with Django. Syncs workout and wellness data from Peloton, Garmin Connect, Withings, and Google Health to a local cache and surfaces detailed stats, charts, and AI-powered insights that the default apps don't provide.
 
-> **Personal use only.** This tool uses Peloton's unofficial internal API via session cookie. It is not affiliated with Peloton or Garmin and is intended for a single user running it locally.
+> **Personal use only.** This tool uses Peloton's unofficial internal API via session cookie. It is not affiliated with Peloton, Garmin, Withings, or Google and is intended for a single user running it locally.
 
 ---
 
@@ -16,6 +16,9 @@ A personal fitness dashboard built with Django. Syncs workout data from Peloton 
 - **Day view** — per-day wellness signals (HRV, sleep, body battery, readiness) alongside workouts and an AI day analysis
 - **Analytics** — weekly volume, discipline mix, performance trends, and AI-generated training insights
 - **Garmin wellness** — daily body battery, HRV, sleep score, resting HR, training load, and training readiness synced from Garmin Connect
+- **Google Health** — alternate/supplemental wellness and exercise sync (resting HR, HRV, sleep, steps, floors, calories, respiratory rate, SpO2, Active Zone Minutes, skin temperature, HR zone minutes) via OAuth, plus real-time push-webhook sync in addition to manual sync. When Garmin's own readiness score isn't available, a computed readiness score (Low/Moderate/High) is derived from Google Health's HRV, sleep, and resting HR against your personal baseline, so the readiness ring, calendar, and AI features keep working either way
+- **Integrations page** — enable/disable each data source independently, see auth/connection status and last-synced time, run a full backfill ("Sync All") per source, and reconnect Google Health from the browser when its token expires
+- **Webhook error log** — failed webhook-triggered background syncs are recorded and viewable in the UI (self-pruning after 2 weeks) instead of only living in server logs
 - **Compare** — side-by-side comparison of 2–4 workouts with AI narrative analysis
 - **Body composition** — weight trend chart with rolling averages, body composition stacked chart, and recovery sparklines (HRV, sleep, resting HR, body battery) from Withings scale data
 - **Interventions & Trends** — track health interventions (medications, supplements, habits) with dose history; before/after statistical analysis across 20+ wellness metrics with AI interpretation; save and revisit analyses
@@ -34,6 +37,7 @@ A personal fitness dashboard built with Django. Syncs workout data from Peloton 
 - A Peloton account
 - A Garmin Connect account (optional — needed for running form, wellness data, and Garmin-tracked workouts)
 - A Withings account (optional — needed for body composition tracking)
+- A Google Health API project (optional — alternate/supplemental wellness and exercise data source; also enables the computed readiness score fallback when Garmin isn't connected)
 - An Anthropic API key (optional — needed for AI insights, day analysis, next-workout recommendations, and nutrition parsing)
 
 ---
@@ -104,7 +108,21 @@ venv/bin/python3 manage.py withings_login
 
 Tokens are saved to the app's database and auto-refresh.
 
-**7. Start the server**
+**7. Authenticate with Google Health (first time only, optional)**
+
+If you want Google Health as a wellness/exercise data source:
+
+1. Create a Google Cloud project and enable the Google Health API, then create OAuth 2.0 credentials
+2. Add `GOOGLE_HEALTH_CLIENT_ID`, `GOOGLE_HEALTH_CLIENT_SECRET`, and `GOOGLE_HEALTH_REDIRECT_URI` to `.env`
+3. Run the OAuth flow:
+
+```bash
+venv/bin/python3 manage.py google_health_login
+```
+
+Tokens are saved to the app's database. Refresh tokens expire after 7 days while the Google Cloud project is in "Testing" status — when that happens, reconnect from the browser instead of the CLI: go to **Integrations** (`/settings/integrations/`) and click **Reconnect** next to Google Health.
+
+**8. Start the server**
 
 ```bash
 venv/bin/python3 manage.py runserver
@@ -128,8 +146,9 @@ Then:
 2. Run `venv/bin/python3 manage.py migrate`
 3. Run `venv/bin/python3 manage.py garmin_login` to authenticate Garmin
 4. If using Withings, run `venv/bin/python3 manage.py withings_login` (or `migrate_withings_tokens` if migrating tokens from a previous file-based setup)
-5. Start the server and enter your Peloton credentials via the **Settings** page (`/settings/`)
-6. Use **Sync All** from the nav to pull your full history
+5. If using Google Health, run `venv/bin/python3 manage.py google_health_login`
+6. Start the server and enter your Peloton credentials via the **Settings** page (`/settings/`)
+7. Use **Sync All** for each source from the **Integrations** page (`/settings/integrations/`) to pull your full history
 
 Note: `db.sqlite3` is not in the repo — each machine starts with an empty database and needs to sync data fresh.
 
@@ -173,23 +192,36 @@ To reset the demo database at any time, just re-run `seed_demo` against it (it c
 
 ## Syncing Data
 
-All data is stored in a local SQLite cache. Nothing is fetched in real time for page views — sync first, then browse.
+All data is stored in a local cache. Nothing is fetched in real time for page views — sync first, then browse.
 
-Use the **Sync** dropdown in the nav:
+Each source is independent — no combined "sync everything" button, and syncing them in any order (or combination) is safe. Cross-source duplicates (e.g. the same run recorded by both Peloton and Garmin, or Peloton and Google Health) are automatically reconciled after every Peloton sync, regardless of which order you synced in.
+
+**Nav Sync dropdown** — fast, incremental syncs, safe to run often:
 
 | Option | What it does |
 |---|---|
-| **Sync New** | New Peloton workouts + new Garmin activities + today's Garmin wellness data |
-| **Sync All** | Full backfill of all Peloton + Garmin workouts + last 30 days of wellness |
-| **Garmin Wellness Today** | Today's wellness data only (body battery, HRV, sleep, readiness) |
+| **Peloton Sync New** | New Peloton workouts |
+| **Garmin Sync New** | New Garmin activities |
+| **Garmin Wellness Today** | Today's wellness data (body battery, HRV, sleep, readiness) |
 | **Withings Sync New** | New Withings body composition measurements |
+| **Google Health Sync New** | New Google Health wellness (trailing 7 days) + exercise data |
+
+**Integrations page** (`/settings/integrations/`) — full historical backfills, plus enable/disable per source:
+
+| Option | What it does |
+|---|---|
+| **Peloton Sync All** | Full backfill of all Peloton workouts |
+| **Garmin Sync All** | Full backfill of all Garmin activities |
 | **Withings Sync All** | Full Withings history backfill |
+| **Google Health Sync All** | Full Google Health history backfill (wellness + exercise, ~3 years back) |
+
+Google Health can also push updates automatically via a webhook, in addition to manual syncing.
 
 **Recommended first-time setup:**
-1. Run **Sync All** to pull your full history from both Peloton and Garmin
+1. From the Integrations page, run **Sync All** for each source you've connected
 2. Browse — charts, running form, and wellness data will all be populated
 
-Session cookies expire periodically. When Peloton syncing stops working, grab a fresh `peloton_session_id` from your browser and update it via the **Settings** page (`/settings/`). Garmin tokens auto-refresh.
+Session cookies expire periodically. When Peloton syncing stops working, grab a fresh `peloton_session_id` from your browser and update it via the **Settings** page (`/settings/`). Garmin and Withings tokens auto-refresh. Google Health refresh tokens expire every 7 days while the Google Cloud project is in "Testing" status — reconnect from the Integrations page when that happens.
 
 ---
 
@@ -208,7 +240,7 @@ venv/bin/python3 manage.py backfill_ftp --dry-run  # preview without writing
 
 ## Automated Daily Sync
 
-`sync_daily` is a management command that runs Garmin activities, Garmin wellness, and Peloton sync in sequence:
+`sync_daily` is a management command that runs Garmin activities, Garmin wellness, and Peloton sync in sequence. It does not include Withings or Google Health — Withings has its own push webhook, and Google Health is covered by its own push webhook plus manual sync from the nav/Integrations page.
 
 ```bash
 venv/bin/python3 manage.py sync_daily
@@ -234,8 +266,8 @@ Requires `ANTHROPIC_API_KEY` in `.env`. All AI calls use the Anthropic API direc
 | Feature | Where | Model | Cache |
 |---|---|---|---|
 | Training insights | Analytics page | claude-sonnet-4-6 (Batch API) | 7 days |
-| Day analysis | Day view | claude-haiku-4-5 | 7 days |
-| Next-workout recommendation | Calendar sidebar | claude-haiku-4-5 | 24h / manual refresh |
+| Day analysis | Day view | claude-sonnet-4-6 | 7 days |
+| Next-workout recommendation | Calendar sidebar | claude-sonnet-4-6 | 24h / manual refresh |
 | Body commentary | Body page | claude-haiku-4-5 | 24h / manual refresh |
 | Workout comparison | Compare page | claude-haiku-4-5 | On-demand |
 | Intervention interpretation | Trends page | claude-sonnet-4-6 | Saved with analysis |
@@ -245,7 +277,7 @@ Requires `ANTHROPIC_API_KEY` in `.env`. All AI calls use the Anthropic API direc
 | Pattern insights | Insights page | claude-sonnet-4-6 (Batch API) | 7 days |
 | Weekly review | Weekly Review page | claude-sonnet-4-6 (Batch API) | Per week |
 
-The next-workout recommendation only generates after Garmin wellness has synced for the day. Use the **Get Rec** / **Refresh** button in the calendar sidebar to generate or update it (useful before and after a workout to see how the recommendation changes).
+The next-workout recommendation and day analysis need at least one day's wellness data to work from — either Garmin's or Google Health's. If Garmin's own readiness score isn't available, they fall back to the Google Health-derived computed readiness score automatically. Use the **Get Rec** / **Refresh** button in the calendar sidebar to generate or update the next-workout recommendation (useful before and after a workout to see how it changes).
 
 ---
 
@@ -262,6 +294,7 @@ The next-workout recommendation only generates after Garmin wellness has synced 
 | Peloton data | Unofficial internal API via session cookie |
 | Garmin data | `garminconnect` library |
 | Withings data | Withings OAuth 2.0 API |
+| Google Health data | Google Health API (OAuth 2.0 + push webhooks) |
 
 No npm, no build step, no bundler.
 

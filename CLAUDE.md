@@ -1,6 +1,6 @@
 # CLAUDE.md — FitPulse
 
-A Django app (renamed from "Peloton Dashboard") that pulls workout data from Peloton, Garmin Connect, and Withings and displays it in a personal dashboard.
+A Django app (renamed from "Peloton Dashboard") that pulls workout and wellness data from Peloton, Garmin Connect, Withings, and Google Health, and displays it in a personal dashboard.
 
 ---
 
@@ -19,11 +19,15 @@ workouts/                # Main app
     peloton_client.py    # PelotonClient — all Peloton API calls
     garmin_client.py     # GarminClient — Garmin Connect API calls + parsers
     withings_client.py   # WithingsClient — Withings OAuth2 + body measurement API
+    google_health_client.py  # GoogleHealthClient — OAuth2 + wellness/exercise data API; shared build_google_health_auth_url()/exchange_google_health_code() helpers
+    chat_tools.py         # Tool implementations for the stats chat sidebar
   templatetags/workout_filters.py
   management/commands/
     backfill_ftp.py              # Stamp per-workout FTP from historical values
     garmin_login.py              # One-time interactive Garmin auth
     withings_login.py            # One-time interactive Withings OAuth flow
+    google_health_login.py       # One-time interactive Google Health OAuth flow (CLI alternative to the web Reconnect button)
+    google_health_register_webhook.py  # Create/patch the Google Health push-notification subscriber
     analyze_intervention.py      # Before/after analysis across wellness + body composition
     sync_daily.py                # Automated daily sync (Peloton + Garmin activities + wellness)
     migrate_withings_tokens.py   # One-time migration of tokens from file to DB
@@ -31,6 +35,11 @@ workouts/                # Main app
     subscribe_withings_webhook.py  # Subscribe Withings push webhook
     list_withings_webhooks.py    # List active Withings webhook subscriptions
     revoke_withings_webhook.py   # Revoke a Withings webhook subscription
+    dedupe_garmin_exercise.py    # Manual sweep to reconcile Garmin/Peloton duplicates
+    dedupe_google_health_exercise.py  # Manual sweep to reconcile Google Health/Peloton duplicates
+    seed_demo.py                  # Populate demo data (see README Demo Mode)
+    seed_programs.py              # Seed built-in structured training programs
+    associate_programs.py         # Backfill CachedWorkout → Program associations
 templates/workouts/
   base.html              # Shared layout — nav brand is "FITPULSE"
   dashboard.html         # Overview: total workouts, discipline breakdown
@@ -58,7 +67,11 @@ templates/workouts/
   symptoms.html          # Symptom log: chip-select symptom + severity, recent entries, 30-day summary
   insights.html          # Pattern Insights: Sonnet deep-analysis page with weekly cache + HTMX regenerate
   review.html            # Weekly Review: AI Sonnet review of most recently completed Mon–Sun week; archive of past weeks in collapsible details
+  today.html             # Landing page ("/"): today's wellness grid + Activity section + workouts
   settings.html          # FTP setting + Peloton credentials card (collapsible)
+  integrations_settings.html  # Data Sources: enable/disable + Sync All + auth status per source, Webhook Errors card
+  webhook_errors.html    # Failed webhook-triggered background syncs, newest first, collapsible tracebacks
+  program_*.html         # Structured training program pages (list/detail/run/progression/retrospective) — not yet documented below in Key Architecture
   partials/
     insights.html              # Analytics AI insights partial (HTMX polling target)
     workout_list.html          # Workout list rows partial
@@ -68,6 +81,10 @@ templates/workouts/
     nutrition_suggestions.html       # AI meal suggestion cards with "Log this" + "★ Save" buttons (HTMX)
     nutrition_insights.html          # Nutrition analytics AI insights partial (HTMX)
     pattern_insights.html            # Pattern insights partial (HTMX target for /insights/ page)
+    weekly_review_content.html       # Weekly review body partial (HTMX target for check/regenerate)
+    integration_row.html             # One data-source row on the Integrations page (HTMX target for toggle)
+    chat_message_pair.html, chat_error.html, chat_cleared.html  # Stats chat sidebar partials (HTMX)
+    run_week_rating.html             # Program run-week rating widget partial
 static/css/main.css      # All styles — single flat file, CSS variables
 ```
 
@@ -79,6 +96,7 @@ static/css/main.css      # All styles — single flat file, CSS variables
 - **Peloton**: session cookie (`peloton_session_id`) from browser DevTools. `/auth/login` is dead (403). Stored in `PelotonAuth` DB model (singleton pk=1). Rotate via `/settings/`. `PelotonAuthError` raised on 403 with link to `/settings/`.
 - **Garmin**: `garminconnect` lib from `zpython-garminconnect-master/`. First-time: `venv/bin/python3 manage.py garmin_login`. Tokens saved to `~/.garminconnect/` and auto-refresh. Never attempt password login from a web request.
 - **Withings**: OAuth 2.0. First-time: `venv/bin/python3 manage.py withings_login`. Tokens saved to DB (`WithingsAuth` singleton pk=1). Auto-refreshes 5 min before expiry. Credentials in `.env`: `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET`, `WITHINGS_REDIRECT_URI`.
+- **Google Health**: OAuth 2.0. First-time (CLI): `venv/bin/python3 manage.py google_health_login`. Also reconnectable from the UI at `/settings/integrations/` → "Reconnect" (see Google Health OAuth Reconnect section below) — same underlying flow either way, via shared helpers in `services/google_health_client.py`. Tokens saved to DB (`GoogleHealthAuth` singleton pk=1). Refresh tokens on Google's consent screen expire after 7 days while the app is in "Testing" status, so reconnecting periodically is expected, not a bug. Credentials in `.env`: `GOOGLE_HEALTH_CLIENT_ID`, `GOOGLE_HEALTH_CLIENT_SECRET`, `GOOGLE_HEALTH_REDIRECT_URI` (used by the CLI login command; the web flow builds its redirect URI dynamically from the current request instead).
 - **Python**: venv uses Python 3.14 (Homebrew). Always `venv/bin/python3 manage.py ...`.
 
 ### Local Cache (`CachedWorkout`)
@@ -110,7 +128,7 @@ SQLite-backed. Never query either API in real time for list views — sync first
 - `leaderboard_synced_at` — stamped after every leaderboard detail sync attempt (success or null-result). Used to prevent infinite re-syncing of workouts that Peloton returns null rank for. `raw_data__has_leaderboard_metrics=True` is the reliable sentinel for whether a discipline can have leaderboard data (cycling/running/walking = True; strength/yoga/meditation = False).
 
 ### DailyStats Model
-One row per calendar day. Stores Garmin wellness data synced via `GarminClient.get_wellness_data()`, plus Withings body composition aggregates.
+One row per calendar day. Stores Garmin wellness data synced via `GarminClient.get_wellness_data()`, Google Health wellness data synced via `_run_google_health_wellness_sync()`, plus Withings body composition aggregates.
 
 **Garmin wellness fields:**
 - Body battery: `body_battery_json` (time series), `body_battery_high`, `body_battery_low`, `body_battery_start`, `body_battery_end`, `body_battery_charge`, `body_battery_drain`
@@ -135,6 +153,23 @@ One row per calendar day. Stores Garmin wellness data synced via `GarminClient.g
 - `cal_total`, `protein_g_total`, `carbs_g_total`, `fat_g_total`, `fiber_g_total`
 
 **Sleep score quirk**: Garmin API returns sleep score as `{'value': 82, 'qualifierKey': 'GOOD'}` not a plain int. The `_num()` helper in `get_wellness_data` unwraps both forms.
+
+**Google Health wellness fields** (synced via `_run_google_health_wellness_sync()` in sync.py; several overlap with the Garmin fields above by design — Google Health can populate the same column when Garmin is disabled/unavailable):
+- `wellness_source` — which source last wrote this row's wellness fields (`"garmin"` / `"google_health"`)
+- `google_health_synced_at` — last Google Health wellness sync timestamp. Not the same signal as `synced_at` (Garmin-only) — use `has_wellness_data` to check either.
+- `active_zone_minutes` — Google's Active Zone Minutes metric
+- `skin_temp_c`, `skin_temp_deviation_c` — overnight skin temperature + deviation from personal baseline
+- `hr_zone_light_minutes`, `hr_zone_moderate_minutes`, `hr_zone_vigorous_minutes`, `hr_zone_peak_minutes` — time-in-zone minutes, rendered as the HR Zone bars on Day view/Today
+- `sedentary_minutes`
+- `resting_hr_baseline`, `sleep_baseline_seconds` — trailing 30-day personal averages, inputs to `compute_readiness_proxy()` below (not shown directly in the UI)
+- `wellness_days_synced` — rolling count of recent synced wellness days; gates `compute_readiness_proxy()`'s 7-day minimum
+- `computed_readiness_score`, `computed_readiness_label` — Google-Health-derived readiness fallback, written by `compute_readiness_proxy()`
+
+**Readiness score** (`readiness_score` / `readiness_label` / `readiness_is_computed` / `readiness_color` properties): a single readiness number that works regardless of which wellness source is active. Prefer these properties over the raw `training_readiness_score` field everywhere — templates, AI prompts, and `analysis.py`/`programs.py` aggregations all use them via `Coalesce("training_readiness_score", "computed_readiness_score")`.
+- `readiness_score` — Garmin's real `training_readiness_score` (0–100) when present; otherwise falls back to `computed_readiness_score`. `None` if neither source has a value.
+- `compute_readiness_proxy()` — the fallback algorithm, run by the Google Health wellness sync once `resting_hr_baseline`/`sleep_baseline_seconds`/`hrv_weekly_avg` are current. Compares last-night HRV, sleep duration, and resting HR each against their own trailing personal baseline (not an absolute target) and blends them at weights HRV 50% / sleep 30% / resting HR 20% (higher-than-baseline resting HR scores worse — it's a fatigue/illness signal, so it runs the opposite direction of the HRV/sleep ratios). Any missing input's weight redistributes across the ones present. Requires ≥7 days of recent wellness history (`wellness_days_synced`) before returning anything — returns `(None, None)` otherwise, since a baseline built from a day or two isn't reliable.
+- Label bands differ by source: Garmin's own score uses Low <40 / Moderate 40–69 / High ≥70 for `readiness_color`; the computed proxy uses Low 1–29 / Moderate 30–64 / High 65–100 for both the label and the color, so the color band always matches whichever bands actually produced the label.
+- `readiness_is_computed` — True when the displayed score is the Google Health estimate rather than Garmin's own; templates and AI prompts use this to caption the number as an estimate.
 
 ### Intervention Model
 Tracks health/lifestyle interventions (medications, supplements, protocols, habits).
@@ -223,6 +258,25 @@ Singleton (pk=1). Stores Peloton session cookie in DB.
 
 **Access:** `PelotonAuth.get()` — returns the singleton or None. `PelotonClient` reads from this model; raises `PelotonAuthError` on 403.
 
+### GoogleHealthAuth Model
+Singleton (pk=1). Stores Google Health API OAuth2 tokens in Postgres, same pattern as `WithingsAuth`. Populated by the `google_health_login` command or the web reconnect flow at `/auth/google-health/connect/`.
+
+**Fields:** `access_token`, `refresh_token`, `token_expires_at`, `scopes` (space-separated granted scopes), `connected_at`, `updated_at`
+
+**`connected_at`** is deliberately not `auto_now_add` — it needs to advance every time the user actually reconnects (not just be frozen at row creation), since it drives the "how close to the 7-day refresh-token expiry are we" freshness badge on the Integrations page. Only stamped on a real reconnect (`GoogleHealthClient._save_tokens(mark_reconnected=True)`, called from `exchange_code`) — never on routine background token refreshes.
+
+**Access:** `GoogleHealthAuth.get()` — returns the singleton or None.
+**Property:** `days_since_connected`
+
+### Integration Model
+One row per data source (`peloton` / `garmin` / `withings` / `google_health`). Lets the Integrations page toggle a source on/off and show connection status without touching that source's sync logic.
+
+**Fields:** `key` (choices above), `display_name`, `is_enabled` (bool), `is_authenticated` (bool), `last_synced_at`
+
+**Property:** `sync_all_url_name` — looks up the URL name for that source's full-backfill sync from `SYNC_ALL_URL_NAMES`; used to render the "Sync All" button on the Integrations page (see Sync Endpoints — Sync All buttons no longer live in the nav).
+
+**Enable/disable gating**: sync functions and lazy-sync call sites (e.g. `day_view`'s lazy Garmin wellness sync) check `_integration_enabled(key)` before calling out to a source's API — disabling a source in the UI actually stops calls to it, not just hides its data.
+
 ### UserSettings (additional field)
 - `last_daily_sync_at` — `DateTimeField(null=True)`. Stamped by the `sync_daily` management command on full success. Used in the nav sync dropdown and settings page footer.
 
@@ -257,13 +311,30 @@ directVerticalRatio→vertical_ratio  directGroundContactTime→ground_contact_t
 ```
 `directRunCadence` is strides/min (half steps); use `directDoubleCadence` for steps/min.
 
+### Google Health Sync & Webhook
+Mirrors the Garmin/Withings shape (OAuth2 + sync functions in `sync.py`, client in `services/google_health_client.py`) but splits into two independent halves that both feed `DailyStats`/`CachedWorkout`:
+
+- **Wellness sync** (`_run_google_health_wellness_sync(dates)`): fetches per-day recovery/activity metrics (resting HR, HRV, sleep, steps, floors, calories, respiratory rate, SpO2, AZM, skin temp, HR zone minutes, sedentary minutes) via per-metric `_gh_apply_*()` helpers, `get_or_create`s the `DailyStats` row per date, and (once enough history exists) calls `compute_readiness_proxy()` to populate `computed_readiness_score`/`computed_readiness_label`.
+- **Exercise sync** (`_run_google_health_exercise_sync(start, end)`): fetches workout sessions, parses each via `_parse_google_health_exercise()`, and upserts via `_upsert_google_health_exercise()` (has an `IntegrityError` fallback for concurrent webhook-triggered background threads racing on the same point). Does **not** sync running-form metrics (cadence/stride length/ground contact time) — Google models those as separate standalone data types, not part of the Exercise summary; deferred until there's a live payload to verify the real shape against.
+- `_run_google_health_sync_new()`/`_run_google_health_sync_all()` run both halves together — "new" wellness covers the trailing 7 days, "new" exercise covers since the last Google-Health-sourced workout (or 30 days); "all" covers 3 years back for both.
+- **Dedup with Peloton**: `_reconcile_google_health_duplicates()` — same pattern as `_reconcile_garmin_duplicates()` (see above); for running duplicates, `_augment_peloton_from_google_health()` merges the Google Health workout's data into the matching Peloton row instead of skipping it. Manual sweep: `venv/bin/python3 manage.py dedupe_google_health_exercise --dry-run`.
+
+**Webhook** (`google_health_webhook`, `POST /webhooks/google-health/`, `@csrf_exempt`): notify-then-fetch — the payload identifies affected `dataType` + time range, not values, so the handler just re-runs the scoped sync functions above.
+- **Auth**: `_gh_webhook_authorized()` checks the `Authorization` header against `GOOGLE_HEALTH_WEBHOOK_SECRET` via `hmac.compare_digest` (the secret set as `endpointAuthorization.secret` at subscriber-creation time).
+- **Response codes**: verification-challenge requests get 200/201; unauthorized requests get 401/403; real notifications get 204 **before** processing starts — Google's docs require this to avoid timeouts, and since there's no task queue (no Celery/RQ) in this app, processing is dispatched to a `threading.Thread(daemon=True)` per item after the response is sent. A failure in that background thread has no other visible trace (the sender already got its 204 and won't retry), so `_process_google_health_notification()` logs failures to `WebhookError.record(...)`.
+- **Payload shape** (confirmed live 2026-08-23 against a real captured notification, not from docs — Google's docs example didn't match): top-level JSON array of `{"data": {...}}` items, not a single dict. Each item's interval is `civilIso8601TimeInterval`/`civilDateTimeInterval`, not the `physicalTimeInterval` shown in the webhooks guide's example; `_gh_webhook_interval_dates()` tries all three shapes and never raises. Per-item processing is individually try/excepted so one bad item can't drop the rest of the batch.
+- **`dataType` casing**: subscriber-creation (`google_health_register_webhook.py`'s `SUBSCRIBED_DATA_TYPES`) requires kebab-case (e.g. `"daily-resting-heart-rate"`) — camelCase 400s on 8 of 12 types. `_GH_WELLNESS_WEBHOOK_TYPES` in sync.py includes both casings defensively since only the create-time format is confirmed, not necessarily the casing inside a real notification's `dataType` field.
+- Idempotent by design: Google warns retries can send duplicate UPSERT notifications for the same interval — `DailyStats` is `get_or_create`d by its unique `date`, `CachedWorkout` upserts by `workout_id`.
+
 ### Sync Endpoints
 - Peloton: `Peloton Sync New` (`/api/sync/peloton/new/`), `Peloton Sync All` (`/api/sync/peloton/all/`)
 - Garmin activities: `Garmin Sync New` (`/api/sync/garmin/new/`), `Garmin Sync All` (`/api/sync/garmin/all/`)
 - Garmin wellness: `Garmin Wellness Today` (`/api/sync/garmin/wellness/`), `?date=YYYY-MM-DD`, `?days=N` (max 90)
 - Withings: `Withings Sync New` (`/api/sync/withings/new/`), `Withings Sync All` (`/api/sync/withings/all/`)
 - `POST /api/withings/webhook/` — Withings push webhook. `@csrf_exempt`. Listed in `PUBLIC_PATHS` (no auth required). Called by Withings when body measurements change. Fetches measurements for the notified time window and upserts them. Always returns HTTP 200.
-- All sync types are accessible from the Sync dropdown in the nav, each source fully independent — no combined "sync everything" button. Peloton and Garmin used to be bundled into one action (`sync_new`/`sync_all`, since removed); `_reconcile_garmin_duplicates()`/`_reconcile_google_health_duplicates()` (see Deduplication sections above) are what actually keep them consistent regardless of which order you click them in.
+- Google Health: `Google Health Sync New` (`/api/sync/google-health/new/`), `Google Health Sync All` (`/api/sync/google-health/all/`) — both run wellness + exercise sync together, see above.
+- `POST /webhooks/google-health/` — Google Health push webhook (see above). `@csrf_exempt`. Listed in `PUBLIC_PATHS`.
+- **Nav vs. Integrations page**: the nav Sync dropdown only offers each source's "Sync New" (a fast incremental sync safe to run often). "Sync All" (slow full backfill) for every source lives on `/settings/integrations/` instead, next to that source's enable/disable toggle — not in the nav. Peloton and Garmin used to be bundled into one nav action (`sync_new`/`sync_all`, since removed and split per-source); `_reconcile_garmin_duplicates()`/`_reconcile_google_health_duplicates()` (see Deduplication sections above) are what actually keep sources consistent regardless of which order or combination you sync in — no source depends on another running first.
 
 ### Detail Page Templates
 All five discipline-specific detail pages extend `detail_base.html`, which owns:
@@ -274,15 +345,21 @@ All five discipline-specific detail pages extend `detail_base.html`, which owns:
 Child templates override these blocks: `discipline_tag`, `page_title`, `pr_sub`, `detail_main`, `history_item_stats`, `recent_section`, `detail_scripts`.
 
 ### Calendar & Day View
-- **Calendar** (`/calendar/`, `/calendar/<year>/<month>/`): monthly grid, discipline dots per day, training readiness score overlaid on each cell, next-workout AI recommendation in sidebar.
-- **Day view** (`/day/YYYY-MM-DD/`): lazy-syncs Garmin wellness on first load if missing, shows all workouts for the day with correct HR/effort, plus AI day analysis.
+- **Calendar** (`/calendar/`, `/calendar/<year>/<month>/`): monthly grid, discipline dots per day, `readiness_score`/`readiness_color` overlaid on each cell, next-workout AI recommendation in sidebar.
+- **Day view** (`/day/YYYY-MM-DD/`): lazy-syncs Garmin wellness on first load if missing (only when `garmin` integration is enabled — see `_integration_enabled` gating under the Integration model above), shows all workouts for the day with correct HR/effort, Recovery Signals card (HRV, sleep, resting HR, respiration, SpO2, skin temp, VO2 max), Activity card (steps, floors, active/total calories, intensity minutes, AZM, sedentary time, HR zone bars), plus AI day analysis.
+- **Today** (`/`, `today_page`): landing page — today's wellness grid (incl. Steps) + compact Activity section + today's workouts.
+
+### Integrations Page
+- **Settings** (`/settings/integrations/`, `integrations_settings_page`): one row per `Integration` (Peloton/Garmin/Withings/Google Health) — enable/disable toggle (HTMX, swaps `partials/integration_row.html`), auth status, last-synced timestamp, "Sync All" button (via `Integration.sync_all_url_name`), and for Google Health specifically a "Reconnect" link + freshness badge (`GoogleHealthAuth.days_since_connected` vs. the 7-day refresh-token expiry). Also shows a Webhook Errors card with an error-count badge, laid out side-by-side with the Data Sources card on wide viewports (`.integrations-row` CSS grid, `repeat(auto-fit, minmax(420px,1fr))`, centered up to `max-width:1400px`).
+- **Webhook Errors** (`/settings/integrations/errors/`, `webhook_errors_page`): newest-first list of `WebhookError` rows with collapsible `<details>` tracebacks; prunes rows past `WebhookError.RETENTION_DAYS` on every load.
+- **Google Health OAuth Reconnect** (`google_health_oauth_connect` / `google_health_oauth_callback`, `/auth/google-health/connect/` → Google consent screen → `/auth/google-health/callback/`): plain full-page redirects (not HTMX — OAuth needs a genuine browser navigation). The connect view builds the redirect URI dynamically from the current request (works on both `localhost` and the deployed domain without env-specific config), stashes a random `state` value in the session with an explicit `request.session.save()` (don't rely solely on `SESSION_SAVE_EVERY_REQUEST` before an external-domain redirect), and the callback validates the returned `state` matches (CSRF protection) before exchanging the code via `GoogleHealthClient`/`exchange_google_health_code()`. Always redirects back to `/settings/integrations/` with a Django `messages` success/error, even on failure — never renders an error page directly, since the browser lands on this exact URL straight from Google.
 
 ### AI (Direct HTTP, not anthropic package)
 All Anthropic calls live in `workouts/ai.py`. They use `requests.post` to `https://api.anthropic.com/v1/messages` with `_anthropic_headers(os.environ.get("ANTHROPIC_API_KEY", ""))`. The `anthropic` Python package is **not installed**.
 
 - **Analytics insights**: Batch API (`/api/analytics/insights/`). Polls via `/api/analytics/check-insights/` (HTMX). Long-form multi-section analysis. Cached in `UserSettings.ai_insights`.
-- **Day analysis** (`_get_or_generate_day_analysis`): Claude Haiku, synchronous, cached 7 days in `DailyStats.ai_day_analysis`. Structured output: `HEADLINE:` + bullet points.
-- **Next workout rec** (`_get_or_generate_next_workout`): Claude Haiku, synchronous, cached 24h in `DailyStats.ai_next_workout`. Force-refresh via `POST /api/next-workout/refresh/`. Structured output: `INTENSITY:` / `ACTIVITY:` / `REASON:`. Prompt includes: workout titles (not just discipline), muscle groups worked (high/moderate buckets from perf graph), exercise names for strength sessions, and explicit cardio vs. strength guidance rules. Detects if user already trained today and frames as "tomorrow" if so.
+- **Day analysis** (`_get_or_generate_day_analysis`): Claude Sonnet (upgraded from Haiku), synchronous, cached 7 days in `DailyStats.ai_day_analysis`. Structured output: `HEADLINE:` + bullet points. Uses `readiness_score`/`readiness_is_computed` (not the raw `training_readiness_score` field) so the prompt still gets a readiness signal on Google-Health-only days.
+- **Next workout rec** (`_get_or_generate_next_workout`): Claude Sonnet (upgraded from Haiku), synchronous, cached 24h in `DailyStats.ai_next_workout`. Force-refresh via `POST /api/next-workout/refresh/`. Structured output: `INTENSITY:` / `ACTIVITY:` / `REASON:`. Prompt includes: workout titles (not just discipline), muscle groups worked (high/moderate buckets from perf graph), exercise names for strength sessions, explicit cardio vs. strength guidance rules, and an explicit anti-hallucination instruction (added after the model once referenced a specific day the user hadn't actually trained on — ground every claim in the provided workout list, don't infer/invent). Detects if user already trained today and frames as "tomorrow" if so. Also uses `readiness_score`/`readiness_is_computed` like day analysis.
 - **Body commentary** (`_get_or_generate_body_commentary`): Claude Haiku, synchronous, cached 24h in `UserSettings.ai_body_commentary`. Interprets recent body composition and recovery trends. Refreshed via `POST /api/body/commentary/refresh/`.
 - **Intervention interpretation** (`_generate_intervention_interpretation`): Claude Sonnet, called on-demand from Trends page run-analysis flow. Returns free-form text interpreting the before/after metrics in context of the intervention and its dose history.
 - **Compare analysis** (`compare_analysis`): Claude Haiku, on-demand HTMX endpoint (`POST /api/compare/analysis/`). Generates a short narrative comparing 2–4 workouts side-by-side using extracted stats.
@@ -396,8 +473,16 @@ WITHINGS_CLIENT_ID=...
 WITHINGS_CLIENT_SECRET=...
 WITHINGS_REDIRECT_URI=http://localhost:8000/auth/withings/callback/
 WITHINGS_CALLBACK_URL=https://fitpulse-jp2p.onrender.com/api/withings/webhook/  # used by subscribe_withings_webhook
+GOOGLE_HEALTH_CLIENT_ID=...
+GOOGLE_HEALTH_CLIENT_SECRET=...
+GOOGLE_HEALTH_REDIRECT_URI=http://localhost:8000/auth/google-health/callback/  # used by the CLI google_health_login command; the web reconnect flow builds this dynamically instead
+GOOGLE_HEALTH_WEBHOOK_SECRET=...            # shared secret Google echoes in the webhook's Authorization header
+GOOGLE_HEALTH_PROJECT_NUMBER=...            # used by google_health_register_webhook
+GOOGLE_HEALTH_ADMIN_ACCESS_TOKEN=...        # service-account token, used by google_health_register_webhook
 DJANGO_DEBUG=True
 ```
+
+Must be set on Render separately from local `.env` — a missing `GOOGLE_HEALTH_CLIENT_ID`/`SECRET` in production surfaces as token-refresh failures ("Could not determine client ID from request") only once real webhook traffic actually reaches the sync code, not at deploy time.
 
 ---
 
@@ -462,3 +547,9 @@ DJANGO_DEBUG=True
 - **Run daily sync manually**: `venv/bin/python3 manage.py sync_daily`
 - **Run daily sync only if stale**: `venv/bin/python3 manage.py sync_daily --if-stale 8`
 - **Check/clear webhook errors**: visit `/settings/integrations/errors/`, or in shell: `from workouts.models import WebhookError; WebhookError.objects.all().delete()`
+- **First-time Google Health (CLI)**: `venv/bin/python3 manage.py google_health_login`
+- **Reconnect Google Health (web)**: `/settings/integrations/` → "Reconnect" next to Google Health. Needed roughly every 7 days while the Google Cloud project is in "Testing" status (refresh tokens expire).
+- **Register/update the Google Health webhook subscriber**: `venv/bin/python3 manage.py google_health_register_webhook`
+- **Enable/disable a data source**: `/settings/integrations/` → toggle. Disabling stops sync calls to that source entirely (not just hides its data) — see `_integration_enabled` gating.
+- **Run Google Health sync (shell)**: `from workouts.sync import _run_google_health_sync_new; _run_google_health_sync_new()`
+- **Backfill computed readiness for existing days**: re-run the Google Health wellness sync over the range — `compute_readiness_proxy()` only writes `computed_readiness_score`/`computed_readiness_label` as a side effect of `_run_google_health_wellness_sync()`, there's no standalone backfill command.
