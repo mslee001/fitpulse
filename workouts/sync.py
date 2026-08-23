@@ -1886,18 +1886,29 @@ def _run_google_health_sync_all() -> dict:
 # subscribe to (weight, nutrition-log, hydration-log, etc.) are irrelevant
 # here since a notification for them should never arrive.
 #
-# FIXED 2026-08-23: these were kebab-case ("daily-resting-heart-rate"), which
-# would never have matched a real notification's dataType field and silently
-# dropped every multi-word wellness notification into the "not handled"
-# branch. Confirmed camelCase live via WebFetch against
-# developers.google.com/health/release-notes, which explicitly lists these
-# exact strings under "webhook notification data types" (e.g.
-# "dailyRestingHeartRate", "activeZoneMinutes") — same casing
-# google_health_register_webhook.py's SUBSCRIBED_DATA_TYPES already uses.
+# CORRECTED 2026-08-23, live: kebab-case is right, not camelCase. The prior
+# fix (same day) went camelCase off the release notes' phrasing — reasonable
+# at the time, but wrong. Confirmed instead by directly bisecting real
+# subscribers.create calls: every kebab-case data type from the webhooks
+# guide (daily-resting-heart-rate, heart-rate-variability, etc.) validates
+# and was actually registered; the equivalent camelCase strings all got
+# 400 INVALID_ARGUMENT. See google_health_register_webhook.py's
+# SUBSCRIBED_DATA_TYPES, now updated to match — that's what's actually
+# registered against the live subscriber as of this fix.
+#
+# This only directly confirms the CREATE-time dataTypes format, not the
+# dataType field's casing inside a real notification payload — no live
+# notification has arrived yet to check that independently. Both casings
+# are included below so dispatch works regardless of which one Google
+# actually sends; narrow this once real traffic confirms one or the other.
 _GH_WELLNESS_WEBHOOK_TYPES = {
+    "daily-resting-heart-rate", "heart-rate-variability", "daily-heart-rate-variability",
+    "run-vo2-max", "daily-respiratory-rate", "respiratory-rate-sleep-summary",
+    "daily-oxygen-saturation", "active-zone-minutes",
     "dailyRestingHeartRate", "heartRateVariability", "dailyHeartRateVariability",
     "runVo2Max", "dailyRespiratoryRate", "respiratoryRateSleepSummary",
-    "dailyOxygenSaturation", "sleep", "steps", "floors", "activeZoneMinutes",
+    "dailyOxygenSaturation", "activeZoneMinutes",
+    "sleep", "steps", "floors",
 }
 _GH_EXERCISE_WEBHOOK_TYPES = {"exercise"}
 
