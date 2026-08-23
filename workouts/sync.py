@@ -1203,6 +1203,9 @@ def _gh_sync_height():
     logger.info("Auto-filled NutritionProfile.height_cm=%.1f from Google Health", profile.height_cm)
 
 
+_gh_wellness_sync_lock = threading.Lock()
+
+
 def _run_google_health_wellness_sync(dates: list) -> dict:
     """
     Sync Google Health wellness data into DailyStats for the given dates.
@@ -1212,15 +1215,43 @@ def _run_google_health_wellness_sync(dates: list) -> dict:
     supply (see the mapping table in workouts/services/google_health_client.py's
     per-type methods) — Garmin-exclusive fields (body battery, stress,
     training load/readiness, fitness age, daily goals) are never touched.
-    """
-    from collections import defaultdict
-    from .services.google_health_client import GoogleHealthClient, GoogleHealthReauthRequired
-    from .models import Integration
 
+    Guarded by _gh_wellness_sync_lock (non-blocking) so overlapping callers
+    — a webhook-triggered background thread racing another one, or a
+    webhook racing a manually-triggered "Sync New"/"Sync All" — skip
+    instead of piling up concurrent full 17-endpoint fetches against
+    Google's API. 2026-08-23 incident: a single webhook batch with several
+    changed wellness metrics spawned one thread per metric (see
+    google_health_webhook), each redundantly re-running this entire
+    function concurrently — flooded Google with duplicate calls (429s) and
+    the unbounded concurrent threads spiked memory enough to trigger a
+    Render alert. A skipped run is harmless: the next webhook or the
+    regular polling sync covers the same dates shortly after.
+    """
     if not dates:
         return {"done": True, "synced": 0, "errors": 0}
     if not _integration_enabled("google_health"):
         return {**_integration_disabled_result("google_health"), "synced": 0, "errors": 0}
+
+    if not _gh_wellness_sync_lock.acquire(blocking=False):
+        logger.info("Google Health wellness sync: already in progress elsewhere, skipping this call")
+        return {"done": True, "skipped": "already_in_progress", "synced": 0, "errors": 0}
+
+    try:
+        return _run_google_health_wellness_sync_locked(dates)
+    finally:
+        _gh_wellness_sync_lock.release()
+
+
+def _run_google_health_wellness_sync_locked(dates: list) -> dict:
+    """The actual sync body, always called with _gh_wellness_sync_lock held —
+    split out so the wrapper's try/finally guarantees the lock releases on
+    every exit path (normal return, the early returns below, or any
+    unexpected exception) without needing to duplicate release calls at
+    each one."""
+    from collections import defaultdict
+    from .services.google_health_client import GoogleHealthClient, GoogleHealthReauthRequired
+    from .models import Integration
 
     try:
         client = GoogleHealthClient()
@@ -2242,26 +2273,33 @@ def _gh_webhook_interval_dates(interval: dict) -> set:
     return found
 
 
-def _process_google_health_notification(data_type, date_list):
+def _process_google_health_notification(kind, date_list, data_types=()):
     """Background-thread body for google_health_webhook — runs after the
     204 response has already been sent, so an exception here can't affect
     what Google sees on the wire: the notification is already acknowledged
     as delivered and Google won't retry it. WebhookError.record() logs the
     failure to the DB (visible at /settings/integrations/errors/) so it
-    isn't only a line in the server log — see that model's docstring."""
+    isn't only a line in the server log — see that model's docstring.
+
+    kind is "wellness" or "exercise" — already resolved by the caller,
+    which coalesces every item of that kind in one webhook delivery into a
+    single call here (see google_health_webhook). data_types is the
+    originating dataType string(s), kept only for logging/WebhookError
+    context since this function no longer branches on it."""
+    label = ",".join(sorted(data_types)) if data_types else kind
     try:
-        if data_type in _GH_EXERCISE_WEBHOOK_TYPES:
+        if kind == "exercise":
             _run_google_health_exercise_sync(date_list[0], date_list[-1])
-        elif data_type in _GH_WELLNESS_WEBHOOK_TYPES:
+        elif kind == "wellness":
             _run_google_health_wellness_sync(date_list)
         else:
-            logger.info("Google Health webhook: dataType=%s not handled by any sync path, ignoring", data_type)
+            logger.info("Google Health webhook: kind=%s not handled by any sync path, ignoring", kind)
     except Exception:
-        logger.exception("Google Health webhook: sync failed for dataType=%s dates=%s-%s",
-                          data_type, date_list[0], date_list[-1])
+        logger.exception("Google Health webhook: sync failed for kind=%s dataTypes=%s dates=%s-%s",
+                          kind, label, date_list[0], date_list[-1])
         WebhookError.record(
             source="google_health",
-            summary=f"dataType={data_type} dates={date_list[0]}–{date_list[-1]}",
+            summary=f"kind={kind} dataTypes={label} dates={date_list[0]}–{date_list[-1]}",
             detail=traceback.format_exc(),
         )
 
@@ -2332,6 +2370,19 @@ def google_health_webhook(request):
             logger.warning("Google Health webhook: missing/incorrect Authorization header, rejecting")
             return HttpResponse(status=401)
 
+        # Coalesce every item in this delivery by kind (wellness/exercise)
+        # instead of spawning one thread per item. _run_google_health_wellness_sync
+        # always fetches all 17 wellness endpoints regardless of which single
+        # dataType triggered it, so a batch where several wellness metrics
+        # changed at once used to spawn that many redundant concurrent
+        # threads, each re-running the full fetch — flooding Google with
+        # duplicate calls (429s) and piling up unbounded concurrent threads.
+        # 2026-08-23 incident: exactly this pattern spiked memory enough to
+        # trigger a Render alert. One thread per kind, covering the union of
+        # dates, fixes both.
+        wellness_dates, wellness_types = set(), set()
+        exercise_dates, exercise_types = set(), set()
+
         for item in items:
             try:
                 data = item.get("data", {}) if isinstance(item, dict) else {}
@@ -2347,15 +2398,17 @@ def google_health_webhook(request):
                     logger.warning("Google Health webhook: no usable interval for dataType=%s, item=%r", data_type, item)
                     continue
 
-                date_list = sorted(dates)
                 logger.info("Google Health webhook: dataType=%s operation=%s dates=%s-%s",
-                            data_type, operation, date_list[0], date_list[-1])
+                            data_type, operation, min(dates), max(dates))
 
-                threading.Thread(
-                    target=_process_google_health_notification,
-                    args=(data_type, date_list),
-                    daemon=True,
-                ).start()
+                if data_type in _GH_EXERCISE_WEBHOOK_TYPES:
+                    exercise_dates |= dates
+                    exercise_types.add(data_type)
+                elif data_type in _GH_WELLNESS_WEBHOOK_TYPES:
+                    wellness_dates |= dates
+                    wellness_types.add(data_type)
+                else:
+                    logger.info("Google Health webhook: dataType=%s not handled by any sync path, ignoring", data_type)
             except Exception:
                 logger.exception("Google Health webhook: failed to process notification item=%r", item)
                 WebhookError.record(
@@ -2364,6 +2417,21 @@ def google_health_webhook(request):
                     detail=f"item={item!r}\n\n{traceback.format_exc()}",
                 )
                 # Keep going — the rest of the batch may still be processable.
+
+        if wellness_dates:
+            threading.Thread(
+                target=_process_google_health_notification,
+                args=("wellness", sorted(wellness_dates)),
+                kwargs={"data_types": wellness_types},
+                daemon=True,
+            ).start()
+        if exercise_dates:
+            threading.Thread(
+                target=_process_google_health_notification,
+                args=("exercise", sorted(exercise_dates)),
+                kwargs={"data_types": exercise_types},
+                daemon=True,
+            ).start()
 
         return HttpResponse(status=204)
     except Exception:
