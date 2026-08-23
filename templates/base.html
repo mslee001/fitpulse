@@ -62,7 +62,6 @@
           <a class="nav-dropdown-item" href="{% url 'program_list' %}">Programs</a>
           <div class="nav-dropdown-divider"></div>
           <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'settings' %}">Settings</a>
-          <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'integrations_settings' %}">Integrations</a>
         </div>
       </div>
 
@@ -133,20 +132,12 @@
           <strong>Peloton Sync New</strong>
           <span>New Peloton workouts</span>
         </a>
-        <a class="sync-option sync-option--danger" href="{% url 'sync_all_workouts' %}" target="_blank">
-          <strong>Peloton Sync All</strong>
-          <span>Full backfill — slow</span>
-        </a>
         {% endif %}
         {% if 'garmin' in enabled %}
         <div class="sync-divider"></div>
         <a class="sync-option" href="{% url 'sync_garmin_new' %}" target="_blank">
           <strong>Garmin Sync New</strong>
           <span>New Garmin activities</span>
-        </a>
-        <a class="sync-option sync-option--danger" href="{% url 'sync_garmin_all' %}" target="_blank">
-          <strong>Garmin Sync All</strong>
-          <span>Full backfill — slow</span>
         </a>
         <a class="sync-option" href="{% url 'sync_garmin_wellness' %}" target="_blank">
           <strong>Garmin Wellness Today</strong>
@@ -159,10 +150,6 @@
           <strong>Withings Sync New</strong>
           <span>Sync new Withings body weight data</span>
         </a>
-        <a class="sync-option sync-option--danger" href="{% url 'sync_withings_all' %}" target="_blank">
-          <strong>Withings Sync All</strong>
-          <span>Full backfill — slow</span>
-        </a>
         {% endif %}
         {% if 'google_health' in enabled %}
         <div class="sync-divider"></div>
@@ -170,11 +157,12 @@
           <strong>Google Health Sync New</strong>
           <span>Sync new wellness &amp; exercise data</span>
         </a>
-        <a class="sync-option sync-option--danger" href="{% url 'sync_google_health_all' %}" target="_blank">
-          <strong>Google Health Sync All</strong>
-          <span>Full backfill — slow</span>
-        </a>
         {% endif %}
+        <div class="sync-divider"></div>
+        <a class="sync-option" href="{% url 'integrations_settings' %}">
+          <strong>Integrations</strong>
+          <span>Manage data sources, run full backfills</span>
+        </a>
       </div>
     </div>
   </nav>

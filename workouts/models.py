@@ -1119,11 +1119,25 @@ class Integration(models.Model):
     is_authenticated = models.BooleanField(default=False)
     last_synced_at = models.DateTimeField(null=True, blank=True)
 
+    SYNC_ALL_URL_NAMES = {
+        "peloton": "sync_all_workouts",
+        "garmin": "sync_garmin_all",
+        "withings": "sync_withings_all",
+        "google_health": "sync_google_health_all",
+    }
+
     class Meta:
         ordering = ["key"]
 
     def __str__(self):
         return f"Integration({self.key}, enabled={self.is_enabled})"
+
+    @property
+    def sync_all_url_name(self):
+        """URL name for this source's full-backfill sync — used on the
+        Integrations page, which is where 'Sync All' lives now (it's a slow
+        maintenance action, not something to fire from the nav regularly)."""
+        return self.SYNC_ALL_URL_NAMES.get(self.key)
 
 
 class Program(models.Model):

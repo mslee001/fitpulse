@@ -13,11 +13,19 @@
     </div>
   </div>
 
-  <form hx-post="{% url 'integration_toggle' integration.key %}"
-        hx-target="#integration-row-{{ integration.key }}" hx-swap="outerHTML">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-sm {% if integration.is_enabled %}btn-accent{% else %}btn-ghost{% endif %}">
-      {% if integration.is_enabled %}Enabled{% else %}Disabled{% endif %}
-    </button>
-  </form>
+  <div style="display:flex;align-items:center;gap:0.75rem">
+    {% if integration.is_enabled and integration.sync_all_url_name %}
+    <a href="{% url integration.sync_all_url_name %}" target="_blank"
+       class="btn btn-sm btn-ghost" title="Full backfill — slow">
+      Sync All
+    </a>
+    {% endif %}
+    <form hx-post="{% url 'integration_toggle' integration.key %}"
+          hx-target="#integration-row-{{ integration.key }}" hx-swap="outerHTML">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm {% if integration.is_enabled %}btn-accent{% else %}btn-ghost{% endif %}">
+        {% if integration.is_enabled %}Enabled{% else %}Disabled{% endif %}
+      </button>
+    </form>
+  </div>
 </div>

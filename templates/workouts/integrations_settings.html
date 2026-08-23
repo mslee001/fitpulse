@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block title %}Integrations — FitPulse{% endblock %}
-{% block nav_training %}active{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -19,6 +18,9 @@
 
   <p style="font-size:0.75rem;color:var(--text-dim);margin:1rem 0 0">
     Disabling an integration only controls whether it appears in the UI and whether its sync functions run — it does not revoke tokens or stop external scheduled jobs (e.g. Garmin's local sync).
+  </p>
+  <p style="font-size:0.75rem;color:var(--text-dim);margin:0.5rem 0 0">
+    "Sync All" runs a full historical backfill and can be slow — the Sync menu in the nav only offers "Sync New" for regular use.
   </p>
 </div>
 {% endblock %}
