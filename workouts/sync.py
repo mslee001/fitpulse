@@ -431,6 +431,16 @@ def _augment_peloton_run(parsed: dict, garmin_activity_id: int, client) -> None:
 _GARMIN_FORM_FIELDS = ["run_cadence_avg", "stride_length_avg", "vertical_oscillation_avg",
                        "vertical_ratio_avg", "ground_contact_time_avg"]
 
+# Fields from _parse_google_health_exercise() that map 1:1 onto an identically
+# named CachedWorkout attribute, so "fill if Peloton's copy is missing it" can
+# be one loop instead of a repeated if-block per field. heart_rate_avg is
+# handled separately in _augment_peloton_from_google_health because the
+# missing-ness check has to go through the heart_rate_avg_best property, not
+# the raw field, to match how the rest of the app reads HR.
+_GOOGLE_HEALTH_FILLABLE_FIELDS = [
+    "calories", "distance_miles", "avg_pace_seconds", "avg_speed_mph", "elevation_gain",
+] + _GARMIN_FORM_FIELDS
+
 
 def _reconcile_garmin_duplicates(dry_run=False) -> dict:
     """
@@ -470,7 +480,7 @@ def _reconcile_garmin_duplicates(dry_run=False) -> dict:
 
     matches = []
     for gw in garmin_workouts:
-        match = _find_peloton_match(gw.created_at, peloton_index)
+        match = _find_workout_match(gw.created_at, peloton_index)
         if match is not None:
             matches.append((gw, match))
 
@@ -800,12 +810,14 @@ def _run_garmin_sync_new():
             if stop or len(activities) < limit:
                 break
             start += limit
+        gh_reconciled = _reconcile_garmin_google_health_duplicates()
         Integration.objects.filter(key="garmin").update(last_synced_at=tz.now())
         return {
             "done": True,
             "created": total_created,
             "updated": total_updated,
             "skipped_peloton_duplicates": total_skipped,
+            "google_health_merged": gh_reconciled["deleted"],
         }
     except Exception as e:
         return {"error": str(e), "created": total_created, "updated": total_updated}
@@ -839,12 +851,14 @@ def _run_garmin_sync_all():
             if len(activities) < limit:
                 break
             start += limit
+        gh_reconciled = _reconcile_garmin_google_health_duplicates()
         Integration.objects.filter(key="garmin").update(last_synced_at=tz.now())
         return {
             "done": True,
             "created": total_created,
             "updated": total_updated,
             "skipped_peloton_duplicates": total_skipped,
+            "google_health_merged": gh_reconciled["deleted"],
         }
     except Exception as e:
         return {"error": str(e), "created": total_created, "updated": total_updated}
@@ -1472,10 +1486,54 @@ def _is_peloton_sourced(data_source: dict, display_name: str = "") -> bool:
     return by_client_id
 
 
+def _gh_parse_duration_str_seconds(s) -> float | None:
+    """Parse a protobuf-style Duration string (e.g. '0.212s') to float
+    seconds. Distinct from _gh_duration_seconds (which diffs two ISO
+    timestamps) — this parses a single pre-formatted duration value.
+    Returns None on anything unparseable rather than raising, since these
+    values come from a third-party payload."""
+    if not s:
+        return None
+    try:
+        return float(str(s).rstrip("sS"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _gh_duration_str_to_int_seconds(s) -> int | None:
+    """Like _gh_parse_duration_str_seconds but rounds to a whole second —
+    for HR zone durations, where sub-second precision doesn't matter and an
+    IntegerField is the natural storage type."""
+    seconds = _gh_parse_duration_str_seconds(s)
+    return round(seconds) if seconds is not None else None
+
+
+def _gh_parse_float_str(v) -> float | None:
+    """Parse a numeric value that Google Health's API may send as a JSON
+    string rather than a number (its usual encoding for values that could
+    exceed safe JSON-number precision). Returns None on anything
+    unparseable."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _parse_google_health_exercise(point: dict) -> dict | None:
     """Extract the fields both _upsert_google_health_exercise and
     _augment_peloton_from_google_health need from one exercise data point.
-    Returns None if the point is missing required fields (id, start time)."""
+    Returns None if the point is missing required fields (id, start time).
+
+    metricsSummary.mobilityMetrics (confirmed live 2026-08-22 against a real
+    response — running-form data IS available from Google Health after all,
+    just as a session-level average rather than Garmin's every-5-second time
+    series, so no performance_graph_json overlay/chart toggle is possible
+    from this source, only the flat RUNNING FORM card values). Values arrive
+    in millimeters/protobuf-Duration-string form and are converted to match
+    the units _augment_peloton_run (Garmin path) already uses: cadence in
+    steps/min, stride/VO in cm, VR in %, ground contact time in ms."""
     from .services.google_health_client import GOOGLE_HEALTH_EXERCISE_TYPE_TO_DISCIPLINE
 
     ex = point.get("exercise", {})
@@ -1509,9 +1567,53 @@ def _parse_google_health_exercise(point: dict) -> dict | None:
     duration_seconds = int(active_duration_str.rstrip("s")) if active_duration_str.rstrip("s").isdigit() else \
         _gh_duration_seconds(start_time, interval.get("endTime", start_time))
 
+    # Prefer the API's own per-meter pace (sensor/GPS-derived, so more
+    # precise than deriving it from total duration/distance) when present;
+    # fall back to the duration/distance calc otherwise.
     avg_pace_seconds = None
-    if discipline in ("running", "walking") and distance_miles:
-        avg_pace_seconds = round(duration_seconds / distance_miles)
+    pace_per_meter = metrics.get("averagePaceSecondsPerMeter")
+    if discipline in ("running", "walking"):
+        if pace_per_meter:
+            avg_pace_seconds = round(pace_per_meter * 1609.344)
+        elif distance_miles:
+            avg_pace_seconds = round(duration_seconds / distance_miles)
+
+    avg_speed_mph = None
+    speed_mmps = metrics.get("averageSpeedMillimetersPerSecond")
+    if speed_mmps:
+        avg_speed_mph = round((speed_mmps / 1000) * 2.23694, 2)
+
+    elevation_gain = None
+    elevation_mm = metrics.get("elevationGainMillimeters")
+    if elevation_mm:
+        elevation_gain = round(elevation_mm / 304.8, 1)
+
+    mobility = metrics.get("mobilityMetrics", {})
+    gct_seconds = _gh_parse_duration_str_seconds(mobility.get("avgGroundContactTimeDuration"))
+    ground_contact_time_avg = round(gct_seconds * 1000, 1) if gct_seconds is not None else None
+
+    cadence = mobility.get("avgCadenceStepsPerMinute")
+    run_cadence_avg = round(cadence, 1) if cadence is not None else None
+
+    stride_mm = _gh_parse_float_str(mobility.get("avgStrideLengthMillimeters"))
+    stride_length_avg = round(stride_mm / 10, 1) if stride_mm is not None else None
+
+    vo_mm = _gh_parse_float_str(mobility.get("avgVerticalOscillationMillimeters"))
+    vertical_oscillation_avg = round(vo_mm / 10, 2) if vo_mm is not None else None
+
+    vertical_ratio = mobility.get("avgVerticalRatio")
+    vertical_ratio_avg = round(vertical_ratio, 2) if vertical_ratio is not None else None
+
+    # Google's own 4-zone HR-time breakdown for the session — a coarser,
+    # differently-defined model than the Peloton/Garmin 5-zone breakdown
+    # computed client-side from a real HR time series, so this is only ever
+    # used standalone (see _GOOGLE_HEALTH_FILLABLE_FIELDS below), not merged
+    # onto a Peloton/Garmin row that already has its own zone chart.
+    hr_zones = metrics.get("heartRateZoneDurations", {})
+    hr_zone_light_seconds = _gh_duration_str_to_int_seconds(hr_zones.get("lightTime"))
+    hr_zone_moderate_seconds = _gh_duration_str_to_int_seconds(hr_zones.get("moderateTime"))
+    hr_zone_vigorous_seconds = _gh_duration_str_to_int_seconds(hr_zones.get("vigorousTime"))
+    hr_zone_peak_seconds = _gh_duration_str_to_int_seconds(hr_zones.get("peakTime"))
 
     return dict(
         point_id=point_id,
@@ -1522,6 +1624,17 @@ def _parse_google_health_exercise(point: dict) -> dict | None:
         distance_miles=distance_miles,
         heart_rate_avg=heart_rate_avg,
         avg_pace_seconds=avg_pace_seconds,
+        avg_speed_mph=avg_speed_mph,
+        elevation_gain=elevation_gain,
+        run_cadence_avg=run_cadence_avg,
+        stride_length_avg=stride_length_avg,
+        vertical_oscillation_avg=vertical_oscillation_avg,
+        vertical_ratio_avg=vertical_ratio_avg,
+        ground_contact_time_avg=ground_contact_time_avg,
+        hr_zone_light_seconds=hr_zone_light_seconds,
+        hr_zone_moderate_seconds=hr_zone_moderate_seconds,
+        hr_zone_vigorous_seconds=hr_zone_vigorous_seconds,
+        hr_zone_peak_seconds=hr_zone_peak_seconds,
         created_at=created_at,
     )
 
@@ -1531,9 +1644,14 @@ def _upsert_google_health_exercise(point: dict) -> tuple:
     point (already filtered to exclude Peloton-sourced/duplicate entries).
     Returns (created, updated). Google Health's exercise type is a
     session-level summary (metricsSummary), not a time-series — no
-    performance_graph_json or running-form fields get populated here,
-    matching the plainer detail page Google-Health-sourced runs are
-    expected to show."""
+    performance_graph_json gets populated here (so no chart overlay/toggle),
+    but the same session-level running-form averages Garmin provides
+    (cadence, stride length, vertical oscillation, vertical ratio, ground
+    contact time) are, when present, plus Google's own 4-zone HR-time
+    breakdown (light/moderate/vigorous/peak) — see
+    _parse_google_health_exercise. run_detail.html renders that breakdown
+    server-side in place of the PERFORMANCE OVER TIME chart when there's no
+    performance_graph_json to drive it."""
     parsed = _parse_google_health_exercise(point)
     if parsed is None:
         return False, False
@@ -1549,6 +1667,17 @@ def _upsert_google_health_exercise(point: dict) -> tuple:
         distance_miles=parsed["distance_miles"],
         heart_rate_avg=parsed["heart_rate_avg"],
         avg_pace_seconds=parsed["avg_pace_seconds"],
+        avg_speed_mph=parsed["avg_speed_mph"],
+        elevation_gain=parsed["elevation_gain"],
+        run_cadence_avg=parsed["run_cadence_avg"],
+        stride_length_avg=parsed["stride_length_avg"],
+        vertical_oscillation_avg=parsed["vertical_oscillation_avg"],
+        vertical_ratio_avg=parsed["vertical_ratio_avg"],
+        ground_contact_time_avg=parsed["ground_contact_time_avg"],
+        hr_zone_light_seconds=parsed["hr_zone_light_seconds"],
+        hr_zone_moderate_seconds=parsed["hr_zone_moderate_seconds"],
+        hr_zone_vigorous_seconds=parsed["hr_zone_vigorous_seconds"],
+        hr_zone_peak_seconds=parsed["hr_zone_peak_seconds"],
         created_at=parsed["created_at"],
         google_health_activity_id=point_id,
         source="google_health",
@@ -1599,7 +1728,23 @@ def _peloton_workout_index():
     )
 
 
-def _find_peloton_match(created_at, workout_index, window_seconds=300):
+def _garmin_workout_index():
+    """Sorted [(timestamp, CachedWorkout)] for all Garmin-sourced workouts —
+    same shape as _peloton_workout_index(), used to catch Garmin↔Google
+    Health duplicates that have no Peloton workout at all (e.g. an outdoor
+    hike neither service routes through Peloton), which the Peloton-anchored
+    matching above never looks at."""
+    return sorted(
+        (
+            (int(w.created_at.timestamp()), w)
+            for w in CachedWorkout.objects.filter(source="garmin")
+            if w.created_at is not None
+        ),
+        key=lambda pair: pair[0],
+    )
+
+
+def _find_workout_match(created_at, workout_index, window_seconds=300):
     """Closest Peloton CachedWorkout within window_seconds of created_at, or None.
     Originally 120s (same as Garmin's _is_peloton_duplicate), calibrated against
     446 real Google Health/Peloton duplicate pairs, 445 of which were within
@@ -1626,7 +1771,7 @@ def _augment_peloton_from_google_health(peloton_workout, point: dict) -> dict:
     """
     When a Google Health exercise entry duplicates a Peloton workout (either
     via Peloton's own Fitbit integration, or the watch's independent
-    auto-detection — see _is_peloton_sourced vs _find_peloton_match), don't
+    auto-detection — see _is_peloton_sourced vs _find_workout_match), don't
     create a second CachedWorkout. Instead reconcile: fill any field the
     Peloton record is missing using Google's data (Peloton's own value
     always wins when both sides have one — never overwrites), and report
@@ -1640,18 +1785,13 @@ def _augment_peloton_from_google_health(peloton_workout, point: dict) -> dict:
         return {"filled": [], "google_missing": [], "point_id": None}
 
     filled = []
-    if parsed["calories"] is not None and peloton_workout.calories is None:
-        peloton_workout.calories = parsed["calories"]
-        filled.append("calories")
+    for f in _GOOGLE_HEALTH_FILLABLE_FIELDS:
+        if parsed[f] is not None and getattr(peloton_workout, f) is None:
+            setattr(peloton_workout, f, parsed[f])
+            filled.append(f)
     if parsed["heart_rate_avg"] is not None and peloton_workout.heart_rate_avg_best is None:
         peloton_workout.heart_rate_avg = parsed["heart_rate_avg"]
         filled.append("heart_rate_avg")
-    if parsed["distance_miles"] is not None and peloton_workout.distance_miles is None:
-        peloton_workout.distance_miles = parsed["distance_miles"]
-        filled.append("distance_miles")
-        if peloton_workout.avg_pace_seconds is None and peloton_workout.duration_seconds:
-            peloton_workout.avg_pace_seconds = round(peloton_workout.duration_seconds / parsed["distance_miles"])
-            filled.append("avg_pace_seconds")
 
     if filled:
         peloton_workout.google_health_activity_id = parsed["point_id"]
@@ -1666,6 +1806,40 @@ def _augment_peloton_from_google_health(peloton_workout, point: dict) -> dict:
         google_missing.append("distance_miles")
 
     return {"filled": filled, "google_missing": google_missing, "point_id": parsed["point_id"]}
+
+
+def _augment_garmin_from_google_health(garmin_workout, point: dict) -> dict:
+    """
+    Like _augment_peloton_from_google_health, but for the case that function
+    doesn't cover: a Google Health exercise entry that duplicates a
+    Garmin-sourced workout with no Peloton counterpart at all (e.g. an
+    outdoor hike neither service routes through Peloton — both a Garmin
+    watch and Health Connect can independently auto-detect the same
+    session). Garmin is treated as authoritative here, same reasoning as
+    Peloton being authoritative over Garmin elsewhere: a dedicated watch's
+    own recording beats a phone/Health-Connect-detected entry — but still
+    backfill anything Garmin's copy is missing that Google's has.
+
+    Returns {"filled": [...], "point_id": str}.
+    """
+    parsed = _parse_google_health_exercise(point)
+    if parsed is None:
+        return {"filled": [], "point_id": None}
+
+    filled = []
+    for f in _GOOGLE_HEALTH_FILLABLE_FIELDS:
+        if parsed[f] is not None and getattr(garmin_workout, f) is None:
+            setattr(garmin_workout, f, parsed[f])
+            filled.append(f)
+    if parsed["heart_rate_avg"] is not None and garmin_workout.heart_rate_avg_best is None:
+        garmin_workout.heart_rate_avg = parsed["heart_rate_avg"]
+        filled.append("heart_rate_avg")
+
+    if filled:
+        garmin_workout.google_health_activity_id = parsed["point_id"]
+        garmin_workout.save(update_fields=filled + ["google_health_activity_id"])
+
+    return {"filled": filled, "point_id": parsed["point_id"]}
 
 
 def _reconcile_google_health_duplicates(dry_run=False) -> dict:
@@ -1696,7 +1870,7 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
     details = []
 
     for w in gh_workouts:
-        match = _find_peloton_match(w.created_at, peloton_index)
+        match = _find_workout_match(w.created_at, peloton_index)
         if match is None:
             continue
 
@@ -1706,12 +1880,10 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
             if dry_run:
                 parsed = _parse_google_health_exercise(w.raw_data)
                 if parsed:
-                    if parsed["calories"] is not None and match.calories is None:
-                        filled.append("calories")
+                    filled = [f for f in _GOOGLE_HEALTH_FILLABLE_FIELDS
+                              if parsed[f] is not None and getattr(match, f) is None]
                     if parsed["heart_rate_avg"] is not None and match.heart_rate_avg_best is None:
                         filled.append("heart_rate_avg")
-                    if parsed["distance_miles"] is not None and match.distance_miles is None:
-                        filled.append("distance_miles")
             else:
                 filled = _augment_peloton_from_google_health(match, w.raw_data)["filled"]
 
@@ -1722,6 +1894,89 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
             "google_workout_id": w.workout_id,
             "peloton_workout_id": match.workout_id,
             "peloton_title": match.title,
+            "filled": filled,
+            "had_raw_data": had_raw_data,
+        })
+        to_delete.append(w.pk)
+
+    deleted = 0
+    if not dry_run and to_delete:
+        deleted = CachedWorkout.objects.filter(pk__in=to_delete).delete()[0]
+
+    return {
+        "checked": len(gh_workouts),
+        "matched": len(details),
+        "augmented": augmented,
+        "deleted": deleted,
+        "details": details,
+    }
+
+
+def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
+    """
+    Re-check every existing source="google_health" CachedWorkout row against
+    Garmin-sourced workouts and merge any match that has no Peloton
+    counterpart — the case _reconcile_google_health_duplicates doesn't
+    cover: an outdoor activity (e.g. a hike) that neither Garmin nor Google
+    Health routes through Peloton, so both sync independently as separate
+    rows with nothing to reconcile them against each other. Called after
+    both Garmin and Google Health syncs so order never matters, same as the
+    Peloton-anchored reconcilers.
+
+    Rows that duplicate a Peloton workout are skipped here (left for
+    _reconcile_google_health_duplicates to handle) rather than risking a
+    false Garmin match on a row that actually belongs to Peloton.
+
+    Only gates on Google Health being enabled, not Garmin — unlike
+    _reconcile_garmin_duplicates' running-augmentation path, nothing here
+    needs a live Garmin API call (_augment_garmin_from_google_health only
+    reads already-stored Garmin rows and already-parsed Google Health
+    payload data), so there's no reason this can't run while Garmin syncing
+    happens to be toggled off.
+
+    Returns {"checked", "matched", "augmented", "deleted", "details"}, where
+    each entry in "details" is {"google_workout_id", "garmin_workout_id",
+    "garmin_title", "filled", "had_raw_data"}.
+    """
+    if not _integration_enabled("google_health"):
+        return {"checked": 0, "matched": 0, "augmented": 0, "deleted": 0, "details": []}
+
+    peloton_index = _peloton_workout_index()
+    garmin_index = _garmin_workout_index()
+    gh_workouts = list(CachedWorkout.objects.filter(source="google_health").order_by("created_at"))
+
+    augmented = 0
+    to_delete = []
+    details = []
+
+    for w in gh_workouts:
+        if _find_workout_match(w.created_at, peloton_index) is not None:
+            continue  # belongs to the Peloton-anchored reconciler instead
+
+        match = _find_workout_match(w.created_at, garmin_index)
+        if match is None:
+            continue
+
+        filled = []
+        had_raw_data = bool(w.raw_data)
+        if had_raw_data:
+            if dry_run:
+                parsed = _parse_google_health_exercise(w.raw_data)
+                if parsed:
+                    filled = [f for f in _GOOGLE_HEALTH_FILLABLE_FIELDS
+                              if parsed[f] is not None and getattr(match, f) is None]
+                    if parsed["heart_rate_avg"] is not None and match.heart_rate_avg_best is None:
+                        filled.append("heart_rate_avg")
+            else:
+                filled = _augment_garmin_from_google_health(match, w.raw_data)["filled"]
+
+        if filled:
+            augmented += 1
+
+        details.append({
+            "google_workout_id": w.workout_id,
+            "garmin_workout_id": match.workout_id,
+            "garmin_title": match.title,
             "filled": filled,
             "had_raw_data": had_raw_data,
         })
@@ -1756,7 +2011,8 @@ def _run_google_health_exercise_sync(start, end) -> dict:
         return {"error": str(e), "created": 0, "updated": 0}
 
     peloton_index = _peloton_workout_index()
-    created = updated = skipped_peloton = augmented = 0
+    garmin_index = _garmin_workout_index()
+    created = updated = skipped_peloton = skipped_garmin = augmented = garmin_augmented = 0
     google_missing_fields: list = []  # candidates for the write-back path
 
     for point in points:
@@ -1773,7 +2029,7 @@ def _run_google_health_exercise_sync(start, end) -> dict:
         # Fitbit-integration sync. Confirmed 2026-08-18: 446/471 previously-
         # synced Google Health workouts landed within 120s of an existing
         # Peloton workout despite not matching the official dataSource check.
-        match = _find_peloton_match(created_at, peloton_index) if (is_official or created_at) else None
+        match = _find_workout_match(created_at, peloton_index) if (is_official or created_at) else None
 
         if is_official or match is not None:
             skipped_peloton += 1
@@ -1795,6 +2051,17 @@ def _run_google_health_exercise_sync(start, end) -> dict:
                 )
             continue
 
+        # No Peloton workout at all for this session — still check Garmin
+        # before creating a standalone row. Covers activities neither
+        # service routes through Peloton (e.g. an outdoor hike), which both
+        # a Garmin watch and Health Connect can independently auto-detect.
+        garmin_match = _find_workout_match(created_at, garmin_index) if created_at else None
+        if garmin_match is not None:
+            skipped_garmin += 1
+            if _augment_garmin_from_google_health(garmin_match, point)["filled"]:
+                garmin_augmented += 1
+            continue
+
         try:
             was_created, was_updated = _upsert_google_health_exercise(point)
             created += was_created
@@ -1810,6 +2077,8 @@ def _run_google_health_exercise_sync(start, end) -> dict:
         "updated": updated,
         "skipped_peloton_duplicates": skipped_peloton,
         "peloton_augmented": augmented,
+        "skipped_garmin_duplicates": skipped_garmin,
+        "garmin_augmented": garmin_augmented,
         "google_missing_fields": google_missing_fields,
     }
 
@@ -1837,6 +2106,11 @@ def _run_google_health_sync_new() -> dict:
     dates = [date.today() - timedelta(days=i) for i in range(7)]
     wellness = _run_google_health_wellness_sync(dates)
     exercise = _run_google_health_exercise_sync_new()
+    # Catches existing google_health rows whose Garmin match arrived after
+    # they synced — the live per-point check in _run_google_health_exercise_sync
+    # only sees the Garmin rows that already existed at that moment.
+    gh_reconciled = _reconcile_garmin_google_health_duplicates()
+    exercise["garmin_merged"] = gh_reconciled["deleted"]
     return {"wellness": wellness, "exercise": exercise}
 
 
@@ -1844,6 +2118,8 @@ def _run_google_health_sync_all() -> dict:
     dates = [date.today() - timedelta(days=i) for i in range(365 * 3)]
     wellness = _run_google_health_wellness_sync(dates)
     exercise = _run_google_health_exercise_sync_all()
+    gh_reconciled = _reconcile_garmin_google_health_duplicates()
+    exercise["garmin_merged"] = gh_reconciled["deleted"]
     return {"wellness": wellness, "exercise": exercise}
 
 

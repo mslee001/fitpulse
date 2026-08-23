@@ -534,6 +534,19 @@ class CachedWorkout(models.Model):
     # Google Health exercise data point ID (trailing segment of the resource
     # name), for source="google_health" workouts. Mirrors garmin_activity_id.
     google_health_activity_id = models.CharField(max_length=64, null=True, blank=True)
+
+    # Per-workout HR zone time breakdown from Google Health's
+    # metricsSummary.heartRateZoneDurations — Google's own 4-zone model
+    # (light/moderate/vigorous/peak), not the Peloton/Garmin 5-zone
+    # breakdown computed client-side from performance_graph_json's HR time
+    # series. Only populated for Google Health-sourced workouts (no
+    # equivalent field exists to fill on Peloton/Garmin rows, which already
+    # get a more precise zone breakdown from their own time series).
+    hr_zone_light_seconds = models.IntegerField(null=True, blank=True)
+    hr_zone_moderate_seconds = models.IntegerField(null=True, blank=True)
+    hr_zone_vigorous_seconds = models.IntegerField(null=True, blank=True)
+    hr_zone_peak_seconds = models.IntegerField(null=True, blank=True)
+
     garmin_form_json = models.JSONField(null=True, blank=True)  # raw metrics_by_slug at every_n=1
     # Seconds into the Garmin recording that corresponds to Peloton t=0.
     # Detected via HR cross-correlation in _apply_garmin_form.

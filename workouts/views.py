@@ -243,15 +243,57 @@ def _workout_detail_fields(workout):
     }
 
 
+def _get_perf_dict(workout, client):
+    """Performance-graph dict for a discipline detail page. Falls back to a
+    live Peloton fetch only when this workout is itself Peloton-sourced with
+    no cached perf graph yet — Garmin rows already have their own cached
+    time series from sync, and Google Health rows never will (session
+    summary only, no time series), so calling the Peloton client for either
+    would just fail on every single page view."""
+    if workout.performance_graph_json:
+        return workout.performance_graph_json
+    if workout.source == "peloton":
+        try:
+            return client.get_parsed_performance(workout.workout_id, every_n=5)
+        except Exception:
+            return {}
+    return {}
+
+
+def _google_health_hr_zones(workout):
+    """Google Health's own 4-zone HR-time breakdown (metricsSummary.
+    heartRateZoneDurations, see CachedWorkout.hr_zone_*_seconds) — a coarser,
+    differently-defined model than the Peloton/Garmin 5-zone breakdown
+    computed client-side from a real HR time series. Discipline detail
+    templates render this server-side in place of the PERFORMANCE OVER TIME
+    chart when there's no time series to drive that chart with (i.e.
+    whenever this returns non-empty — Peloton/Garmin rows never populate
+    these fields, so it's naturally empty for them)."""
+    zone_defs = [
+        ("Light", workout.hr_zone_light_seconds, "#81C784"),
+        ("Moderate", workout.hr_zone_moderate_seconds, "#FFD54F"),
+        ("Vigorous", workout.hr_zone_vigorous_seconds, "#FF8A65"),
+        ("Peak", workout.hr_zone_peak_seconds, "#E57373"),
+    ]
+    total = sum(seconds for _, seconds, _ in zone_defs if seconds)
+    if not total:
+        return []
+    return [
+        {
+            "label": label,
+            "seconds": seconds,
+            "pct": round(seconds / total * 100),
+            "time_str": f"{seconds // 60}m {seconds % 60:02d}s" if seconds else "—",
+            "color": color,
+        }
+        for label, seconds, color in zone_defs if seconds is not None
+    ]
+
+
 def _run_detail(request, workout):
     client = _client()
-    if workout.performance_graph_json:
-        perf = workout.performance_graph_json
-    else:
-        try:
-            perf = client.get_parsed_performance(workout.workout_id, every_n=5)
-        except Exception:
-            perf = {}
+    perf = _get_perf_dict(workout, client)
+    gh_hr_zones = _google_health_hr_zones(workout)
 
     # Inject cached pace targets if the perf graph doesn't include them
     if not perf.get("target_pace") and workout.pace_targets_json:
@@ -341,18 +383,14 @@ def _run_detail(request, workout):
         "recent_runs": json.dumps(recent_runs),
         "workout_detail": _workout_detail_fields(workout),
         "run_form": run_form,
+        "gh_hr_zones": gh_hr_zones,
     })
 
 
 def _walking_detail(request, workout):
     client = _client()
-    if workout.performance_graph_json:
-        perf = workout.performance_graph_json
-    else:
-        try:
-            perf = client.get_parsed_performance(workout.workout_id, every_n=5)
-        except Exception:
-            perf = {}
+    perf = _get_perf_dict(workout, client)
+    gh_hr_zones = _google_health_hr_zones(workout)
 
     splits = perf.get("splits", [])
     split_col_labels = {
@@ -406,18 +444,14 @@ def _walking_detail(request, workout):
         "type_stats": type_stats,
         "recent_walks": json.dumps(recent_walks),
         "workout_detail": _workout_detail_fields(workout),
+        "gh_hr_zones": gh_hr_zones,
     })
 
 
 def _cycling_detail(request, workout):
     client = _client()
-    if workout.performance_graph_json:
-        perf = workout.performance_graph_json
-    else:
-        try:
-            perf = client.get_parsed_performance(workout.workout_id, every_n=5)
-        except Exception:
-            perf = {}
+    perf = _get_perf_dict(workout, client)
+    gh_hr_zones = _google_health_hr_zones(workout)
 
     sibling_qs = (
         CachedWorkout.objects
@@ -468,6 +502,7 @@ def _cycling_detail(request, workout):
         "recent_rides": json.dumps(recent_rides),
         "workout_detail": detail_fields,
         "ftp": workout.ftp,
+        "gh_hr_zones": gh_hr_zones,
     })
 
 
@@ -539,13 +574,8 @@ def _strength_detail(request, workout):
 
 
 def _generic_detail(request, workout):
-    if workout.performance_graph_json:
-        perf = workout.performance_graph_json
-    else:
-        try:
-            perf = _client().get_parsed_performance(workout.workout_id, every_n=5)
-        except Exception:
-            perf = {}
+    perf = _get_perf_dict(workout, _client())
+    gh_hr_zones = _google_health_hr_zones(workout)
 
     total_hr_zone_secs = sum(filter(None, [
         workout.hr_z1_seconds, workout.hr_z2_seconds, workout.hr_z3_seconds,
@@ -570,6 +600,7 @@ def _generic_detail(request, workout):
         "garmin_activity_url": _garmin_activity_url(workout),
         "workout_detail": _workout_detail_fields(workout),
         "hr_zones_direct": json.dumps(hr_zones_direct),
+        "gh_hr_zones": gh_hr_zones,
     })
 
 

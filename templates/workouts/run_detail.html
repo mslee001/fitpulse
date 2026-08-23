@@ -91,8 +91,12 @@
       {% endwith %}
     </div>
 
-    <!-- Performance chart — toggles built by JS based on available metrics -->
-    <div class="chart-card">
+    <!-- Performance chart — toggles built by JS based on available metrics.
+         Stays hidden (JS reveals it, same pattern as hrZoneCard below) when
+         there's no time series to plot, e.g. Google Health-sourced runs,
+         which only have session-level averages — see gh_hr_zones below for
+         what fills this slot in that case instead. -->
+    <div class="chart-card" id="perfChartCard" style="display:none">
       <div class="chart-header">
         <h3 class="chart-title">PERFORMANCE OVER TIME</h3>
         <div style="display:flex;align-items:center;gap:0.75rem">
@@ -116,12 +120,38 @@
       <div id="hrZoneRanges"></div>
     </div>
 
-    <!-- Running form (Garmin) -->
+    <!-- Google Health's own 4-zone HR-time breakdown (metricsSummary.
+         heartRateZoneDurations) — server-rendered, not JS-driven, since
+         there's no time series backing it. Occupies the PERFORMANCE OVER
+         TIME slot for Google Health-sourced runs, which have no chart. -->
+    {% if gh_hr_zones %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">HEART RATE ZONES</h3>
+        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">from Google Health &middot; session totals, not a time series</span>
+      </div>
+      <div class="hr-zones">
+        {% for zone in gh_hr_zones %}
+        <div class="hr-zone-row">
+          <div class="hr-zone-label" style="color:{{ zone.color }}">{{ zone.label }}</div>
+          <div class="hr-zone-bar-wrap"><div class="hr-zone-bar" style="width:{{ zone.pct }}%;background:{{ zone.color }}"></div></div>
+          <div class="hr-zone-time">{{ zone.time_str }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Running form (Garmin or Google Health) -->
     {% if run_form.cadence or run_form.stride_length or run_form.vertical_oscillation or run_form.vertical_ratio or run_form.ground_contact_time %}
     <div class="chart-card">
       <div class="chart-header">
         <h3 class="chart-title">RUNNING FORM</h3>
+        {% if workout.garmin_activity_id %}
         <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">from Garmin &middot; averages exclude walking</span>
+        {% else %}
+        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">from Google Health &middot; session average, not a time series</span>
+        {% endif %}
       </div>
       <div class="metrics-grid">
 
@@ -388,6 +418,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const m = metrics[c.slug];
     return m && m.values && m.values.some(v => v != null);
   });
+
+  const perfChartCard = document.getElementById("perfChartCard");
+  if (perfChartCard && available.length) perfChartCard.style.display = "";
 
   const togglesEl = document.getElementById("chartToggles");
   const activeSet = new Set([available[0]?.slug].filter(Boolean));

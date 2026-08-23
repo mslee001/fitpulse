@@ -94,8 +94,9 @@
       {% endif %}
     </div>
 
-    <!-- Performance chart -->
-    <div class="chart-card">
+    <!-- Performance chart — hidden until JS confirms there's a time series
+         to plot; Google Health-sourced rides never have one. -->
+    <div class="chart-card" id="perfChartCard" style="display:none">
       <div class="chart-header">
         <h3 class="chart-title">PERFORMANCE OVER TIME</h3>
         <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
@@ -122,6 +123,26 @@
       <div class="hr-zones" id="hrZoneBreakdown"></div>
       <div id="hrZoneRanges"></div>
     </div>
+
+    <!-- Google Health's own 4-zone HR-time breakdown — server-rendered,
+         fills the PERFORMANCE OVER TIME slot when there's no time series. -->
+    {% if gh_hr_zones %}
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">HEART RATE ZONES</h3>
+        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">from Google Health &middot; session totals, not a time series</span>
+      </div>
+      <div class="hr-zones">
+        {% for zone in gh_hr_zones %}
+        <div class="hr-zone-row">
+          <div class="hr-zone-label" style="color:{{ zone.color }}">{{ zone.label }}</div>
+          <div class="hr-zone-bar-wrap"><div class="hr-zone-bar" style="width:{{ zone.pct }}%;background:{{ zone.color }}"></div></div>
+          <div class="hr-zone-time">{{ zone.time_str }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Power zone breakdown -->
     <div class="chart-card" id="powerZoneCard" style="display:none">
@@ -315,6 +336,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const m = metrics[c.slug];
     return m && m.values && m.values.some(v => v != null);
   });
+
+  const perfChartCard = document.getElementById("perfChartCard");
+  if (perfChartCard && available.length) perfChartCard.style.display = "";
 
   const togglesEl = document.getElementById("chartToggles");
   const activeSet = new Set([available[0]?.slug].filter(Boolean));

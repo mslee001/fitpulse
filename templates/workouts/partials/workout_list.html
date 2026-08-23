@@ -75,9 +75,11 @@
         View all times I've done this activity →
       </a>
       {% endif %}
+      {% if w.external_url %}
       <a href="{{ w.external_url }}" class="class-history-link" target="_blank" rel="noopener">
         {% if w.source == "garmin" %}View on Garmin Connect ↗{% else %}View on Peloton ↗{% endif %}
       </a>
+      {% endif %}
       {% if w.source == "peloton" and w.garmin_activity_id %}
       <a href="https://connect.garmin.com/modern/activity/{{ w.garmin_activity_id }}" class="class-history-link" target="_blank" rel="noopener">
         View on Garmin Connect ↗

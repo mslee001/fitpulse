@@ -21,6 +21,7 @@ GARMIN_SPORT_TO_DISCIPLINE = {
     "strength_training": "strength",
     "walking": "walking",
     "indoor_walking": "walking",
+    "hiking": "walking",
     "yoga": "yoga",
     "pilates": "stretching",
     "hiit": "cardio",
