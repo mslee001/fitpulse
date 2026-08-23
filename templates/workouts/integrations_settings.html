@@ -7,37 +7,39 @@
   <p class="page-sub">Enable or disable each data source — disabled integrations disappear from the Sync menu and their sync functions no-op</p>
 </div>
 
-<div class="chart-card" style="max-width:640px">
-  <div class="chart-header">
-    <h3 class="chart-title">DATA SOURCES</h3>
+<div class="integrations-row">
+  <div class="chart-card">
+    <div class="chart-header">
+      <h3 class="chart-title">DATA SOURCES</h3>
+    </div>
+
+    {% for integration in integrations %}
+    {% include "workouts/partials/integration_row.html" %}
+    {% endfor %}
+
+    <p style="font-size:0.75rem;color:var(--text-dim);margin:1rem 0 0">
+      Disabling an integration only controls whether it appears in the UI and whether its sync functions run — it does not revoke tokens or stop external scheduled jobs (e.g. Garmin's local sync).
+    </p>
+    <p style="font-size:0.75rem;color:var(--text-dim);margin:0.5rem 0 0">
+      "Sync All" runs a full historical backfill and can be slow — the Sync menu in the nav only offers "Sync New" for regular use.
+    </p>
   </div>
 
-  {% for integration in integrations %}
-  {% include "workouts/partials/integration_row.html" %}
-  {% endfor %}
-
-  <p style="font-size:0.75rem;color:var(--text-dim);margin:1rem 0 0">
-    Disabling an integration only controls whether it appears in the UI and whether its sync functions run — it does not revoke tokens or stop external scheduled jobs (e.g. Garmin's local sync).
-  </p>
-  <p style="font-size:0.75rem;color:var(--text-dim);margin:0.5rem 0 0">
-    "Sync All" runs a full historical backfill and can be slow — the Sync menu in the nav only offers "Sync New" for regular use.
-  </p>
-</div>
-
-<div class="chart-card" style="max-width:640px;margin-top:1rem;">
-  <div class="chart-header">
-    <h3 class="chart-title">WEBHOOK ERRORS</h3>
-    {% if webhook_error_count %}
-    <span class="badge" style="background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);">{{ webhook_error_count }}</span>
-    {% endif %}
+  <div class="chart-card">
+    <div class="chart-header">
+      <h3 class="chart-title">WEBHOOK ERRORS</h3>
+      {% if webhook_error_count %}
+      <span class="badge" style="background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);">{{ webhook_error_count }}</span>
+      {% endif %}
+    </div>
+    <p style="font-size:0.85rem;color:var(--text-muted);margin:0.75rem 0 1rem;">
+      {% if webhook_error_count %}
+        {{ webhook_error_count }} failed background sync{{ webhook_error_count|pluralize }} from incoming webhooks in the last {{ webhook_retention_days }} days.
+      {% else %}
+        No webhook processing failures in the last {{ webhook_retention_days }} days.
+      {% endif %}
+    </p>
+    <a href="{% url 'webhook_errors' %}" class="btn btn-sm btn-ghost">View errors</a>
   </div>
-  <p style="font-size:0.85rem;color:var(--text-muted);margin:0.75rem 0 1rem;">
-    {% if webhook_error_count %}
-      {{ webhook_error_count }} failed background sync{{ webhook_error_count|pluralize }} from incoming webhooks in the last {{ webhook_retention_days }} days.
-    {% else %}
-      No webhook processing failures in the last {{ webhook_retention_days }} days.
-    {% endif %}
-  </p>
-  <a href="{% url 'webhook_errors' %}" class="btn btn-sm btn-ghost">View errors</a>
 </div>
 {% endblock %}
