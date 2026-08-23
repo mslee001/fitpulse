@@ -1,39 +1,59 @@
 """One-time Google Health API webhook subscriber registration.
 
-*** NOT RUN OR LIVE-VERIFIED as of writing this (2026-08-17) — see the
-warnings below before executing. ***
+*** UPDATED 2026-08-22 against the live webhooks guide
+(https://developers.google.com/health/webhooks, last updated 2026-08-18).
+Two bugs from the original draft are fixed below — see inline comments at
+SUBSCRIBED_DATA_TYPES and subscriptionCreatePolicy. ***
+
+*** PREREQUISITE — do this before running this command, or registration
+will fail with FAILED_PRECONDITION: ***
+Google performs a synchronous two-step verification handshake against your
+endpoint when the subscriber is created. It sends two POSTs with body
+{"type": "verification"}:
+  1. WITH your configured Authorization header -> your view MUST respond
+     200 OK or 201 Created.
+  2. WITHOUT any Authorization header -> your view MUST respond
+     401 Unauthorized or 403 Forbidden.
+Separately, for REAL data notifications (not verification), your view must
+respond 204 No Content — not 200. Confirm workouts/sync.py's
+google_health_webhook view implements all three of these branches before
+running this script.
 
 This is a one-time setup step, deliberately NOT run automatically on every
-deploy (per file 06's own instruction) so it's never accidentally
-re-triggered. Local development cannot receive real webhook deliveries —
-Google requires a public, verified HTTPS endpoint — so this only makes sense
-to run against the deployed Render URL, after that deployment is already
-serving workouts/sync.py's google_health_webhook view at
+deploy so it's never accidentally re-triggered. Local development cannot
+receive real webhook deliveries — Google requires a public, verified HTTPS
+endpoint — so this only makes sense to run against the deployed Render URL,
+after that deployment is already serving the (fixed) webhook view at
 /webhooks/google-health/.
 
 IMPORTANT — credentials this command needs are DIFFERENT from the ones
 google_health_login sets up:
-  - Subscriber management (projects.subscribers.create) requires the
-    "https://www.googleapis.com/auth/cloud-platform" OAuth scope — confirmed
-    live against the API reference 2026-08-17. The per-user
+  - Subscriber management (projects.subscribers.create) needs a token with
+    permission to manage Google Health API subscribers on the Cloud project
+    — Google's own docs recommend a dedicated service account granted the
+    "Google Health API Admin" IAM role. For a one-time command run by the
+    project's Owner, the simpler path also works: `gcloud auth login` as
+    yourself, then `gcloud auth print-access-token`. The per-user
     activity/health-data scopes GoogleHealthAuth holds do NOT grant this;
     reusing that token here will 403.
-  - You'll need a token with that scope some other way — e.g.
-    `gcloud auth login` (as a principal with access to the Cloud project)
-    followed by `gcloud auth print-access-token`, or a service account key.
-    Set GOOGLE_HEALTH_ADMIN_ACCESS_TOKEN to that token before running this.
-  - GOOGLE_HEALTH_PROJECT_NUMBER must be the numeric Cloud project number
-    (not the string project ID) — the API path uses `projects/{number}`.
+  - Set GOOGLE_HEALTH_ADMIN_ACCESS_TOKEN to whichever token you use.
+  - GOOGLE_HEALTH_PROJECT_NUMBER must be the numeric Cloud project number,
+    not the string project ID — using the ID here is a documented common
+    error (400 "Invalid project number in resource name" / 403).
 
-The exact CreateSubscriberPayload request body schema below is a best
-effort from the REST reference docs, not confirmed against a live 200
-response (the docs page didn't render the full schema when checked). If this
-400s with a field-validation error, that's the first thing to check:
-https://developers.google.com/health/reference/rest/v4/projects.subscribers/create
+Request body schema below is now confirmed against the live guide's
+documented example request. Two fields in the original draft were wrong:
+  - subscriptionCreatePolicy: only "AUTOMATIC" or "MANUAL" are valid values
+    — "PUBLISH_ON_CREATE" is not a real value. Fixed to "AUTOMATIC" below,
+    which is what you want (no per-user manual subscription management).
+  - Data type strings are camelCase, confirmed via the API release notes
+    (e.g. "dailyRestingHeartRate", not "daily-resting-heart-rate"). Fixed
+    below.
 
 Prerequisites (set in .env):
     GOOGLE_HEALTH_PROJECT_NUMBER=...
-    GOOGLE_HEALTH_ADMIN_ACCESS_TOKEN=...   (cloud-platform scope, short-lived)
+    GOOGLE_HEALTH_ADMIN_ACCESS_TOKEN=...   (subscriber-admin permission,
+                                             short-lived if using gcloud)
     GOOGLE_HEALTH_WEBHOOK_SECRET=...       (already set — same value the
                                              webhook view checks incoming
                                              Authorization headers against)
@@ -46,10 +66,15 @@ from django.core.management.base import BaseCommand
 # Data types our sync functions actually consume — see the
 # _GH_WELLNESS_WEBHOOK_TYPES / _GH_EXERCISE_WEBHOOK_TYPES sets in sync.py.
 # Only subscribe to types we'll do something with.
+#
+# FIXED 2026-08-22: these were kebab-case in the original draft
+# ("daily-resting-heart-rate" etc). Confirmed camelCase via the API release
+# notes at https://developers.google.com/health/release-notes, which lists
+# exactly this style (e.g. "dailyRestingHeartRate", "activeZoneMinutes").
 SUBSCRIBED_DATA_TYPES = [
-    "daily-resting-heart-rate", "heart-rate-variability", "daily-heart-rate-variability",
-    "run-vo2-max", "daily-respiratory-rate", "respiratory-rate-sleep-summary",
-    "daily-oxygen-saturation", "sleep", "steps", "floors", "active-zone-minutes",
+    "dailyRestingHeartRate", "heartRateVariability", "dailyHeartRateVariability",
+    "runVo2Max", "dailyRespiratoryRate", "respiratoryRateSleepSummary",
+    "dailyOxygenSaturation", "sleep", "steps", "floors", "activeZoneMinutes",
     "exercise",
 ]
 
@@ -88,6 +113,12 @@ class Command(BaseCommand):
             return
 
         endpoint_uri = options["endpoint_uri"]
+        self.stdout.write(self.style.WARNING(
+            "Before continuing: confirm google_health_webhook responds 200/201 "
+            "to an authorized {\"type\": \"verification\"} POST, 401/403 to an "
+            "unauthorized one, and 204 to real notifications. Registration "
+            "will fail with FAILED_PRECONDITION otherwise."
+        ))
         self.stdout.write(f"Registering subscriber for {endpoint_uri}")
         self.stdout.write(f"Data types: {', '.join(SUBSCRIBED_DATA_TYPES)}")
 
@@ -101,7 +132,12 @@ class Command(BaseCommand):
             "endpointUri": endpoint_uri,
             "endpointAuthorization": {"secret": webhook_secret},
             "subscriberConfigs": [
-                {"dataTypes": SUBSCRIBED_DATA_TYPES, "subscriptionCreatePolicy": "PUBLISH_ON_CREATE"}
+                # FIXED 2026-08-22: "PUBLISH_ON_CREATE" is not a valid value —
+                # the API only accepts "AUTOMATIC" or "MANUAL". AUTOMATIC is
+                # what we want: data flows as soon as a user is both
+                # authenticated and covered by this subscriber, with no
+                # separate per-user subscription calls needed.
+                {"dataTypes": SUBSCRIBED_DATA_TYPES, "subscriptionCreatePolicy": "AUTOMATIC"}
             ],
         }
 

@@ -7,9 +7,14 @@ a JsonResponse.
 """
 
 import bisect
+import hmac
+import json
 import logging
+import os
+import threading
 from datetime import date, datetime, timedelta, timezone
 
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone as tz
@@ -1549,20 +1554,34 @@ def _upsert_google_health_exercise(point: dict) -> tuple:
         raw_data=point,
     )
 
-    existing = CachedWorkout.objects.filter(workout_id=wid).first()
-    if existing:
+    def _apply_to_existing(row):
         for field, value in fields.items():
             if field != "raw_data" and value is not None:
-                setattr(existing, field, value)
-        existing.raw_data = point
-        existing.save()
+                setattr(row, field, value)
+        row.raw_data = point
+        row.save()
+
+    existing = CachedWorkout.objects.filter(workout_id=wid).first()
+    if existing:
+        _apply_to_existing(existing)
         return False, True
 
-    obj = CachedWorkout(workout_id=wid, ride_id="", workout_type="",
-                         instructor_name="", instructor_image_url="", class_image_url="",
-                         **fields)
-    obj.save()
-    return True, False
+    try:
+        obj = CachedWorkout(workout_id=wid, ride_id="", workout_type="",
+                             instructor_name="", instructor_image_url="", class_image_url="",
+                             **fields)
+        obj.save()
+        return True, False
+    except IntegrityError:
+        # Lost a race on workout_id's unique constraint — another call for
+        # this same point (e.g. two webhook deliveries for the same UPSERT
+        # notification, processed in overlapping background threads; Google
+        # explicitly warns retries can duplicate notifications) already
+        # created the row between our filter() and save(). Fall back to
+        # updating what it created instead of erroring out.
+        existing = CachedWorkout.objects.get(workout_id=wid)
+        _apply_to_existing(existing)
+        return False, True
 
 
 def _peloton_workout_index():
@@ -1831,34 +1850,82 @@ def _run_google_health_sync_all() -> dict:
 # Google Health webhook endpoint
 #
 # Auth model (per developers.google.com/health/webhooks, confirmed live via
-# WebFetch 2026-08-17 — see google_health_client.py's docstring for the
-# broader pattern of trusting live-confirmed docs over guesses): the
-# `endpointAuthorization.secret` we set at subscriber-creation time is sent
-# as the literal `Authorization` header on EVERY notification, including the
-# two-step verification handshake Google performs when the subscriber is
-# created (first POST carries the secret and expects 200/201, second POST
-# carries no credentials and expects 401/403). We deliberately do NOT verify
-# the per-message GOOGLE-HEALTH-API-SIGNATURE (Tink/ECDSA, rotating keyset) —
-# the shared secret is judged sufficient for this single-user app; see the
-# 2026-08-17 conversation for the explicit scope decision.
+# WebFetch 2026-08-17 and re-confirmed 2026-08-23 — see google_health_client.py's
+# docstring for the broader pattern of trusting live-confirmed docs over
+# guesses): the `endpointAuthorization.secret` we set at subscriber-creation
+# time is sent as the literal `Authorization` header on EVERY notification,
+# including the two-step verification handshake Google performs when the
+# subscriber is created (first POST carries the secret and expects 200/201,
+# second POST carries no credentials and expects 401/403).
+#
+# Response codes differ by request type — this tripped up the original
+# implementation, which returned 200 for everything: verification gets
+# 200/201 (authorized) or 401/403 (unauthorized), but a REAL data
+# notification must get 204 No Content, sent immediately before any
+# processing (see google_health_webhook's docstring for why).
+#
+# Batching: confirmed live 2026-08-23 that each webhook POST carries exactly
+# ONE notification — Google's "up to 99 messages per batch" are delivered as
+# separate sequential POSTs, not one payload with an array. No
+# batch-unwrapping logic needed here.
+#
+# We deliberately do NOT verify the per-message GOOGLE-HEALTH-API-SIGNATURE
+# (Base64-encoded Tink/ECDSA-P256 signature over the raw payload, verifiable
+# against a keyset Google publishes at
+# https://www.gstatic.com/googlehealthapi/webhooks/webhooks_public_keyset.json,
+# rotated every 30 days) — the shared secret is judged sufficient for this
+# single-user app; see the 2026-08-17 conversation for the explicit scope
+# decision. Worth adding later if this app ever has other subscribers/users,
+# since the shared secret alone doesn't prove the payload wasn't tampered
+# with in transit — but real complexity (a Tink dependency or hand-rolled
+# ECDSA verification) that isn't warranted for personal use today.
 # ---------------------------------------------------------------------------
 
 # Only data types our sync functions actually know how to handle — a subset
 # of the ~24 types Google Health supports webhooks for. Types we don't
 # subscribe to (weight, nutrition-log, hydration-log, etc.) are irrelevant
 # here since a notification for them should never arrive.
+#
+# FIXED 2026-08-23: these were kebab-case ("daily-resting-heart-rate"), which
+# would never have matched a real notification's dataType field and silently
+# dropped every multi-word wellness notification into the "not handled"
+# branch. Confirmed camelCase live via WebFetch against
+# developers.google.com/health/release-notes, which explicitly lists these
+# exact strings under "webhook notification data types" (e.g.
+# "dailyRestingHeartRate", "activeZoneMinutes") — same casing
+# google_health_register_webhook.py's SUBSCRIBED_DATA_TYPES already uses.
 _GH_WELLNESS_WEBHOOK_TYPES = {
-    "daily-resting-heart-rate", "heart-rate-variability", "daily-heart-rate-variability",
-    "run-vo2-max", "daily-respiratory-rate", "respiratory-rate-sleep-summary",
-    "daily-oxygen-saturation", "sleep", "steps", "floors", "active-zone-minutes",
+    "dailyRestingHeartRate", "heartRateVariability", "dailyHeartRateVariability",
+    "runVo2Max", "dailyRespiratoryRate", "respiratoryRateSleepSummary",
+    "dailyOxygenSaturation", "sleep", "steps", "floors", "activeZoneMinutes",
 }
 _GH_EXERCISE_WEBHOOK_TYPES = {"exercise"}
 
 
 def _gh_webhook_authorized(request) -> bool:
-    import os
     secret = os.environ.get("GOOGLE_HEALTH_WEBHOOK_SECRET", "")
-    return bool(secret) and request.headers.get("Authorization", "") == secret
+    if not secret:
+        return False
+    # Constant-time comparison — the actual security boundary here is the
+    # shared secret's secrecy, not this comparison, but avoiding a
+    # timing side-channel on a wrong guess is zero-cost to get right.
+    return hmac.compare_digest(request.headers.get("Authorization", ""), secret)
+
+
+def _process_google_health_notification(data_type, date_list):
+    """Background-thread body for google_health_webhook — runs after the
+    204 response has already been sent, so an exception here can't affect
+    what Google sees on the wire (only logged)."""
+    try:
+        if data_type in _GH_EXERCISE_WEBHOOK_TYPES:
+            _run_google_health_exercise_sync(date_list[0], date_list[-1])
+        elif data_type in _GH_WELLNESS_WEBHOOK_TYPES:
+            _run_google_health_wellness_sync(date_list)
+        else:
+            logger.info("Google Health webhook: dataType=%s not handled by any sync path, ignoring", data_type)
+    except Exception:
+        logger.exception("Google Health webhook: sync failed for dataType=%s dates=%s-%s",
+                          data_type, date_list[0], date_list[-1])
 
 
 @csrf_exempt
@@ -1871,12 +1938,22 @@ def google_health_webhook(request):
     range, not the values themselves — we fetch via the same sync functions
     files 04/05 already built, scoped to just that range.
 
-    Always returns quickly. Internal sync failures are swallowed (logged,
-    200 returned) so they can't trigger subscription auto-cancellation —
-    same reasoning as the existing Withings webhook.
-    """
-    import json
+    Real notifications must get a 204 sent *before* any processing — "Your
+    server must respond to notifications with an HTTP 204 No Content status
+    code immediately. To avoid timeouts, process the notification payload
+    asynchronously after sending the response" (confirmed live via WebFetch,
+    2026-08-23). This app has no task queue (no Celery/RQ), so a plain
+    background thread is the lightweight equivalent at this app's scale —
+    good enough here, would need revisiting if this ever needs to survive a
+    mid-request process restart or run across multiple workers reliably.
 
+    Google explicitly warns retries can send duplicate UPSERT notifications
+    for the same interval, so the sync functions this dispatches to must be
+    idempotent: DailyStats is get_or_create'd by its unique `date`, and
+    _upsert_google_health_exercise upserts by workout_id (unique) with an
+    IntegrityError fallback for the case where two overlapping background
+    threads race on the same point — see that function's docstring.
+    """
     try:
         payload = json.loads(request.body or b"{}")
     except ValueError:
@@ -1908,24 +1985,19 @@ def google_health_webhook(request):
 
     if not dates:
         logger.warning("Google Health webhook: no usable interval for dataType=%s, payload=%r", data_type, payload)
-        return HttpResponse(status=200)
+        return HttpResponse(status=204)
 
     date_list = sorted(dates)
     logger.info("Google Health webhook: dataType=%s operation=%s dates=%s-%s",
                 data_type, operation, date_list[0], date_list[-1])
 
-    try:
-        if data_type in _GH_EXERCISE_WEBHOOK_TYPES:
-            _run_google_health_exercise_sync(date_list[0], date_list[-1])
-        elif data_type in _GH_WELLNESS_WEBHOOK_TYPES:
-            _run_google_health_wellness_sync(date_list)
-        else:
-            logger.info("Google Health webhook: dataType=%s not handled by any sync path, ignoring", data_type)
-    except Exception:
-        logger.exception("Google Health webhook: sync failed for dataType=%s dates=%s-%s",
-                          data_type, date_list[0], date_list[-1])
+    threading.Thread(
+        target=_process_google_health_notification,
+        args=(data_type, date_list),
+        daemon=True,
+    ).start()
 
-    return HttpResponse(status=200)
+    return HttpResponse(status=204)
 
 
 # ---------------------------------------------------------------------------
