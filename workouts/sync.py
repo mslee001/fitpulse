@@ -17,7 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from . import programs as _programs
-from .models import BodyMeasurement, CachedWorkout, DailyStats, UserSettings
+from .models import BodyMeasurement, CachedWorkout, DailyStats, Integration, UserSettings
 from .services.garmin_client import GarminClient
 from .services.peloton_client import PelotonClient
 from .services.withings_client import WithingsClient
@@ -197,6 +197,7 @@ def _run_peloton_sync_all():
                 break
         reconciled = _reconcile_google_health_duplicates()
         garmin_reconciled = _reconcile_garmin_duplicates()
+        Integration.objects.filter(key="peloton").update(last_synced_at=tz.now())
         return {
             "done": True,
             "total_on_peloton": total_on_peloton,
@@ -257,6 +258,7 @@ def _run_peloton_sync_new(days=None):
             page += 1
         reconciled = _reconcile_google_health_duplicates()
         garmin_reconciled = _reconcile_garmin_duplicates()
+        Integration.objects.filter(key="peloton").update(last_synced_at=tz.now())
         return {
             "done": True,
             "created": total_created,
@@ -792,6 +794,7 @@ def _run_garmin_sync_new():
             if stop or len(activities) < limit:
                 break
             start += limit
+        Integration.objects.filter(key="garmin").update(last_synced_at=tz.now())
         return {
             "done": True,
             "created": total_created,
@@ -830,6 +833,7 @@ def _run_garmin_sync_all():
             if len(activities) < limit:
                 break
             start += limit
+        Integration.objects.filter(key="garmin").update(last_synced_at=tz.now())
         return {
             "done": True,
             "created": total_created,
@@ -881,6 +885,7 @@ def _run_wellness_sync(dates):
             except Exception as e:
                 logger.warning("Yesterday body battery backfill failed for %s: %s", yesterday, e)
 
+    Integration.objects.filter(key="garmin").update(last_synced_at=tz.now())
     return {"done": True, "synced": synced, "errors": errors}
 
 
@@ -2060,6 +2065,7 @@ def _run_withings_sync_new() -> dict:
             total_created, total_updated = _upsert_measurements(measurements)
             dates = list({m["measured_at"].astimezone().date() for m in measurements})
             _update_daily_stats_for_dates(dates)
+        Integration.objects.filter(key="withings").update(last_synced_at=tz.now())
         return {
             "done": True,
             "fetched": len(measurements),
@@ -2085,6 +2091,7 @@ def _run_withings_sync_all() -> dict:
             total_created, total_updated = _upsert_measurements(measurements)
             dates = list({m["measured_at"].astimezone().date() for m in measurements})
             _update_daily_stats_for_dates(dates)
+        Integration.objects.filter(key="withings").update(last_synced_at=tz.now())
         return {
             "done": True,
             "fetched": len(measurements),
@@ -2194,6 +2201,7 @@ def withings_webhook(request):
                 "Withings webhook synced %d measurements for appli=%s",
                 len(measurements), appli,
             )
+            Integration.objects.filter(key="withings").update(last_synced_at=tz.now())
         else:
             logger.info("Withings webhook for appli=%s — not handled, ignoring", appli)
     except Exception:
