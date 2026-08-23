@@ -1979,19 +1979,30 @@ def google_health_webhook(request):
     except ValueError:
         return HttpResponse(status=400)
 
-    authorized = _gh_webhook_authorized(request)
-
-    if payload.get("type") == "verification":
-        # Google's own probe of our auth check during subscriber setup —
-        # respond 200/201 when authorized, 401/403 when not. Not an attack.
-        return HttpResponse(status=200 if authorized else 401)
-
-    if not authorized:
-        logger.warning("Google Health webhook: missing/incorrect Authorization header, rejecting")
-        return HttpResponse(status=401)
-
-    data = payload.get("data", {})
+    # Everything past this point is wrapped in one broad safety net.
+    # Verification/auth are simple enough to have already been proven
+    # reliable (curl-verified against production), but ANY unexpected
+    # payload shape or runtime condition below — not just the interval
+    # parsing — must never surface as a 500. A non-204/200/401 response
+    # here just makes Google retry a request that will fail the same way
+    # every time, burning its 7-day retry budget for nothing, so on any
+    # unexpected exception we log the raw payload + traceback to
+    # WebhookError (visible at /settings/integrations/errors/, unlike
+    # Render's own log stream which has no retrievable history for this)
+    # and acknowledge anyway.
     try:
+        authorized = _gh_webhook_authorized(request)
+
+        if payload.get("type") == "verification":
+            # Google's own probe of our auth check during subscriber setup —
+            # respond 200/201 when authorized, 401/403 when not. Not an attack.
+            return HttpResponse(status=200 if authorized else 401)
+
+        if not authorized:
+            logger.warning("Google Health webhook: missing/incorrect Authorization header, rejecting")
+            return HttpResponse(status=401)
+
+        data = payload.get("data", {})
         data_type = data.get("dataType", "")
         operation = data.get("operation", "UPSERT")
         intervals = data.get("intervals", [])
@@ -2003,38 +2014,30 @@ def google_health_webhook(request):
                 iso = pti.get(key)
                 if iso:
                     dates.add(datetime.fromisoformat(iso.replace("Z", "+00:00")).date())
+
+        if not dates:
+            logger.warning("Google Health webhook: no usable interval for dataType=%s, payload=%r", data_type, payload)
+            return HttpResponse(status=204)
+
+        date_list = sorted(dates)
+        logger.info("Google Health webhook: dataType=%s operation=%s dates=%s-%s",
+                    data_type, operation, date_list[0], date_list[-1])
+
+        threading.Thread(
+            target=_process_google_health_notification,
+            args=(data_type, date_list),
+            daemon=True,
+        ).start()
+
+        return HttpResponse(status=204)
     except Exception:
-        # Verification/auth already passed at this point, so this is a
-        # genuinely malformed-for-us (real) payload, not an attack — the
-        # assumed shape (see docstring) doesn't match what Google actually
-        # sent. Log the raw payload + traceback so it's diagnosable from
-        # /settings/integrations/errors/ instead of only Render's log
-        # stream, and acknowledge anyway: a non-204 here just makes Google
-        # retry a payload that will never parse differently, burning its
-        # 7-day retry budget for nothing.
-        logger.exception("Google Health webhook: failed to parse notification, payload=%r", payload)
+        logger.exception("Google Health webhook: unexpected failure, payload=%r", payload)
         WebhookError.record(
             source="google_health",
-            summary="Failed to parse incoming notification — see detail for raw payload",
+            summary="Unexpected failure handling notification — see detail for raw payload",
             detail=f"payload={payload!r}\n\n{traceback.format_exc()}",
         )
         return HttpResponse(status=204)
-
-    if not dates:
-        logger.warning("Google Health webhook: no usable interval for dataType=%s, payload=%r", data_type, payload)
-        return HttpResponse(status=204)
-
-    date_list = sorted(dates)
-    logger.info("Google Health webhook: dataType=%s operation=%s dates=%s-%s",
-                data_type, operation, date_list[0], date_list[-1])
-
-    threading.Thread(
-        target=_process_google_health_notification,
-        args=(data_type, date_list),
-        daemon=True,
-    ).start()
-
-    return HttpResponse(status=204)
 
 
 # ---------------------------------------------------------------------------
