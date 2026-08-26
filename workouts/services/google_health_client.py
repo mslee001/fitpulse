@@ -91,7 +91,7 @@ def exchange_google_health_code(code: str, redirect_uri: str, client_id: str = N
         "client_id": client_id,
         "client_secret": client_secret,
         "redirect_uri": redirect_uri,
-    })
+    }, timeout=30)
     if resp.status_code != 200:
         raise RuntimeError(f"Google Health token exchange failed ({resp.status_code}): {resp.text}")
     return resp.json()
@@ -285,7 +285,7 @@ class GoogleHealthClient:
             "refresh_token": self._tokens["refresh_token"],
             "client_id": self.client_id,
             "client_secret": self.client_secret,
-        })
+        }, timeout=30)
         if resp.status_code != 200:
             raise GoogleHealthReauthRequired(
                 f"Google Health refresh token rejected ({resp.status_code}): {resp.text}. "
@@ -303,13 +303,23 @@ class GoogleHealthClient:
     # ── API requests ──────────────────────────────────────────────────────────
 
     def _request(self, method: str, path: str, params: dict = None, json_body: dict = None) -> dict:
-        """Make an authenticated request to the Google Health API. Retries once on 401."""
+        """Make an authenticated request to the Google Health API. Retries once on 401.
+
+        2026-08-26 incident: this call had no timeout at all, so a single
+        stalled connection to Google's API (seen in production stuck reading
+        an SSL socket) blocked the request indefinitely — Gunicorn's own
+        --timeout is the only thing that eventually killed it, hard-aborting
+        the worker mid-request with no clean error, instead of the
+        surrounding try/except in the wellness/exercise sync loops handling
+        it gracefully like any other failed fetcher. An explicit timeout
+        turns that into a normal requests.exceptions.Timeout, caught the
+        same way a 429 already is."""
         self._ensure_token_valid()
         url = BASE_URL + path
 
         for attempt in range(2):
             headers = {"Authorization": f"Bearer {self._tokens['access_token']}"}
-            resp = requests.request(method, url, headers=headers, params=params, json=json_body)
+            resp = requests.request(method, url, headers=headers, params=params, json=json_body, timeout=30)
             if resp.status_code == 401 and attempt == 0:
                 logger.info("Google Health 401 — refreshing tokens and retrying")
                 self.refresh_tokens()
