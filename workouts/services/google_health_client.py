@@ -277,7 +277,13 @@ class GoogleHealthClient:
         return self._tokens
 
     def refresh_tokens(self) -> None:
-        """Refresh the access token using the stored refresh token."""
+        """Refresh the access token using the stored refresh token.
+
+        10s, not 30s — unlike exchange_google_health_code (a one-shot call
+        from the interactive OAuth callback page, tolerant of a longer
+        wait), this can be called from inside _request()'s 401-retry path,
+        i.e. from within the same sync hot-loop that needs to stay well
+        under Gunicorn's worker-timeout budget."""
         if not self._tokens.get("refresh_token"):
             self._load_tokens()
         resp = requests.post(TOKEN_URL, data={
@@ -285,7 +291,7 @@ class GoogleHealthClient:
             "refresh_token": self._tokens["refresh_token"],
             "client_id": self.client_id,
             "client_secret": self.client_secret,
-        }, timeout=30)
+        }, timeout=10)
         if resp.status_code != 200:
             raise GoogleHealthReauthRequired(
                 f"Google Health refresh token rejected ({resp.status_code}): {resp.text}. "
@@ -307,19 +313,26 @@ class GoogleHealthClient:
 
         2026-08-26 incident: this call had no timeout at all, so a single
         stalled connection to Google's API (seen in production stuck reading
-        an SSL socket) blocked the request indefinitely — Gunicorn's own
-        --timeout is the only thing that eventually killed it, hard-aborting
-        the worker mid-request with no clean error, instead of the
+        an SSL socket) blocked the request indefinitely, hard-aborted by
+        Gunicorn's own --timeout with no clean error instead of the
         surrounding try/except in the wellness/exercise sync loops handling
-        it gracefully like any other failed fetcher. An explicit timeout
-        turns that into a normal requests.exceptions.Timeout, caught the
-        same way a 429 already is."""
+        it gracefully like any other failed fetcher.
+
+        First fix used timeout=30, which turned out not to be enough of a
+        margin: Gunicorn's worker-timeout kill is an OS-level signal that
+        doesn't depend on the Python interpreter cooperating, so if it's set
+        anywhere close to this call's timeout, Gunicorn's kill can win the
+        race before requests' own exception has a chance to raise and get
+        caught. 10s leaves real margin below Gunicorn's timeout (120s as of
+        the Procfile, but unconfirmed whether that's actually what's
+        deployed — a Render dashboard Start Command silently overrides the
+        Procfile)."""
         self._ensure_token_valid()
         url = BASE_URL + path
 
         for attempt in range(2):
             headers = {"Authorization": f"Bearer {self._tokens['access_token']}"}
-            resp = requests.request(method, url, headers=headers, params=params, json=json_body, timeout=30)
+            resp = requests.request(method, url, headers=headers, params=params, json=json_body, timeout=10)
             if resp.status_code == 401 and attempt == 0:
                 logger.info("Google Health 401 — refreshing tokens and retrying")
                 self.refresh_tokens()
