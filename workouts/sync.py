@@ -1418,7 +1418,17 @@ def _push_food_entry_to_google_health(entry) -> bool:
 
     start = entry.logged_at
     end = start + timedelta(minutes=1)
-    offset = start.utcoffset()
+    # entry.logged_at comes back from the ORM as a UTC-aware datetime (Django
+    # stores everything in UTC regardless of TIME_ZONE) — start.utcoffset()
+    # is always 0 on that, not the app's real America/Los_Angeles offset. The
+    # startTime/endTime below are correct either way (converting to UTC is a
+    # no-op on an already-UTC value), but startUtcOffset was being sent as
+    # "0s" instead of the real local offset, so Google computed the wrong
+    # civil date/time for the entry — a dinner logged ~8pm Pacific showed up
+    # at ~3am the next day, since 0s offset makes Google treat the UTC
+    # instant as if it were already local. tz.localtime() converts to the
+    # Django-configured local timezone first so the offset is correct.
+    offset = tz.localtime(start).utcoffset()
     offset_seconds = int(offset.total_seconds()) if offset else 0
 
     display_name = (entry.raw_text or "").strip()
