@@ -2124,14 +2124,23 @@ def _run_google_health_exercise_sync(start, end) -> dict:
     }
 
 
-def _run_google_health_exercise_sync_new() -> dict:
-    """Syncs since the most recent Google-Health-sourced workout (or the last
-    30 days if none exist yet)."""
-    latest = (
-        CachedWorkout.objects.filter(source="google_health")
-        .order_by("-created_at").values_list("created_at", flat=True).first()
-    )
-    start = (latest.date() - timedelta(days=1)) if latest else (date.today() - timedelta(days=30))
+def _run_google_health_exercise_sync_new(since=None) -> dict:
+    """Syncs since `since` (pass the previous Integration.last_synced_at,
+    captured by the caller before this run bumps it — see
+    _run_google_health_sync_new), or the last 30 days if never synced.
+
+    Deliberately NOT based on the most recent standalone source="google_health"
+    CachedWorkout row (the original approach) — a new exercise point can
+    legitimately turn out to be a Peloton/Garmin duplicate every single time
+    (the normal case when those are the primary recording devices and Google
+    Health is a secondary aggregator), which never creates a new standalone
+    row. That made the window grow forever: confirmed 2026-08-26, the most
+    recent standalone row was from June 12 — over two months stale — despite
+    dozens of fully successful syncs in between, because every new point in
+    that entire window turned out to be a duplicate. Every "Sync New" click
+    was silently re-scanning and re-matching the same ~280 points from that
+    whole two-month span instead of just what was actually new."""
+    start = (since.date() - timedelta(days=1)) if since else (date.today() - timedelta(days=30))
     return _run_google_health_exercise_sync(start, date.today())
 
 
@@ -2144,9 +2153,17 @@ def _run_google_health_exercise_sync_all() -> dict:
 
 
 def _run_google_health_sync_new() -> dict:
+    from .models import Integration
+
+    # Captured before wellness sync runs, since that call bumps
+    # Integration.last_synced_at itself — exercise sync needs the timestamp
+    # from the *previous* run, not the one this run is about to set.
+    integration = Integration.objects.filter(key="google_health").first()
+    since = integration.last_synced_at if integration else None
+
     dates = [date.today() - timedelta(days=i) for i in range(7)]
     wellness = _run_google_health_wellness_sync(dates)
-    exercise = _run_google_health_exercise_sync_new()
+    exercise = _run_google_health_exercise_sync_new(since=since)
     # Catches existing google_health rows whose Garmin match arrived after
     # they synced — the live per-point check in _run_google_health_exercise_sync
     # only sees the Garmin rows that already existed at that moment.
