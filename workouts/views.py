@@ -290,6 +290,34 @@ def _google_health_hr_zones(workout):
     ]
 
 
+def _manual_movement_context(workout):
+    """Context for the shared "class exercises + manual log" card.
+
+    Rows to render in the log form: every exercise already saved by hand, then
+    every plan exercise not yet logged (blank numbers, ready to fill in). Plan
+    order is kept for the unlogged ones; saved rows come first so entered data
+    doesn't jump around."""
+    saved = list(workout.manual_movements_json or [])
+    saved_names = {(r.get("name") or "").strip().lower() for r in saved}
+    rows = [dict(r) for r in saved]
+    for seg in workout.class_plan_json or []:
+        for ex in seg.get("exercises", []):
+            if ex["name"].strip().lower() not in saved_names:
+                saved_names.add(ex["name"].strip().lower())
+                rows.append({"name": ex["name"], "sets": None, "reps": None, "weight_lb": None, "notes": ""})
+    return {
+        "class_plan": workout.class_plan_json or [],
+        "manual_rows": rows,
+        "has_manual_data": bool(saved),
+        # Peloton's Movement Tracker data, when present, is the better record — this
+        # card is for classes it didn't track (e.g. circuit classes).
+        "show_manual_card": not workout.movements and bool(
+            workout.class_plan_json or saved
+            or (workout.source == "peloton" and workout.discipline in ("strength", "circuit"))
+        ),
+    }
+
+
 def _run_detail(request, workout):
     client = _client()
     perf = _get_perf_dict(workout, client)
@@ -570,6 +598,7 @@ def _strength_detail(request, workout):
         "workout_detail": detail_fields,
         "exercise_sets": json.dumps(workout.exercise_sets_json or []),
         "hr_zones_direct": json.dumps(hr_zones_direct),
+        **_manual_movement_context(workout),
     })
 
 
@@ -601,6 +630,7 @@ def _generic_detail(request, workout):
         "workout_detail": _workout_detail_fields(workout),
         "hr_zones_direct": json.dumps(hr_zones_direct),
         "gh_hr_zones": gh_hr_zones,
+        **_manual_movement_context(workout),
     })
 
 
@@ -1307,6 +1337,52 @@ def webhook_errors_page(request):
         "errors": WebhookError.objects.all(),
         "webhook_retention_days": WebhookError.RETENTION_DAYS,
     })
+
+
+def _parse_manual_num(raw, cast):
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        val = cast(float(raw))
+    except (TypeError, ValueError):
+        return None
+    return val if val >= 0 else None
+
+
+@require_POST
+def save_manual_movements(request, workout_id):
+    """Replace a workout's hand-entered exercise log from the card's form.
+
+    The form posts parallel lists (name/sets/reps/weight_lb/notes). Rows with a
+    name but no numbers and no notes are dropped — the plan's pre-filled but
+    untouched exercises shouldn't be stored as if they were logged. Submitting
+    an empty log clears it."""
+    workout = get_object_or_404(CachedWorkout, workout_id=workout_id)
+    names = request.POST.getlist("name")
+    sets = request.POST.getlist("sets")
+    reps = request.POST.getlist("reps")
+    weights = request.POST.getlist("weight_lb")
+    notes = request.POST.getlist("notes")
+
+    rows = []
+    for i, name in enumerate(names):
+        name = name.strip()[:120]
+        row = {
+            "name": name,
+            "sets": _parse_manual_num(sets[i] if i < len(sets) else "", int),
+            "reps": _parse_manual_num(reps[i] if i < len(reps) else "", int),
+            "weight_lb": _parse_manual_num(weights[i] if i < len(weights) else "", float),
+            "notes": (notes[i] if i < len(notes) else "").strip()[:200],
+        }
+        if name and (row["sets"] is not None or row["reps"] is not None
+                     or row["weight_lb"] is not None or row["notes"]):
+            rows.append(row)
+
+    workout.manual_movements_json = rows
+    workout.save(update_fields=["manual_movements_json"])
+    messages.success(request, f"Saved {len(rows)} exercise{'s' if len(rows) != 1 else ''}." if rows else "Exercise log cleared.")
+    return redirect("workout_detail", workout_id=workout.workout_id)
 
 
 @require_POST

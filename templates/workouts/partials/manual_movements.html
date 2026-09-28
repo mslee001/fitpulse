@@ -1,0 +1,92 @@
+{# Class exercise plan + hand-entered exercise log. Included by strength_detail.html and detail.html.
+   Context: class_plan, manual_rows, has_manual_data, workout. #}
+{% load workout_filters %}
+<div class="chart-card" id="classExercisesCard">
+  <div class="chart-header">
+    <h3 class="chart-title">CLASS EXERCISES</h3>
+    <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">
+      {% if class_plan %}programmed by the class &middot; {% endif %}not tracked by Peloton &middot; log your own numbers below
+    </span>
+  </div>
+
+  {% if messages %}
+  {% for message in messages %}
+  <div class="peloton-msg peloton-msg--{{ message.tags }}" style="margin-bottom:0.75rem">{{ message }}</div>
+  {% endfor %}
+  {% endif %}
+
+  {% if class_plan %}
+  <div style="display:flex;flex-direction:column;gap:0.85rem;margin-bottom:1.25rem">
+    {% for seg in class_plan %}
+    <div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.4rem;text-transform:uppercase">
+        {{ seg.name }}{% if seg.length %} &middot; {{ seg.length|floatformat:0 }}s{% endif %}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.4rem">
+        {% for ex in seg.exercises %}
+        <span class="movement-tag" style="font-size:0.78rem;padding:0.2rem 0.55rem">
+          {{ ex.name }}{% if ex.appearances > 1 %} <span style="color:var(--text-dim)">&times;{{ ex.appearances }}</span>{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="{% url 'save_manual_movements' workout.workout_id %}">
+    {% csrf_token %}
+    <div class="movement-table-wrap">
+      <table class="movement-table" id="manualMovementsTable">
+        <thead>
+          <tr>
+            <th>Exercise</th>
+            <th style="width:70px">Sets</th>
+            <th style="width:70px">Reps</th>
+            <th style="width:100px">Weight (lb)</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="manualMovementsBody">
+          {% for r in manual_rows %}
+          <tr>
+            <td><input type="text" name="name" class="form-input" value="{{ r.name }}" maxlength="120" placeholder="Exercise"></td>
+            <td><input type="number" name="sets" class="form-input" value="{{ r.sets|default_if_none:'' }}" min="0" step="1" inputmode="numeric"></td>
+            <td><input type="number" name="reps" class="form-input" value="{{ r.reps|default_if_none:'' }}" min="0" step="1" inputmode="numeric"></td>
+            <td><input type="number" name="weight_lb" class="form-input" value="{{ r.weight_lb|floatformat:"-1" }}" min="0" step="any" inputmode="decimal"></td>
+            <td><input type="text" name="notes" class="form-input" value="{{ r.notes }}" maxlength="200" placeholder="e.g. per side"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.9rem;flex-wrap:wrap">
+      <button type="submit" class="btn btn-accent">Save log</button>
+      <button type="button" class="btn btn-ghost" id="addManualRowBtn">+ Add exercise</button>
+      <span style="font-size:0.72rem;color:var(--text-dim)">Exercises with no numbers or notes aren't saved.</span>
+    </div>
+  </form>
+
+  <template id="manualRowTpl">
+    <tr>
+      <td><input type="text" name="name" class="form-input" maxlength="120" placeholder="Exercise"></td>
+      <td><input type="number" name="sets" class="form-input" min="0" step="1" inputmode="numeric"></td>
+      <td><input type="number" name="reps" class="form-input" min="0" step="1" inputmode="numeric"></td>
+      <td><input type="number" name="weight_lb" class="form-input" min="0" step="any" inputmode="decimal"></td>
+      <td><input type="text" name="notes" class="form-input" maxlength="200" placeholder="e.g. per side"></td>
+    </tr>
+  </template>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const btn = document.getElementById("addManualRowBtn");
+      const body = document.getElementById("manualMovementsBody");
+      const tpl = document.getElementById("manualRowTpl");
+      if (!btn || !body || !tpl) return;
+      btn.addEventListener("click", () => {
+        body.appendChild(tpl.content.cloneNode(true));
+        const inputs = body.querySelectorAll('tr:last-child input[name="name"]');
+        if (inputs.length) inputs[inputs.length - 1].focus();
+      });
+    });
+  </script>
+</div>

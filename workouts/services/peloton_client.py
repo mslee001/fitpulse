@@ -14,6 +14,51 @@ class PelotonAuthError(Exception):
     """Raised when the Peloton session cookie is missing or expired."""
 
 
+# Movement names in a class's segment data that aren't exercises — pacing cues,
+# rests, and transitions Peloton models as "movements" alongside real ones.
+_NON_EXERCISE_MOVEMENTS = {
+    "rest", "demo", "transition", "warm up", "cool down",
+    "recovery pace", "easy pace", "moderate pace", "hard pace", "max pace",
+}
+
+
+def parse_class_plan(ride_details: dict) -> list:
+    """Flatten /api/ride/{id}/details into the class's exercise plan.
+
+    Returns [{"name": "Lower Body", "metrics_type": "floor", "length": 1501,
+    "exercises": [{"name": "Hip Bridge", "appearances": 5}, ...]}, ...] —
+    one entry per segment that contains at least one real exercise, exercises
+    in order of first appearance. "appearances" counts the sub-blocks
+    (circuit rounds, finisher moves) an exercise shows up in, a rough
+    proxy for how many sets the class programs. Class-level only: says what
+    was programmed, not what any one member did.
+    """
+    plan = []
+    segments = ((ride_details or {}).get("segments") or {}).get("segment_list") or []
+    for seg in segments:
+        counts = {}
+        for sub in seg.get("subsegments_v2") or []:
+            if sub.get("type") == "rest":
+                continue
+            seen_in_sub = set()
+            for m in sub.get("movements") or []:
+                name = (m.get("name") or "").strip()
+                if not name or m.get("is_rest") or name.lower() in _NON_EXERCISE_MOVEMENTS:
+                    continue
+                if name in seen_in_sub:
+                    continue  # e.g. "Single Leg Hip Bridge" listed once per side
+                seen_in_sub.add(name)
+                counts[name] = counts.get(name, 0) + 1
+        if counts:
+            plan.append({
+                "name": seg.get("name", ""),
+                "metrics_type": seg.get("metrics_type", ""),
+                "length": seg.get("length"),
+                "exercises": [{"name": n, "appearances": c} for n, c in counts.items()],
+            })
+    return plan
+
+
 class PelotonClient:
     BASE_URL = settings.PELOTON_API_BASE
 
@@ -472,6 +517,10 @@ class PelotonClient:
 
     def get_ride_details(self, ride_id: str) -> dict:
         return self._get(f"/api/ride/{ride_id}/details")
+
+    def get_class_plan(self, ride_id: str) -> list:
+        """Exercise plan for a class — see parse_class_plan."""
+        return parse_class_plan(self.get_ride_details(ride_id))
 
     def get_browse_categories(self) -> list:
         data = self._get("/api/browse_categories", params={"library_type": "on_demand"})

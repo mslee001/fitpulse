@@ -40,6 +40,7 @@ workouts/                # Main app
     seed_demo.py                  # Populate demo data (see README Demo Mode)
     seed_programs.py              # Seed built-in structured training programs
     associate_programs.py         # Backfill CachedWorkout → Program associations
+    backfill_class_plans.py       # Fetch class exercise plans (class_plan_json) for existing Peloton strength/circuit workouts
 templates/workouts/
   base.html              # Shared layout — nav brand is "FITPULSE"
   dashboard.html         # Overview: total workouts, discipline breakdown
@@ -85,6 +86,7 @@ templates/workouts/
     integration_row.html             # One data-source row on the Integrations page (HTMX target for toggle)
     chat_message_pair.html, chat_error.html, chat_cleared.html  # Stats chat sidebar partials (HTMX)
     run_week_rating.html             # Program run-week rating widget partial
+    manual_movements.html            # Class exercise plan + hand-entered exercise log card (strength_detail.html, detail.html)
 static/css/main.css      # All styles — single flat file, CSS variables
 ```
 
@@ -123,6 +125,8 @@ SQLite-backed. Never query either API in real time for list views — sync first
 - `vertical_oscillation_avg` — cm, from `avgVerticalOscillation`
 - `vertical_ratio_avg` — %, from `avgVerticalRatio`
 - `ground_contact_time_avg` — ms, from `avgGroundContactTime`
+
+**Class exercise plan + manual exercise log** (`class_plan_json`, `manual_movements_json`): Peloton's Movement Tracker only records some classes (184/317 strength workouts; 0/22 "circuit"), so `movements` is often empty. `class_plan_json` is the class's programmed exercises — `[{"name": segment, "metrics_type", "length", "exercises": [{"name", "appearances"}]}]`, flattened by `parse_class_plan()` in `peloton_client.py` from `/api/ride/{ride_id}/details` (`segments → segment_list → subsegments_v2 → movements`; rests, demos, transitions and pace cues dropped; `appearances` = number of blocks the exercise is in, a rough sets proxy). It's class-level, not what you did. Fetched for `strength`/`circuit` workouts in `_fetch_and_store_details` (one request per distinct `ride_id` per call); backfill existing ones with `manage.py backfill_class_plans [--dry-run] [--force]`. `manual_movements_json` is `[{"name", "sets", "reps", "weight_lb", "notes"}]`, entered on the "CLASS EXERCISES" card via `POST /workout/<id>/movements/` (`save_manual_movements`; rows with no numbers/notes are dropped, empty submit clears). It is deliberately **not** in `DETAIL_FIELDS`, so detail re-syncs (which overwrite `movements`) never touch it. The card shows only when `movements` is empty (`_manual_movement_context()` in views.py); the AI next-workout prompt falls back tracker names → manual log → class plan. Manual numbers do not yet feed program progression (`programs.py` reads tracker `movements` only).
 
 **Leaderboard sync tracking:**
 - `leaderboard_synced_at` — stamped after every leaderboard detail sync attempt (success or null-result). Used to prevent infinite re-syncing of workouts that Peloton returns null rank for. `raw_data__has_leaderboard_metrics=True` is the reliable sentinel for whether a discipline can have leaderboard data (cycling/running/walking = True; strength/yoga/meditation = False).

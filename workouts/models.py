@@ -576,6 +576,16 @@ class CachedWorkout(models.Model):
     achievements = models.JSONField(default=list)
     movements = models.JSONField(default=list)
     movement_summary = models.JSONField(default=dict)
+
+    # Class-level exercise plan from /api/ride/{id}/details (segment → exercises
+    # the instructor programmed), for classes where Peloton's Movement Tracker
+    # doesn't record anything. Same for everyone who takes the class — see
+    # peloton_client.parse_class_plan for the shape.
+    class_plan_json = models.JSONField(default=list, blank=True)
+    # Hand-entered sets/reps/weight per exercise: [{"name", "sets", "reps",
+    # "weight_lb", "notes"}]. Deliberately NOT in DETAIL_FIELDS/apply_detail —
+    # detail syncs overwrite `movements` wholesale, and this must survive them.
+    manual_movements_json = models.JSONField(default=list, blank=True)
     movement_tracker_tier = models.CharField(max_length=32, blank=True)
     detail_synced_at = models.DateTimeField(null=True, blank=True)
 
@@ -594,6 +604,7 @@ class CachedWorkout(models.Model):
         "strava_id", "leaderboard_rank", "total_leaderboard_users",
         "leaderboard_distance_rank", "total_leaderboard_distance_users",
         "achievements", "movements", "movement_summary", "movement_tracker_tier",
+        "class_plan_json",
         "hr_z1_seconds", "hr_z2_seconds", "hr_z3_seconds", "hr_z4_seconds", "hr_z5_seconds",
         "detail_synced_at",
     ]
@@ -679,6 +690,10 @@ class CachedWorkout(models.Model):
         self.movements = detail.get("movements", [])
         self.movement_summary = detail.get("movement_summary", {})
         self.movement_tracker_tier = detail.get("movement_tracker_tier") or ""
+        # Only overwrite when the caller actually fetched a plan — most disciplines
+        # never do, and an empty default must not clobber a stored one.
+        if detail.get("class_plan"):
+            self.class_plan_json = detail["class_plan"]
         # HR zone durations are more reliably populated from the detail endpoint
         hr_zones = detail.get("hr_zones") or {}
         if hr_zones:

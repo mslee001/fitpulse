@@ -77,12 +77,27 @@ def _withings_client():
 # Peloton helpers
 # ---------------------------------------------------------------------------
 
+# Disciplines whose class exercise plan is worth fetching (one extra API call
+# per distinct class) — the ones where "which exercises" is the interesting part.
+_CLASS_PLAN_DISCS = {"strength", "circuit"}
+
+
 def _fetch_and_store_details(workout_ids, client):
-    """Fetch /api/workout/:id for each ID and persist detail fields to the DB."""
+    """Fetch /api/workout/:id for each ID and persist detail fields to the DB.
+    Also fetches the class exercise plan for strength/circuit workouts, cached
+    per ride_id within this call so repeat takes of a class cost one request."""
+    plan_cache = {}
     for wid in workout_ids:
         try:
             detail = client.get_parsed_workout_detail(wid)
             w = CachedWorkout.objects.get(workout_id=wid)
+            if w.discipline in _CLASS_PLAN_DISCS and w.ride_id:
+                try:
+                    if w.ride_id not in plan_cache:
+                        plan_cache[w.ride_id] = client.get_class_plan(w.ride_id)
+                    detail["class_plan"] = plan_cache[w.ride_id]
+                except Exception as e:
+                    logger.warning("class plan fetch failed for %s: %s", wid, e)
             w.apply_detail(detail)
             w.save(update_fields=CachedWorkout.DETAIL_FIELDS)
         except CachedWorkout.DoesNotExist:

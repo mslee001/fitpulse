@@ -278,6 +278,8 @@
     </div>
     {% endif %}
 
+    {% if show_manual_card %}{% include "workouts/partials/manual_movements.html" %}{% endif %}
+
     <!-- Achievements -->
     {% if workout_detail.achievements %}
     <div class="chart-card">

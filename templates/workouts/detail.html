@@ -96,6 +96,8 @@
     </div>
     {% endif %}
 
+    {% if show_manual_card %}{% include "workouts/partials/manual_movements.html" %}{% endif %}
+
     <!-- Muscle groups -->
     {% if muscle_groups %}
     <div class="chart-card">

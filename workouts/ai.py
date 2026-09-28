@@ -1248,10 +1248,17 @@ def _get_or_generate_next_workout(today_stats):
             muscle_str = "; muscles " + " | ".join(muscle_parts) if muscle_parts else ""
 
             # For strength, also list the exercise names
-            movements = w.movements or []
+            # Movement Tracker names when Peloton recorded them; otherwise the exercises
+            # the user logged by hand, then the class's programmed exercises.
+            names = [m["name"] for m in (w.movements or []) if m.get("name")]
+            if not names:
+                names = [r["name"] for r in (w.manual_movements_json or []) if r.get("name")]
+            if not names:
+                names = [e["name"] for seg in (w.class_plan_json or []) for e in seg.get("exercises", [])]
+            names = list(dict.fromkeys(names))
             move_str = ""
-            if movements and not is_pt:
-                move_str = "; exercises: " + ", ".join(m["name"] for m in movements if m.get("name"))
+            if names and not is_pt:
+                move_str = "; exercises: " + ", ".join(names)
 
             workout_lines.append(
                 f"- {day_label} {title} ({w.discipline}, {dur}min{hr}{eff}{muscle_str}{move_str}){pt_flag}"
