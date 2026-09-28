@@ -68,8 +68,8 @@ templates/workouts/
   insights.html          # Pattern Insights: Sonnet deep-analysis page with weekly cache + HTMX regenerate
   review.html            # Weekly Review: AI Sonnet review of most recently completed Mon–Sun week; archive of past weeks in collapsible details
   today.html             # Landing page ("/"): today's wellness grid + Activity section + workouts
-  settings.html          # FTP setting + Peloton credentials card (collapsible)
-  integrations_settings.html  # Data Sources: enable/disable + Sync All + auth status per source, Webhook Errors card
+  settings.html          # FTP setting + AI coaching profile
+  integrations_settings.html  # Data Sources: enable/disable + Sync All + auth status per source; right column stacks Peloton Session Cookie card + Webhook Errors card
   webhook_errors.html    # Failed webhook-triggered background syncs, newest first, collapsible tracebacks
   program_*.html         # Structured training program pages (list/detail/run/progression/retrospective) — not yet documented below in Key Architecture
   partials/
@@ -93,7 +93,7 @@ static/css/main.css      # All styles — single flat file, CSS variables
 ## Key Architecture
 
 ### Auth
-- **Peloton**: session cookie (`peloton_session_id`) from browser DevTools. `/auth/login` is dead (403). Stored in `PelotonAuth` DB model (singleton pk=1). Rotate via `/settings/`. `PelotonAuthError` raised on 403 with link to `/settings/`.
+- **Peloton**: session cookie (`peloton_session_id`) from browser DevTools. `/auth/login` is dead (403). Stored in `PelotonAuth` DB model (singleton pk=1). Rotate via `/settings/integrations/` ("Peloton Session Cookie" card). `PelotonAuthError` raised on 403 with link to `/settings/integrations/`.
 - **Garmin**: `garminconnect` lib from `zpython-garminconnect-master/`. First-time: `venv/bin/python3 manage.py garmin_login`. Tokens saved to `~/.garminconnect/` and auto-refresh. Never attempt password login from a web request.
 - **Withings**: OAuth 2.0. First-time: `venv/bin/python3 manage.py withings_login`. Tokens saved to DB (`WithingsAuth` singleton pk=1). Auto-refreshes 5 min before expiry. Credentials in `.env`: `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET`, `WITHINGS_REDIRECT_URI`.
 - **Google Health**: OAuth 2.0. First-time (CLI): `venv/bin/python3 manage.py google_health_login`. Also reconnectable from the UI at `/settings/integrations/` → "Reconnect" (see Google Health OAuth Reconnect section below) — same underlying flow either way, via shared helpers in `services/google_health_client.py`. Tokens saved to DB (`GoogleHealthAuth` singleton pk=1). Refresh tokens on Google's consent screen expire after 7 days while the app is in "Testing" status, so reconnecting periodically is expected, not a bug. Credentials in `.env`: `GOOGLE_HEALTH_CLIENT_ID`, `GOOGLE_HEALTH_CLIENT_SECRET`, `GOOGLE_HEALTH_REDIRECT_URI` (used by the CLI login command; the web flow builds its redirect URI dynamically from the current request instead).
@@ -350,7 +350,7 @@ Child templates override these blocks: `discipline_tag`, `page_title`, `pr_sub`,
 - **Today** (`/`, `today_page`): landing page — today's wellness grid (incl. Steps) + compact Activity section + today's workouts.
 
 ### Integrations Page
-- **Settings** (`/settings/integrations/`, `integrations_settings_page`): one row per `Integration` (Peloton/Garmin/Withings/Google Health) — enable/disable toggle (HTMX, swaps `partials/integration_row.html`), auth status, last-synced timestamp, "Sync All" button (via `Integration.sync_all_url_name`), and for Google Health specifically a "Reconnect" link + freshness badge (`GoogleHealthAuth.days_since_connected` vs. the 7-day refresh-token expiry). Also shows a Webhook Errors card with an error-count badge, laid out side-by-side with the Data Sources card on wide viewports (`.integrations-row` CSS grid, `repeat(auto-fit, minmax(420px,1fr))`, centered up to `max-width:1400px`).
+- **Settings** (`/settings/integrations/`, `integrations_settings_page`): one row per `Integration` (Peloton/Garmin/Withings/Google Health) — enable/disable toggle (HTMX, swaps `partials/integration_row.html`), auth status, last-synced timestamp, "Sync All" button (via `Integration.sync_all_url_name`), and for Google Health specifically a "Reconnect" link + freshness badge (`GoogleHealthAuth.days_since_connected` vs. the 7-day refresh-token expiry). Also shows a Peloton Session Cookie card (masked cookie/user ID/last updated + collapsible update form posting to `set_peloton_auth`, which redirects back here) stacked above a Webhook Errors card with an error-count badge, in a right column laid out side-by-side with the Data Sources card on wide viewports (`.integrations-row` CSS grid, `repeat(auto-fit, minmax(420px,1fr))`, centered up to `max-width:1400px`).
 - **Webhook Errors** (`/settings/integrations/errors/`, `webhook_errors_page`): newest-first list of `WebhookError` rows with collapsible `<details>` tracebacks; prunes rows past `WebhookError.RETENTION_DAYS` on every load.
 - **Google Health OAuth Reconnect** (`google_health_oauth_connect` / `google_health_oauth_callback`, `/auth/google-health/connect/` → Google consent screen → `/auth/google-health/callback/`): plain full-page redirects (not HTMX — OAuth needs a genuine browser navigation). The connect view builds the redirect URI dynamically from the current request (works on both `localhost` and the deployed domain without env-specific config), stashes a random `state` value in the session with an explicit `request.session.save()` (don't rely solely on `SESSION_SAVE_EVERY_REQUEST` before an external-domain redirect), and the callback validates the returned `state` matches (CSRF protection) before exchanging the code via `GoogleHealthClient`/`exchange_google_health_code()`. Always redirects back to `/settings/integrations/` with a Django `messages` success/error, even on failure — never renders an error page directly, since the browser lands on this exact URL straight from Google.
 
@@ -465,7 +465,7 @@ Compares DailyStats metrics before vs. after an intervention date. Prints before
 ```
 DJANGO_SECRET_KEY=...
 # PELOTON_SESSION_ID and PELOTON_USER_ID are no longer needed here —
-# Peloton credentials are stored in the DB and managed via /settings/
+# Peloton credentials are stored in the DB and managed via /settings/integrations/
 ANTHROPIC_API_KEY=...
 GARMIN_EMAIL=...
 GARMIN_PASSWORD=...
@@ -540,7 +540,7 @@ Must be set on Render separately from local `.env` — a missing `GOOGLE_HEALTH_
   _run_wellness_sync([date.today()])
   _run_withings_sync_new()
   ```
-- **Rotate Peloton cookie**: `/settings/` → expand "Update Cookie" → paste new `peloton_session_id` value
+- **Rotate Peloton cookie**: `/settings/integrations/` → Peloton Session Cookie card → expand "Update Cookie" → paste new `peloton_session_id` value
 - **Migrate Peloton creds from .env to DB (one-time)**: `venv/bin/python3 manage.py migrate_peloton_creds`
 - **Migrate Withings tokens from file to DB (one-time)**: `venv/bin/python3 manage.py migrate_withings_tokens`
 - **Subscribe Withings webhook**: `venv/bin/python3 manage.py subscribe_withings_webhook`

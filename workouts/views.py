@@ -1180,7 +1180,6 @@ def analytics_page(request):
 # ---------------------------------------------------------------------------
 
 def settings_page(request):
-    from .models import PelotonAuth
     settings_obj = UserSettings.get()
     athlete = AthleteProfile.get()
     return render(request, "workouts/settings.html", {
@@ -1189,15 +1188,15 @@ def settings_page(request):
         "athlete": athlete,
         "experience_choices": AthleteProfile.EXPERIENCE_CHOICES,
         "tone_choices": AthleteProfile.TONE_CHOICES,
-        "peloton_auth": PelotonAuth.get(),
         "last_daily_sync_at": settings_obj.last_daily_sync_at,
     })
 
 
 def integrations_settings_page(request):
-    from .models import GoogleHealthAuth, Integration, WebhookError
+    from .models import GoogleHealthAuth, Integration, PelotonAuth, WebhookError
     return render(request, "workouts/integrations_settings.html", {
         "integrations": Integration.objects.all(),
+        "peloton_auth": PelotonAuth.get(),
         "webhook_error_count": WebhookError.objects.count(),
         "webhook_retention_days": WebhookError.RETENTION_DAYS,
         "google_health_auth": GoogleHealthAuth.get(),
@@ -1324,7 +1323,7 @@ def set_peloton_auth(request):
             defaults={"session_id": session_id, "user_id": user_id, "notes": notes},
         )
         messages.success(request, "Peloton credentials updated.")
-    return redirect("settings")
+    return redirect("integrations_settings")
 
 
 @require_POST

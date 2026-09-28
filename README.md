@@ -27,7 +27,7 @@ A personal fitness dashboard built with Django. Syncs workout and wellness data 
 - **Symptom log** — track GI and other side effects with severity; symptoms inform meal suggestions and appear as a summary on the body trends page
 - **Pattern insights** — Claude Sonnet deep-analysis of 60 days of integrated data (weight, recovery, nutrition, hunger, symptoms, workouts, interventions) to surface non-obvious correlations
 - **Weekly review** — AI-generated summary of each completed Mon–Sun week covering weight trend, nutrition adherence, training, and one focus for the next week; archived for all past weeks
-- **Settings** — manage your current FTP and Peloton session cookie; historical FTP tracked per workout for accurate power zone charts
+- **Settings** — manage your current FTP; historical FTP tracked per workout for accurate power zone charts
 
 ---
 
@@ -62,7 +62,7 @@ Peloton's login endpoint is no longer publicly accessible, so authentication is 
 3. Copy the value of `peloton_session_id`
 4. Find your user ID: it appears in the URL when you visit your profile page (`/members/<user_id>/overview`)
 
-After the app is running, enter these values in the **Settings** page (`/settings/`) under "Peloton Credentials". They are stored in the app's database — not in `.env`.
+After the app is running, enter these values in the **Integrations** page (`/settings/integrations/`) under "Peloton Session Cookie". They are stored in the app's database — not in `.env`.
 
 **3. Create a `.env` file**
 
@@ -147,7 +147,7 @@ Then:
 3. Run `venv/bin/python3 manage.py garmin_login` to authenticate Garmin
 4. If using Withings, run `venv/bin/python3 manage.py withings_login` (or `migrate_withings_tokens` if migrating tokens from a previous file-based setup)
 5. If using Google Health, run `venv/bin/python3 manage.py google_health_login`
-6. Start the server and enter your Peloton credentials via the **Settings** page (`/settings/`)
+6. Start the server and enter your Peloton credentials via the **Integrations** page (`/settings/integrations/`)
 7. Use **Sync All** for each source from the **Integrations** page (`/settings/integrations/`) to pull your full history
 
 Note: `db.sqlite3` is not in the repo — each machine starts with an empty database and needs to sync data fresh.
@@ -221,7 +221,7 @@ Google Health can also push updates automatically via a webhook, in addition to 
 1. From the Integrations page, run **Sync All** for each source you've connected
 2. Browse — charts, running form, and wellness data will all be populated
 
-Session cookies expire periodically. When Peloton syncing stops working, grab a fresh `peloton_session_id` from your browser and update it via the **Settings** page (`/settings/`). Garmin and Withings tokens auto-refresh. Google Health refresh tokens expire every 7 days while the Google Cloud project is in "Testing" status — reconnect from the Integrations page when that happens.
+Session cookies expire periodically. When Peloton syncing stops working, grab a fresh `peloton_session_id` from your browser and update it via the **Integrations** page (`/settings/integrations/`). Garmin and Withings tokens auto-refresh. Google Health refresh tokens expire every 7 days while the Google Cloud project is in "Testing" status — reconnect from the Integrations page when that happens.
 
 ---
 

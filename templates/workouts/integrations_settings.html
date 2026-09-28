@@ -33,21 +33,81 @@
     </p>
   </div>
 
-  <div class="chart-card">
-    <div class="chart-header">
-      <h3 class="chart-title">WEBHOOK ERRORS</h3>
-      {% if webhook_error_count %}
-      <span class="badge" style="background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);">{{ webhook_error_count }}</span>
-      {% endif %}
-    </div>
-    <p style="font-size:0.85rem;color:var(--text-muted);margin:0.75rem 0 1rem;">
-      {% if webhook_error_count %}
-        {{ webhook_error_count }} failed background sync{{ webhook_error_count|pluralize }} from incoming webhooks in the last {{ webhook_retention_days }} days.
+  {# Right column stacks two cards so the row stays two-wide instead of wrapping to three #}
+  <div style="display:flex;flex-direction:column;gap:1.25rem;min-width:0">
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">PELOTON SESSION COOKIE</h3>
+      </div>
+      <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1.25rem">
+        Required for Peloton sync. Cookies last weeks to months — rotate here when sync starts returning 403.
+      </p>
+
+      {% if peloton_auth %}
+      <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:1.25rem;font-size:0.82rem">
+        <div style="display:flex;gap:1rem">
+          <span style="color:var(--text-dim);min-width:90px">Cookie</span>
+          <span style="font-family:'JetBrains Mono',monospace">{{ peloton_auth.masked_session_id }}</span>
+        </div>
+        <div style="display:flex;gap:1rem">
+          <span style="color:var(--text-dim);min-width:90px">User ID</span>
+          <span style="font-family:'JetBrains Mono',monospace">{{ peloton_auth.user_id }}</span>
+        </div>
+        <div style="display:flex;gap:1rem">
+          <span style="color:var(--text-dim);min-width:90px">Updated</span>
+          <span style="color:var(--text-muted)">{{ peloton_auth.last_updated|date:"M j, Y g:i A" }}</span>
+        </div>
+      </div>
       {% else %}
-        No webhook processing failures in the last {{ webhook_retention_days }} days.
+      <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1.25rem">No credentials saved yet.</p>
       {% endif %}
-    </p>
-    <a href="{% url 'webhook_errors' %}" class="btn btn-sm btn-ghost">View errors</a>
+
+      <details style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+        <summary style="padding:0.55rem 0.85rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--text-muted);text-transform:uppercase;list-style:none;background:var(--bg-raised)">
+          {% if peloton_auth %}Update Cookie{% else %}Add Credentials{% endif %} ▾
+        </summary>
+        <div style="padding:1rem">
+          <p style="font-size:0.78rem;color:var(--text-dim);margin:0 0 0.85rem;line-height:1.5">
+            Open <strong style="color:var(--text-muted)">members.onepeloton.com</strong> in Chrome → DevTools → Application → Cookies → copy <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-raised);padding:1px 4px;border-radius:3px">peloton_session_id</code>
+          </p>
+          <form method="post" action="{% url 'set_peloton_auth' %}" style="display:flex;flex-direction:column;gap:0.75rem">
+            {% csrf_token %}
+            <div class="form-group">
+              <label class="form-label">Session cookie</label>
+              <input type="password" name="session_id" class="form-input" autocomplete="off" placeholder="Paste full cookie value" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">User ID</label>
+              <input type="text" name="user_id" class="form-input"
+                     value="{% if peloton_auth %}{{ peloton_auth.user_id }}{% endif %}"
+                     placeholder="Your Peloton user ID" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Notes (optional)</label>
+              <input type="text" name="notes" class="form-input" placeholder="e.g. extracted from Chrome 2026-06-27">
+            </div>
+            <button type="submit" class="btn btn-accent" style="align-self:flex-start">Save</button>
+          </form>
+        </div>
+      </details>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">WEBHOOK ERRORS</h3>
+        {% if webhook_error_count %}
+        <span class="badge" style="background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);">{{ webhook_error_count }}</span>
+        {% endif %}
+      </div>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin:0.75rem 0 1rem;">
+        {% if webhook_error_count %}
+          {{ webhook_error_count }} failed background sync{{ webhook_error_count|pluralize }} from incoming webhooks in the last {{ webhook_retention_days }} days.
+        {% else %}
+          No webhook processing failures in the last {{ webhook_retention_days }} days.
+        {% endif %}
+      </p>
+      <a href="{% url 'webhook_errors' %}" class="btn btn-sm btn-ghost">View errors</a>
+    </div>
   </div>
 </div>
 {% endblock %}

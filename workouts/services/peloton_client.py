@@ -3,7 +3,7 @@ Peloton API client.
 
 Auth note: The old /auth/login endpoint is dead (403). This client uses the
 session cookie approach — credentials are stored in the PelotonAuth DB singleton
-(pk=1). Rotate via /settings/peloton/ when sync starts returning 403.
+(pk=1). Rotate via /settings/integrations/ when sync starts returning 403.
 """
 
 import requests
@@ -24,7 +24,7 @@ class PelotonClient:
             raise PelotonAuthError(
                 "No PelotonAuth row in DB. "
                 "Run: venv/bin/python3 manage.py migrate_peloton_creds  "
-                "(or paste credentials at /settings/peloton/)"
+                "(or paste credentials at /settings/integrations/)"
             )
         self.session = requests.Session()
         self.session.cookies.set("peloton_session_id", auth.session_id)
@@ -37,7 +37,7 @@ class PelotonClient:
         if response.status_code == 403:
             raise PelotonAuthError(
                 "Peloton returned 403 — your session cookie has expired. "
-                "Rotate it at /settings/peloton/"
+                "Rotate it at /settings/integrations/"
             )
         response.raise_for_status()
         return response.json()

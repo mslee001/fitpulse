@@ -1058,7 +1058,7 @@ class PelotonAuth(models.Model):
     """
     Singleton (pk=1). Stores Peloton session credentials in Postgres so both
     laptop and hosted app can sync. Peloton has no OAuth — the session cookie
-    is extracted manually from browser DevTools and pasted into /settings/peloton/.
+    is extracted manually from browser DevTools and pasted into /settings/integrations/.
     Cookies last weeks to months; rotate when sync starts returning 403.
     """
     session_id = models.CharField(max_length=512, help_text="peloton_session_id cookie")
