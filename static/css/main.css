@@ -2803,6 +2803,10 @@ a:hover { text-decoration: underline; }
 .pcell-done:hover { background: var(--bg-hover); text-decoration: none; }
 .pcell-todo { opacity: 0.55; border-style: dashed; }
 .pcell-optional { opacity: 0.4; }
+.pcell-recovery {
+  display: block; margin-top: 0.15rem;
+  font-size: 0.72rem; color: var(--text-muted);
+}
 .pcell-check { color: var(--accent); font-weight: 700; }
 .pcell-title { font-size: 0.9rem; color: var(--text); }
 .pcell-sub {

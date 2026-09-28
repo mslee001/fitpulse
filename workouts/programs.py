@@ -9,6 +9,7 @@ from django.utils.text import slugify
 
 from .models import (
     CachedWorkout, Program, ProgramWeek, ProgramSlot, ProgramRun, RunWeek, ProgramWorkout,
+    ProgramRecovery,
 )
 
 # "<base title>: <Plan> W1 D1"  — suffix on CachedWorkout.title, e.g.
@@ -93,6 +94,43 @@ def parse_week_day(program, workout):
     return None, None
 
 
+def _workout_span(workout):
+    """(start, end) datetimes of a workout; end == start when duration is unknown."""
+    start = workout.created_at
+    return start, start + timedelta(seconds=workout.duration_seconds or 0)
+
+
+def _overlaps_program_workout(workout):
+    """True if this workout's time span overlaps a workout already on a program grid —
+    i.e. it's probably a second device's recording of the same session (Peloton class +
+    the watch's own "Yoga" entry). Used only for discipline-matched slots, which have no
+    ride-id to tell duplicates apart."""
+    start, end = _workout_span(workout)
+    cands = (ProgramWorkout.objects
+             .filter(workout__created_at__gte=start - timedelta(hours=3), workout__created_at__lt=end)
+             .exclude(workout=workout).select_related("workout"))
+    for e in cands:
+        s2, e2 = _workout_span(e.workout)
+        if s2 < end and start < e2:
+            return True
+    return False
+
+
+def _discipline_slots_for(workout):
+    """ProgramSlots of the "any class" kind (match_discipline set) this workout fits."""
+    disc = (workout.discipline or "").lower()
+    if not disc:
+        return []
+    title = (workout.title or "").lower()
+    out = []
+    for slot in ProgramSlot.objects.filter(match_discipline=disc).select_related("week", "week__program"):
+        kw = slot.match_title_keyword.strip().lower()
+        if kw and kw not in title:
+            continue
+        out.append(slot)
+    return out
+
+
 # ---------- the confidence ladder ----------
 
 def identify_membership(workout):
@@ -125,6 +163,20 @@ def identify_membership(workout):
             # alone; associate_workout resolves it once it has the active run
             # (week=None is the signal to do that).
             return program, None, slots[0].day, "ride_id"
+
+    # 2b) "any class" slots (e.g. a split's Pilates/Yoga off-days): matched by discipline
+    # (+ optional title keyword). Only counts once the program has a live run, and only
+    # for workouts on/after that run's start — otherwise every yoga class you ever took
+    # would flood in. A second device's recording of a session already on a grid is skipped.
+    on_date = workout_local_date(workout)
+    for slot in _discipline_slots_for(workout):
+        program = slot.week.program
+        run = program.active_run
+        if run is None or (on_date and on_date < run.start_date):
+            continue
+        if _overlaps_program_workout(workout):
+            continue
+        return program, slot.week.number, slot.day, "discipline"
 
     # 3) title suffix -> only auto-associate if a Program name matches
     m = TITLE_SUFFIX_RE.search(workout.title or "")
@@ -174,13 +226,14 @@ def _slot_for(workout, program_week, matched_by, day=None):
                 matches.sort(key=lambda s: s.day != day)
             return matches
     norm = normalize_title(workout.title)
-    if not norm:
-        return []
     matches = []
-    for s in program_week.slots.all():
-        st = s.title.strip().lower()
-        if st and (st == norm or st in norm or norm in st):
-            matches.append(s)
+    if norm:
+        for s in program_week.slots.all():
+            st = s.title.strip().lower()
+            if st and (st == norm or st in norm or norm in st):
+                matches.append(s)
+    if not matches:
+        matches = [s for s in _discipline_slots_for(workout) if s.week_id == program_week.id]
     if day is not None:
         matches.sort(key=lambda s: s.day != day)
     return matches
@@ -240,6 +293,39 @@ def fill_or_append(run, workout, program_week, slot_candidates, matched_by):
         run_week=rw, slot=slot, workout=workout, matched_by=matched_by)
 
 
+def place_by_date(run, workout, program_week, slot_candidates, matched_by):
+    """
+    Place an "any class" completion (e.g. a Pilates off-day) into the pass whose date
+    range it belongs to, rather than only ever the newest pass like fill_or_append.
+    Off-day classes land between the fixed-ride workouts of their week, and a backfill
+    replays them after later passes already exist. Chooses the pass with an open matching
+    slot whose dates are closest to this one (0 if inside its range; ties go to the earlier
+    pass), provided the pass wouldn't stretch past PASS_GAP_DAYS; otherwise falls back to
+    fill_or_append.
+    """
+    on_date = workout_local_date(workout)
+    best = None
+    if on_date:
+        for rw in run.run_weeks.filter(program_week=program_week).order_by("sequence"):
+            slot, is_open = _open_slot_in(rw, slot_candidates)
+            if not is_open:
+                continue
+            dates = [d for d in (workout_local_date(e.workout) for e in rw.entries.select_related("workout")) if d]
+            if not dates:
+                continue
+            lo, hi = min(dates), max(dates)
+            if (max(hi, on_date) - min(lo, on_date)).days > PASS_GAP_DAYS:
+                continue
+            dist = 0 if lo <= on_date <= hi else min(abs((on_date - lo).days), abs((on_date - hi).days))
+            key = (dist, rw.sequence)
+            if best is None or key < best[0]:
+                best = (key, rw, slot)
+    if best:
+        _, rw, slot = best
+        return ProgramWorkout.objects.create(run_week=rw, slot=slot, workout=workout, matched_by=matched_by)
+    return fill_or_append(run, workout, program_week, slot_candidates, matched_by)
+
+
 def _resolve_recurring_week(run):
     """
     Attribute a repeat_all_weeks completion (its ride_id has a slot in every
@@ -276,7 +362,111 @@ def associate_workout(workout):
         pw_week = ProgramWeek.objects.create(program=program, number=week_number)
 
     slot_candidates = _slot_for(workout, pw_week, matched_by, day=day)
+    if matched_by == "discipline":
+        return place_by_date(run, workout, pw_week, slot_candidates, matched_by)
     return fill_or_append(run, workout, pw_week, slot_candidates, matched_by)
+
+
+# ---------- recovery tracking (cool-down walk / stretch after a completion) ----------
+
+RECOVERY_WINDOW_MIN = 10   # a recovery session may start up to this long after the previous one ends
+RECOVERY_SLACK_MIN = 2     # ...or this long before (recorded end times aren't exact)
+RECOVERY_MAX_MIN = 30      # longer than this is a real workout (a hike), not a cool-down
+
+
+def recovery_kind(workout):
+    """"walk", "stretch", or None if this workout can't be a recovery session."""
+    if not workout.created_at or (workout.duration_seconds or 0) > RECOVERY_MAX_MIN * 60:
+        return None
+    disc = (workout.discipline or "").lower()
+    if disc == "walking":
+        return "walk"
+    # Peloton files Pilates under strength; a stretching-category Pilates class is a
+    # workout in its own right, not a cool-down.
+    if disc == "stretching" and "pilates" not in (workout.title or "").lower():
+        return "stretch"
+    return None
+
+
+def attach_recoveries(run):
+    """
+    Attach cool-down walks / stretches to the completions in a run whose program
+    has track_recovery on. From each completion's end: a walk or a stretch may start
+    within RECOVERY_WINDOW_MIN; after a walk, a stretch may follow within the same
+    window; after a stretch the chain ends. So a completion ends up with nothing, a
+    walk, a stretch, or walk then stretch. Any device's recording counts (a
+    watch-recorded walk as well as a Peloton one) but each workout attaches to at
+    most one completion, and workouts already on a program grid are never
+    recoveries. Idempotent — resumes an existing chain, so a stretch that syncs after
+    its walk is picked up on the next run. Returns the number of new attachments.
+    """
+    if not run.program.track_recovery:
+        return 0
+    mains = list(ProgramWorkout.objects.filter(run_week__run=run)
+                 .select_related("workout").prefetch_related("recoveries__workout"))
+    mains = [m for m in mains if m.workout.created_at]
+    if not mains:
+        return 0
+    mains.sort(key=lambda m: m.workout.created_at)
+
+    lo = mains[0].workout.created_at
+    hi = max(_workout_span(m.workout)[1] for m in mains) + timedelta(minutes=2 * (RECOVERY_WINDOW_MIN + RECOVERY_MAX_MIN))
+    taken = set(ProgramWorkout.objects.values_list("workout_id", flat=True))
+    taken |= set(ProgramRecovery.objects.values_list("workout_id", flat=True))
+    cands = []
+    for w in CachedWorkout.objects.filter(created_at__gte=lo, created_at__lte=hi).exclude(pk__in=taken).order_by("created_at"):
+        kind = recovery_kind(w)
+        if kind:
+            cands.append((w, kind))
+
+    made = 0
+    for main in mains:
+        chain = sorted(main.recoveries.all(), key=lambda r: r.order)
+        prev_end = _workout_span(chain[-1].workout if chain else main.workout)[1]
+        prev_kind = chain[-1].kind if chain else None
+        order = len(chain)
+        while prev_kind != "stretch":
+            allowed = {"walk", "stretch"} if prev_kind is None else {"stretch"}
+            pick = None
+            for w, kind in cands:
+                if w.pk in taken or kind not in allowed:
+                    continue
+                gap_min = (w.created_at - prev_end).total_seconds() / 60
+                if -RECOVERY_SLACK_MIN <= gap_min <= RECOVERY_WINDOW_MIN:
+                    pick = (w, kind)
+                    break
+            if not pick:
+                break
+            w, kind = pick
+            ProgramRecovery.objects.create(entry=main, workout=w, kind=kind, order=order)
+            taken.add(w.pk)
+            prev_end, prev_kind, order = _workout_span(w)[1], kind, order + 1
+            made += 1
+    return made
+
+
+def reconcile_program_extras():
+    """Catch up "any class" slot matches and recovery attachments for every program
+    that uses them — run after syncs, since a walk/stretch usually lands after its
+    workout and Google/Garmin-recorded classes never go through the per-workout
+    Peloton hook. Cheap no-op for programs that use neither. Returns
+    {"associated": n, "recoveries": n}."""
+    associated = recoveries = 0
+    for program in Program.objects.all():
+        run = program.active_run
+        if run is None:
+            continue
+        has_disc = ProgramSlot.objects.filter(week__program=program).exclude(match_discipline="").exists()
+        if not (has_disc or program.track_recovery):
+            continue
+        # Count by the change in rows: backfill_program also attaches recoveries itself.
+        before = ProgramRecovery.objects.count()
+        if has_disc:
+            associated += backfill_program(program)
+        if program.track_recovery:
+            attach_recoveries(run)
+        recoveries += ProgramRecovery.objects.count() - before
+    return {"associated": associated, "recoveries": recoveries}
 
 
 # ---------- cross-cycle exercise load progression ----------
@@ -564,12 +754,24 @@ def backfill_program(program):
     count of new associations made.
     """
     ride_ids = program_ride_ids(program)
-    workouts = CachedWorkout.objects.filter(ride_id__in=ride_ids).order_by("created_at")
+    q = Q(ride_id__in=ride_ids)
+    run = program.active_run
+    for slot in ProgramSlot.objects.filter(week__program=program).exclude(match_discipline=""):
+        dq = Q(discipline=slot.match_discipline)
+        if slot.match_title_keyword.strip():
+            dq &= Q(title__icontains=slot.match_title_keyword.strip())
+        if run is not None:
+            dq &= Q(created_at__date__gte=run.start_date)
+        q |= dq
+    # Date order matters: placement assumes earlier completions are already on the grid.
+    workouts = CachedWorkout.objects.filter(q).order_by("created_at")
     made = 0
     for w in workouts:
         existing = ProgramWorkout.objects.filter(workout=w).exists()
         if not existing and associate_workout(w):
             made += 1
+    if run is not None and program.track_recovery:
+        attach_recoveries(run)
     return made
 
 

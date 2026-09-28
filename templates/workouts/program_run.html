@@ -78,6 +78,13 @@
     <div class="stat-label">Weeks</div>
     <div class="stat-value">{{ rows|length }}</div>
   </div>
+  {% if program.track_recovery %}
+  <div class="stat-card" title="Cool-down walks and stretches taken right after a workout">
+    <div class="stat-label">Recovery</div>
+    <div class="stat-value">{{ totals.completions_with_recovery }}/{{ totals.workouts }}</div>
+    <div class="stat-sub">{{ totals.recovery_sessions }} session{{ totals.recovery_sessions|pluralize }} &middot; {{ totals.recovery_minutes }} min</div>
+  </div>
+  {% endif %}
 </div>
 {% else %}
 <div style="display:flex; gap:1rem; margin-bottom:2.5rem">
@@ -137,6 +144,11 @@
               {{ cell.entry.workout.created_at|date:"M j, Y" }}
               {% if cell.entry.workout.effort_points %} &middot; {{ cell.entry.workout.effort_points }} pts{% endif %}
             </span>
+            {% for r in cell.recoveries %}
+            <span class="pcell-recovery" title="{{ r.workout.title }} &middot; {{ r.workout.created_at|date:'g:i A' }}">
+              + {{ r.get_kind_display }} &middot; {{ r.duration_minutes }} min
+            </span>
+            {% endfor %}
           </a>
         {% else %}
           <div class="pcell pcell-todo{% if cell.slot.optional %} pcell-optional{% endif %}">

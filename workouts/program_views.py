@@ -25,7 +25,8 @@ def _run_grid(run):
     """
     entries = (ProgramWorkout.objects
                .filter(run_week__run=run)
-               .select_related("slot", "workout", "run_week", "run_week__program_week"))
+               .select_related("slot", "workout", "run_week", "run_week__program_week")
+               .prefetch_related("recoveries__workout"))
     by_cell = {}
     for e in entries:
         by_cell[(e.run_week_id, e.slot_id)] = e
@@ -42,6 +43,9 @@ def _run_grid(run):
     rows = []
     total_workouts = 0
     total_effort = 0.0
+    recovery_sessions = 0
+    recovery_seconds = 0
+    completions_with_recovery = 0
     # Grouped by canonical week number, chronological (sequence) within each
     # group — so a repeated pass (e.g. a week resumed after a gap) sits right
     # under its earlier attempt instead of trailing at the end of the run.
@@ -51,12 +55,18 @@ def _run_grid(run):
         cells = []
         for slot in slots:
             e = by_cell.get((rw.id, slot.id))
+            recoveries = []
             if e:
                 total_workouts += 1
                 total_effort += (getattr(e.workout, "effort_points", 0) or 0)
+                recoveries = list(e.recoveries.all())
+                if recoveries:
+                    completions_with_recovery += 1
+                    recovery_sessions += len(recoveries)
+                    recovery_seconds += sum(r.workout.duration_seconds or 0 for r in recoveries)
             elif slot.optional and not is_open_pass:
                 continue   # never-filled optional slot in a closed pass — hide it
-            cells.append({"slot": slot, "entry": e})
+            cells.append({"slot": slot, "entry": e, "recoveries": recoveries})
         # Completed classes in the order actually taken; still-empty slots trail at
         # the end (they have no date to sort by) in their defined slot order.
         cells.sort(key=lambda c: (c["entry"] is None, c["entry"] and c["entry"].workout.created_at))
@@ -69,7 +79,12 @@ def _run_grid(run):
         has_done = any(c["entry"] for c in cells) or bool(loose)
         rows.append({"run_week": rw, "cells": cells, "loose": loose, "has_done": has_done})
 
-    totals = {"workouts": total_workouts, "effort_points": round(total_effort)}
+    totals = {
+        "workouts": total_workouts, "effort_points": round(total_effort),
+        "recovery_sessions": recovery_sessions,
+        "recovery_minutes": round(recovery_seconds / 60),
+        "completions_with_recovery": completions_with_recovery,
+    }
     return rows, totals
 
 

@@ -42,6 +42,17 @@ def _associate_program_safe(workout):
         logger.exception("program association failed for workout %s", getattr(workout, "pk", "?"))
 
 
+def _reconcile_programs_safe():
+    """Best-effort catch-up of program "any class" matches and recovery attachments
+    (cool-down walks/stretches) — run after syncs, since a recovery session usually
+    syncs after its workout. Never raises: must not break a sync."""
+    try:
+        return _programs.reconcile_program_extras()
+    except Exception:
+        logger.exception("program reconcile (any-class slots / recoveries) failed")
+        return None
+
+
 def _integration_enabled(key: str) -> bool:
     """
     True if Integration(key=key).is_enabled, defaulting to True if the row
@@ -218,6 +229,7 @@ def _run_peloton_sync_all():
                 break
         reconciled = _reconcile_google_health_duplicates()
         garmin_reconciled = _reconcile_garmin_duplicates()
+        _reconcile_programs_safe()
         Integration.objects.filter(key="peloton").update(last_synced_at=tz.now())
         return {
             "done": True,
@@ -279,6 +291,7 @@ def _run_peloton_sync_new(days=None):
             page += 1
         reconciled = _reconcile_google_health_duplicates()
         garmin_reconciled = _reconcile_garmin_duplicates()
+        _reconcile_programs_safe()
         Integration.objects.filter(key="peloton").update(last_synced_at=tz.now())
         return {
             "done": True,
@@ -2184,6 +2197,7 @@ def _run_google_health_sync_new() -> dict:
     # only sees the Garmin rows that already existed at that moment.
     gh_reconciled = _reconcile_garmin_google_health_duplicates()
     exercise["garmin_merged"] = gh_reconciled["deleted"]
+    _reconcile_programs_safe()
     return {"wellness": wellness, "exercise": exercise}
 
 
@@ -2193,6 +2207,7 @@ def _run_google_health_sync_all() -> dict:
     exercise = _run_google_health_exercise_sync_all()
     gh_reconciled = _reconcile_garmin_google_health_duplicates()
     exercise["garmin_merged"] = gh_reconciled["deleted"]
+    _reconcile_programs_safe()
     return {"wellness": wellness, "exercise": exercise}
 
 

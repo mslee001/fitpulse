@@ -41,6 +41,7 @@ workouts/                # Main app
     seed_programs.py              # Seed built-in structured training programs
     associate_programs.py         # Backfill CachedWorkout → Program associations
     backfill_class_plans.py       # Fetch class exercise plans (class_plan_json) for existing Peloton strength/circuit workouts
+    setup_robins_split.py         # Enable recovery tracking + add Pilates/Yoga "any class" slots on the Robin's Split + Run program (idempotent, --dry-run)
 templates/workouts/
   base.html              # Shared layout — nav brand is "FITPULSE"
   dashboard.html         # Overview: total workouts, discipline breakdown
@@ -339,6 +340,14 @@ Mirrors the Garmin/Withings shape (OAuth2 + sync functions in `sync.py`, client 
 - Google Health: `Google Health Sync New` (`/api/sync/google-health/new/`), `Google Health Sync All` (`/api/sync/google-health/all/`) — both run wellness + exercise sync together, see above.
 - `POST /webhooks/google-health/` — Google Health push webhook (see above). `@csrf_exempt`. Listed in `PUBLIC_PATHS`.
 - **Nav vs. Integrations page**: the nav Sync dropdown only offers each source's "Sync New" (a fast incremental sync safe to run often). "Sync All" (slow full backfill) for every source lives on `/settings/integrations/` instead, next to that source's enable/disable toggle — not in the nav. Peloton and Garmin used to be bundled into one nav action (`sync_new`/`sync_all`, since removed and split per-source); `_reconcile_garmin_duplicates()`/`_reconcile_google_health_duplicates()` (see Deduplication sections above) are what actually keep sources consistent regardless of which order or combination you sync in — no source depends on another running first.
+
+### Program Recovery Tracking & "Any Class" Slots
+Extensions to the Programs tracker (`workouts/programs.py`, `program_views.py`, `program_run.html`), built for the 6-day Robin's Split + Run plan (4 fixed-ride circuit classes + Pilates and Yoga off-days + cool-downs).
+- **Any-class slots**: `ProgramSlot.match_discipline` (+ optional `match_title_keyword`) matches a workout by discipline instead of a ride-id — step 2b of `identify_membership` (`matched_by="discipline"`). Peloton stores **Pilates as discipline `strength`**, so the Pilates slot is `strength` + keyword `pilates`; Yoga is `yoga`. Only counts once the program has an active run, only for workouts on/after `run.start_date`, and a workout whose time span overlaps one already on a grid is skipped (a watch's duplicate "Yoga" entry for a Peloton class). Placement uses `place_by_date()` (the pass whose date range is closest, ties → earlier pass) rather than `fill_or_append`'s newest-pass-only rule, since off-day classes land between the fixed rides and backfills replay after later passes exist.
+- **Recovery tracking**: `Program.track_recovery` (off by default) → `attach_recoveries(run)` links cool-down walks/stretches to a completion via `ProgramRecovery` (`entry` FK to `ProgramWorkout`, `workout` OneToOne to `CachedWorkout`, `kind` walk/stretch, `order`). Rule: from a completion's end, a walk or stretch may start within `RECOVERY_WINDOW_MIN` (10) — or up to `RECOVERY_SLACK_MIN` (2) before, for inexact end times; after a walk a stretch may follow in the same window; after a stretch the chain ends. Only `walking` / `stretching` workouts ≤ `RECOVERY_MAX_MIN` (30), excluding stretching-category classes titled "pilates". Any source counts (Peloton or watch), each workout attaches once, and workouts already on a grid are never recoveries. Idempotent and resumable (a stretch syncing after its walk extends the chain). Recoveries cascade-delete with their pass.
+- **When it runs**: `reconcile_program_extras()` (backfills any-class slots + attaches recoveries for programs using either) is called at the end of Peloton and Google Health syncs via `_reconcile_programs_safe()` in sync.py, and `backfill_program()` (the run page's "Backfill History" button) attaches too.
+- **UI**: completed cells on the run page list `+ Cool-down walk · 5 min` / `+ Stretch · 15 min`; a "Recovery" stat card (completions with recovery / total, sessions, minutes) shows when tracking is on.
+- **Setup**: `manage.py setup_robins_split [--dry-run]` sets `track_recovery`, gives the four ride slots plan day numbers (Push 1, Lower 2, Pull 4, Lower 5), adds the Pilates (day 3) and Yoga (day 6) slots, and catches the current run up.
 
 ### Detail Page Templates
 All five discipline-specific detail pages extend `detail_base.html`, which owns:

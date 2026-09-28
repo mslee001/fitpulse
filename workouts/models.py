@@ -1247,6 +1247,9 @@ class Program(models.Model):
         default=r"W(?:eek)?\s*(?P<week>\d+)[,\s]*D(?:ay)?\s*(?P<day>\d+)")
     series_id_hint = models.CharField(max_length=64, blank=True)      # discovery aid for splits
     description = models.TextField(blank=True)
+    # When on, cool-down walks / stretches taken right after a completion are
+    # attached to it as ProgramRecovery rows (see programs.attach_recoveries).
+    track_recovery = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1289,6 +1292,11 @@ class ProgramSlot(models.Model):
     alt_ride_ids = models.JSONField(default=list, blank=True)
     optional = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
+    # "Any class of this kind" slots (e.g. Pilates/Yoga off-days): matched by the
+    # workout's discipline, and optionally a title keyword, instead of a ride id.
+    # Only workouts on/after the active run's start date qualify.
+    match_discipline = models.CharField(max_length=40, blank=True)
+    match_title_keyword = models.CharField(max_length=80, blank=True)
 
     class Meta:
         ordering = ["week", "day", "order"]
@@ -1353,6 +1361,29 @@ class RunWeek(models.Model):
 
     def __str__(self):
         return f"{self.run} · seq{self.sequence} (W{self.program_week.number})"
+
+
+class ProgramRecovery(models.Model):
+    """A recovery session (cool-down walk / stretch) taken right after a program
+    completion. Hangs off the completion's ProgramWorkout so it lives and dies
+    with its pass; a workout can be a recovery for at most one completion."""
+    KIND_CHOICES = [("walk", "Cool-down walk"), ("stretch", "Stretch")]
+    entry = models.ForeignKey("ProgramWorkout", related_name="recoveries", on_delete=models.CASCADE)
+    workout = models.OneToOneField("CachedWorkout", related_name="program_recovery", on_delete=models.CASCADE)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    order = models.PositiveSmallIntegerField(default=0)     # position in the chain after the main workout
+    matched_by = models.CharField(max_length=20, default="auto")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["entry", "order"]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} after {self.entry_id}"
+
+    @property
+    def duration_minutes(self):
+        return round((self.workout.duration_seconds or 0) / 60)
 
 
 class ProgramWorkout(models.Model):
