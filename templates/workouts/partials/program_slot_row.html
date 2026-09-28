@@ -1,0 +1,38 @@
+{# One slot row on the program edit page. Context: r (see program_views._slot_row), presets. #}
+<tr class="slot-row" data-pfx="{{ r.pfx }}">
+  <td style="text-align:center">
+    {% if r.is_new %}<span class="stat-sub">new</span>
+    {% else %}
+    <input type="hidden" name="{{ r.pfx }}present" value="1">
+    <input type="checkbox" name="{{ r.pfx }}delete" title="Delete this slot{% if r.completions %} — its {{ r.completions }} completion{{ r.completions|pluralize }} stay in the cycle as unslotted entries{% endif %}">
+    {% endif %}
+  </td>
+  <td><input name="{{ r.pfx }}day" value="{{ r.day }}" class="form-input" style="width:3.2rem" inputmode="numeric" placeholder="day"></td>
+  <td><input name="{{ r.pfx }}order" value="{{ r.order }}" class="form-input" style="width:3.2rem" inputmode="numeric"></td>
+  <td><input name="{{ r.pfx }}title" value="{{ r.title }}" class="form-input" style="min-width:15rem" placeholder="e.g. 45 min Upper Body Push + Run"></td>
+  <td><input name="{{ r.pfx }}duration" value="{{ r.duration_min }}" class="form-input" style="width:3.5rem" inputmode="numeric" placeholder="min"></td>
+  <td style="text-align:center"><input type="checkbox" name="{{ r.pfx }}optional" {% if r.optional %}checked{% endif %}></td>
+  <td>
+    <select name="{{ r.pfx }}match" class="form-select slot-match">
+      <option value="ride" {% if r.match == "ride" %}selected{% endif %}>Specific class</option>
+      <option value="any" {% if r.match == "any" %}selected{% endif %}>Any class of a type</option>
+      <option value="title" {% if r.match == "title" %}selected{% endif %}>By title only</option>
+    </select>
+  </td>
+  <td>
+    <div class="slot-detail slot-detail--ride">
+      <input name="{{ r.pfx }}ride_id" value="{{ r.ride_id }}" class="form-input" style="min-width:13rem" placeholder="ride id or class link">
+    </div>
+    <div class="slot-detail slot-detail--any" style="display:none">
+      <select name="{{ r.pfx }}preset" class="form-select slot-preset">
+        <option value="">Choose a type…</option>
+        {% for key, label in presets %}<option value="{{ key }}" {% if r.preset == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        <option value="custom" {% if r.preset == "custom" %}selected{% endif %}>Custom…</option>
+      </select>
+      <span class="slot-custom" style="display:none;margin-left:0.35rem">
+        <input name="{{ r.pfx }}discipline" value="{{ r.discipline }}" class="form-input" style="width:7rem" placeholder="discipline">
+        <input name="{{ r.pfx }}keyword" value="{{ r.keyword }}" class="form-input" style="width:7rem" placeholder="title contains">
+      </span>
+    </div>
+  </td>
+</tr>

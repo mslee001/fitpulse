@@ -369,22 +369,28 @@ def associate_workout(workout):
 
 # ---------- recovery tracking (cool-down walk / stretch after a completion) ----------
 
+# Defaults for the per-program settings (Program.recovery_window_min / recovery_max_min /
+# recovery_walks / recovery_stretches), editable on the program's Edit page.
 RECOVERY_WINDOW_MIN = 10   # a recovery session may start up to this long after the previous one ends
-RECOVERY_SLACK_MIN = 2     # ...or this long before (recorded end times aren't exact)
+RECOVERY_SLACK_MIN = 2     # ...or this long before (recorded end times aren't exact) — not configurable
 RECOVERY_MAX_MIN = 30      # longer than this is a real workout (a hike), not a cool-down
 
 
-def recovery_kind(workout):
-    """"walk", "stretch", or None if this workout can't be a recovery session."""
-    if not workout.created_at or (workout.duration_seconds or 0) > RECOVERY_MAX_MIN * 60:
+def recovery_kind(workout, program=None):
+    """"walk", "stretch", or None if this workout can't be a recovery session under the
+    program's settings (defaults when no program is given)."""
+    max_min = program.recovery_max_min if program else RECOVERY_MAX_MIN
+    walks = program.recovery_walks if program else True
+    stretches = program.recovery_stretches if program else True
+    if not workout.created_at or (workout.duration_seconds or 0) > max_min * 60:
         return None
     disc = (workout.discipline or "").lower()
     if disc == "walking":
-        return "walk"
+        return "walk" if walks else None
     # Peloton files Pilates under strength; a stretching-category Pilates class is a
     # workout in its own right, not a cool-down.
     if disc == "stretching" and "pilates" not in (workout.title or "").lower():
-        return "stretch"
+        return "stretch" if stretches else None
     return None
 
 
@@ -392,7 +398,7 @@ def attach_recoveries(run):
     """
     Attach cool-down walks / stretches to the completions in a run whose program
     has track_recovery on. From each completion's end: a walk or a stretch may start
-    within RECOVERY_WINDOW_MIN; after a walk, a stretch may follow within the same
+    within the program's recovery_window_min; after a walk, a stretch may follow within the same
     window; after a stretch the chain ends. So a completion ends up with nothing, a
     walk, a stretch, or walk then stretch. Any device's recording counts (a
     watch-recorded walk as well as a Peloton one) but each workout attaches to at
@@ -409,13 +415,16 @@ def attach_recoveries(run):
         return 0
     mains.sort(key=lambda m: m.workout.created_at)
 
+    program = run.program
+    window_min = program.recovery_window_min
     lo = mains[0].workout.created_at
-    hi = max(_workout_span(m.workout)[1] for m in mains) + timedelta(minutes=2 * (RECOVERY_WINDOW_MIN + RECOVERY_MAX_MIN))
+    hi = max(_workout_span(m.workout)[1] for m in mains) + timedelta(
+        minutes=2 * (window_min + program.recovery_max_min))
     taken = set(ProgramWorkout.objects.values_list("workout_id", flat=True))
     taken |= set(ProgramRecovery.objects.values_list("workout_id", flat=True))
     cands = []
     for w in CachedWorkout.objects.filter(created_at__gte=lo, created_at__lte=hi).exclude(pk__in=taken).order_by("created_at"):
-        kind = recovery_kind(w)
+        kind = recovery_kind(w, program)
         if kind:
             cands.append((w, kind))
 
@@ -432,7 +441,7 @@ def attach_recoveries(run):
                 if w.pk in taken or kind not in allowed:
                     continue
                 gap_min = (w.created_at - prev_end).total_seconds() / 60
-                if -RECOVERY_SLACK_MIN <= gap_min <= RECOVERY_WINDOW_MIN:
+                if -RECOVERY_SLACK_MIN <= gap_min <= window_min:
                     pick = (w, kind)
                     break
             if not pick:
@@ -936,7 +945,111 @@ def _expand_repeats(base, week, weeks_by_number, s):
             )
 
 
-def create_plan(name, slug, instructor, weeks_data):
+# ---------- configurable slots: "any class" presets, match resolution, duplication ----------
+
+# Preset -> (label, discipline, title keyword) for "any class of this type" slots. Discipline
+# values are how the app stores workouts; Peloton files Pilates under "strength", so it
+# needs the keyword to tell it apart from an ordinary strength class.
+ANY_CLASS_PRESETS = {
+    "pilates": ("Pilates", "strength", "pilates"),
+    "yoga": ("Yoga", "yoga", ""),
+    "stretching": ("Stretching / mobility", "stretching", ""),
+    "walking": ("Walking", "walking", ""),
+    "running": ("Running", "running", ""),
+    "cycling": ("Cycling", "cycling", ""),
+    "strength": ("Strength, any (includes Pilates)", "strength", ""),
+    "cardio": ("Cardio", "cardio", ""),
+    "circuit": ("Circuit", "circuit", ""),
+    "meditation": ("Meditation", "meditation", ""),
+}
+
+
+def preset_for(discipline, keyword):
+    """Reverse of ANY_CLASS_PRESETS: the preset key for a (discipline, keyword) pair,
+    "custom" if it's a non-preset combination, "" if there's no discipline at all."""
+    disc, kw = (discipline or "").strip().lower(), (keyword or "").strip().lower()
+    if not disc:
+        return ""
+    for key, (_label, d, k) in ANY_CLASS_PRESETS.items():
+        if d == disc and k == kw:
+            return key
+    return "custom"
+
+
+def resolve_slot_match(match, ride_input="", preset="", discipline="", keyword="", strict=True):
+    """
+    Turn a slot's "how does a workout match this?" choice into model fields:
+      "ride"  a specific class (ride id or pasted class link)
+      "any"   any class of a type — a preset, or a custom discipline (+ title keyword)
+      "title" neither; falls back to matching the slot title
+    Returns {"peloton_ride_id", "match_discipline", "match_title_keyword"}. With
+    strict=True raises ValueError with a user-facing message for input that can't be
+    used (an unreadable ride link, an "any" slot with no type); strict=False degrades
+    to an empty value instead, for bulk import where the row can be fixed afterwards.
+    """
+    empty = {"peloton_ride_id": "", "match_discipline": "", "match_title_keyword": ""}
+    if match == "any":
+        if preset and preset != "custom":
+            if preset not in ANY_CLASS_PRESETS:
+                raise ValueError(f"unknown class type {preset!r}")
+            _label, disc, kw = ANY_CLASS_PRESETS[preset]
+        else:
+            disc, kw = (discipline or "").strip().lower(), (keyword or "").strip().lower()
+            if not disc:
+                if strict:
+                    raise ValueError("choose a class type for an any-class slot")
+                return empty
+        return {**empty, "match_discipline": disc, "match_title_keyword": kw}
+    if match == "title":
+        return empty
+    raw = (ride_input or "").strip()
+    ride_id = normalize_ride_id_input(raw)
+    if raw and not ride_id and strict:
+        raise ValueError(f"couldn't read a ride id from {raw[:40]!r}")
+    return {**empty, "peloton_ride_id": ride_id}
+
+
+def unique_slug(name):
+    base = slugify(name) or "program"
+    slug, n = base, 2
+    while Program.objects.filter(slug=slug).exists():
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+@transaction.atomic
+def duplicate_program(program, name=None, keep_ride_ids=False):
+    """
+    Copy a program's definition (weeks, slots, recovery settings) into a new program with
+    no cycles or completions. Class ride ids are cleared by default: two programs pinning
+    the same rides compete for every matching workout and the original always wins, so a
+    copy with the same ids would sit empty. Keep them (keep_ride_ids=True) only if the
+    original is going to be deleted or its slots edited. "Any class" slots are kept as-is.
+    """
+    name = (name or "").strip() or f"{program.name} (copy)"
+    copy = Program.objects.create(
+        name=name, slug=unique_slug(name), kind=program.kind, instructor=program.instructor,
+        match_strategy=program.match_strategy, achievement_name=program.achievement_name,
+        title_week_day_regex=program.title_week_day_regex, series_id_hint=program.series_id_hint,
+        description=program.description, track_recovery=program.track_recovery,
+        recovery_window_min=program.recovery_window_min, recovery_max_min=program.recovery_max_min,
+        recovery_walks=program.recovery_walks, recovery_stretches=program.recovery_stretches,
+    )
+    for wk in program.weeks.all():
+        new_wk = ProgramWeek.objects.create(program=copy, number=wk.number, label=wk.label)
+        for slot in wk.slots.all():
+            ProgramSlot.objects.create(
+                week=new_wk, day=slot.day, order=slot.order, title=slot.title,
+                discipline=slot.discipline, duration_min=slot.duration_min,
+                peloton_ride_id=slot.peloton_ride_id if keep_ride_ids else "",
+                alt_ride_ids=list(slot.alt_ride_ids or []) if keep_ride_ids else [],
+                optional=slot.optional, notes=slot.notes,
+                match_discipline=slot.match_discipline, match_title_keyword=slot.match_title_keyword,
+            )
+    return copy
+
+
+def create_plan(name, slug, instructor, weeks_data, kind=None):
     """
     Create a Program (kind=plan, match_strategy=ride_ids) from a structured
     skeleton — weeks_data: [{"number": 1, "slots": [{"day", "order", "title",
@@ -949,8 +1062,10 @@ def create_plan(name, slug, instructor, weeks_data):
     auto-match until pinned later via ProgramSlot.peloton_ride_id, e.g. by
     editing the row after taking the class.
     """
+    # A single repeating week is a split, several distinct weeks a plan (unless told).
+    kind = kind or ("split" if len(weeks_data) == 1 else "plan")
     program = Program.objects.create(
-        name=name, slug=slug, kind="plan", match_strategy="ride_ids", instructor=instructor,
+        name=name, slug=slug, kind=kind, match_strategy="ride_ids", instructor=instructor,
     )
     weeks_by_number = {wk["number"]: ProgramWeek.objects.create(program=program, number=wk["number"])
                        for wk in weeks_data}
@@ -959,10 +1074,13 @@ def create_plan(name, slug, instructor, weeks_data):
         for s in wk["slots"]:
             base = ProgramSlot.objects.create(
                 week=week, day=s.get("day"), order=s.get("order", 0),
-                title=s["title"], discipline=s.get("discipline", ""),
+                title=s["title"],
+                discipline=s.get("discipline") or s.get("match_discipline", ""),
                 duration_min=s.get("duration_min"),
                 peloton_ride_id=s.get("ride_id") or "",
                 optional=bool(s.get("optional")),
+                match_discipline=s.get("match_discipline", ""),
+                match_title_keyword=s.get("match_title_keyword", ""),
             )
             _expand_repeats(base, week, weeks_by_number, s)
     backfill_program(program)

@@ -41,7 +41,6 @@ workouts/                # Main app
     seed_programs.py              # Seed built-in structured training programs
     associate_programs.py         # Backfill CachedWorkout → Program associations
     backfill_class_plans.py       # Fetch class exercise plans (class_plan_json) for existing Peloton strength/circuit workouts
-    setup_robins_split.py         # Enable recovery tracking + add Pilates/Yoga "any class" slots on the Robin's Split + Run program (idempotent, --dry-run)
 templates/workouts/
   base.html              # Shared layout — nav brand is "FITPULSE"
   dashboard.html         # Overview: total workouts, discipline breakdown
@@ -73,7 +72,7 @@ templates/workouts/
   settings.html          # FTP setting + AI coaching profile
   integrations_settings.html  # Data Sources: enable/disable + Sync All + auth status per source; right column stacks Peloton Session Cookie card + Webhook Errors card
   webhook_errors.html    # Failed webhook-triggered background syncs, newest first, collapsible tracebacks
-  program_*.html         # Structured training program pages (list/detail/run/progression/retrospective) — not yet documented below in Key Architecture
+  program_*.html         # Structured training program pages (list/detail/run/edit/new/new-plan/progression/retrospective) — see "Program Recovery Tracking & Any-Class Slots" and "Configuring Programs" below
   partials/
     insights.html              # Analytics AI insights partial (HTMX polling target)
     workout_list.html          # Workout list rows partial
@@ -87,6 +86,7 @@ templates/workouts/
     integration_row.html             # One data-source row on the Integrations page (HTMX target for toggle)
     chat_message_pair.html, chat_error.html, chat_cleared.html  # Stats chat sidebar partials (HTMX)
     run_week_rating.html             # Program run-week rating widget partial
+    program_slot_row.html            # One slot row on the program edit page (existing, blank, and JS-template rows)
     manual_movements.html            # Class exercise plan + hand-entered exercise log card (strength_detail.html, detail.html)
 static/css/main.css      # All styles — single flat file, CSS variables
 ```
@@ -344,10 +344,16 @@ Mirrors the Garmin/Withings shape (OAuth2 + sync functions in `sync.py`, client 
 ### Program Recovery Tracking & "Any Class" Slots
 Extensions to the Programs tracker (`workouts/programs.py`, `program_views.py`, `program_run.html`), built for the 6-day Robin's Split + Run plan (4 fixed-ride circuit classes + Pilates and Yoga off-days + cool-downs).
 - **Any-class slots**: `ProgramSlot.match_discipline` (+ optional `match_title_keyword`) matches a workout by discipline instead of a ride-id — step 2b of `identify_membership` (`matched_by="discipline"`). Peloton stores **Pilates as discipline `strength`**, so the Pilates slot is `strength` + keyword `pilates`; Yoga is `yoga`. Only counts once the program has an active run, only for workouts on/after `run.start_date`, and a workout whose time span overlaps one already on a grid is skipped (a watch's duplicate "Yoga" entry for a Peloton class). Placement uses `place_by_date()` (the pass whose date range is closest, ties → earlier pass) rather than `fill_or_append`'s newest-pass-only rule, since off-day classes land between the fixed rides and backfills replay after later passes exist.
-- **Recovery tracking**: `Program.track_recovery` (off by default) → `attach_recoveries(run)` links cool-down walks/stretches to a completion via `ProgramRecovery` (`entry` FK to `ProgramWorkout`, `workout` OneToOne to `CachedWorkout`, `kind` walk/stretch, `order`). Rule: from a completion's end, a walk or stretch may start within `RECOVERY_WINDOW_MIN` (10) — or up to `RECOVERY_SLACK_MIN` (2) before, for inexact end times; after a walk a stretch may follow in the same window; after a stretch the chain ends. Only `walking` / `stretching` workouts ≤ `RECOVERY_MAX_MIN` (30), excluding stretching-category classes titled "pilates". Any source counts (Peloton or watch), each workout attaches once, and workouts already on a grid are never recoveries. Idempotent and resumable (a stretch syncing after its walk extends the chain). Recoveries cascade-delete with their pass.
+- **Recovery tracking**: `Program.track_recovery` (off by default) → `attach_recoveries(run)` links cool-down walks/stretches to a completion via `ProgramRecovery` (`entry` FK to `ProgramWorkout`, `workout` OneToOne to `CachedWorkout`, `kind` walk/stretch, `order`). Rule: from a completion's end, a walk or stretch may start within the program's `recovery_window_min` (default 10) — or up to `RECOVERY_SLACK_MIN` (2, constant) before, for inexact end times; after a walk a stretch may follow in the same window; after a stretch the chain ends. Only `walking` / `stretching` workouts ≤ the program's `recovery_max_min` (default 30), each kind switchable via `recovery_walks` / `recovery_stretches`, excluding stretching-category classes titled "pilates". All four settings are editable per program on the Edit page. Any source counts (Peloton or watch), each workout attaches once, and workouts already on a grid are never recoveries. Idempotent and resumable (a stretch syncing after its walk extends the chain). Recoveries cascade-delete with their pass.
 - **When it runs**: `reconcile_program_extras()` (backfills any-class slots + attaches recoveries for programs using either) is called at the end of Peloton and Google Health syncs via `_reconcile_programs_safe()` in sync.py, and `backfill_program()` (the run page's "Backfill History" button) attaches too.
 - **UI**: completed cells on the run page list `+ Cool-down walk · 5 min` / `+ Stretch · 15 min`; a "Recovery" stat card (completions with recovery / total, sessions, minutes) shows when tracking is on.
-- **Setup**: `manage.py setup_robins_split [--dry-run]` sets `track_recovery`, gives the four ride slots plan day numbers (Push 1, Lower 2, Pull 4, Lower 5), adds the Pilates (day 3) and Yoga (day 6) slots, and catches the current run up.
+- **Setup**: nothing to run — enable tracking and add any-class slots on the program's Edit page (see below).
+
+### Configuring Programs (no code changes)
+Everything about a program's definition is editable in the app; the old pattern of one-off `seed_*` / `setup_*` commands and shell edits is retired (`seed_programs` remains only as the record of how HiLit and the early splits were first created).
+- **Edit page** (`/programs/<slug>/edit/`, `program_edit`; "Edit program" button on the cycle page and program page): name/instructor/description, the recovery settings above, and every slot — day, order, title, minutes, optional, delete — plus **how a workout matches the slot** (`resolve_slot_match()` in programs.py): *Specific class* (ride id or pasted class link → `peloton_ride_id`), *Any class of a type* (a preset from `ANY_CLASS_PRESETS` — Pilates, Yoga, Stretching, Walking, Running, Cycling, Strength, Cardio, Circuit, Meditation — or a custom discipline + title keyword → `match_discipline`/`match_title_keyword`), or *By title only*. Blank rows add slots; "Save & add a week" and "Remove week" manage weeks (a week with completions can't be removed; a program keeps at least one week). Invalid rows are reported and left unchanged while the rest saves; deleting a slot leaves its completions in the cycle as unslotted entries. Saving re-runs `backfill_program()`, so new/changed slots pick up history you already have. Changing a slot's ride id clears its `alt_ride_ids`.
+- **Create**: `/programs/new-plan/` — paste schedule text and/or a screenshot; `parse_plan_skeleton()` (Haiku) extracts weeks/days/classes, flags open-ended days ("Pilates (any class)", "Yoga") as `any_class` with a `class_type`, and ignores exercise lists (supersets, sets/reps) under a class. The review table has a "Match by" column (specific class vs. any class of a type) and a Plan/Split selector (auto: one week → split, otherwise plan). Or **start blank** (`program_new_blank`, same page) and build it in the editor.
+- **Duplicate** (`duplicate_program()`, form at the bottom of the Edit page): copies weeks, slots and recovery settings, not cycles/completions. Ride ids are cleared by default — two programs pinning the same classes compete for every workout and the original always wins — with a "keep class links" option; any-class slots are always kept.
 
 ### Detail Page Templates
 All five discipline-specific detail pages extend `detail_base.html`, which owns:

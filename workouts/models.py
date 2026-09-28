@@ -1250,6 +1250,11 @@ class Program(models.Model):
     # When on, cool-down walks / stretches taken right after a completion are
     # attached to it as ProgramRecovery rows (see programs.attach_recoveries).
     track_recovery = models.BooleanField(default=False)
+    # Recovery rules (only used when track_recovery is on) — see programs.attach_recoveries.
+    recovery_window_min = models.PositiveSmallIntegerField(default=10)   # max gap after the previous session ends
+    recovery_max_min = models.PositiveSmallIntegerField(default=30)      # longer than this is a workout, not a cool-down
+    recovery_walks = models.BooleanField(default=True)                   # count walking workouts
+    recovery_stretches = models.BooleanField(default=True)               # count stretching workouts
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

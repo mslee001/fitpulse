@@ -2024,7 +2024,8 @@ def parse_plan_skeleton(raw_text: str = "", image_b64: str | None = None, image_
   "plan_name_guess": "Glutes and Legs Strength Program",
   "instructor_guess": "Adrian Williams",
   "items": [
-    {"week": 1, "day": 1, "order": 0, "title": "20 min Power & Performance Benchmark", "discipline": "strength", "duration_min": 20, "optional": false, "source_url": ""}
+    {"week": 1, "day": 1, "order": 0, "title": "20 min Power & Performance Benchmark", "discipline": "strength", "duration_min": 20, "optional": false, "source_url": "", "any_class": false, "class_type": ""},
+    {"week": 1, "day": 3, "order": 0, "title": "Pilates (any class)", "discipline": "strength", "duration_min": null, "optional": false, "source_url": "", "any_class": true, "class_type": "pilates"}
   ],
   "note": "optional one-line note about anything ambiguous or skipped"
 }"""
@@ -2041,6 +2042,8 @@ RULES:
 - "source_url" is any URL directly associated with this specific class line (e.g. it was hyperlinked, or a plain https://... URL sits adjacent to it in the pasted text). Empty string if none.
 - "plan_name_guess" / "instructor_guess": best guess for the overall plan name and lead instructor from context.
 - If a title repeats verbatim on a different day, keep both as SEPARATE items — never merge or dedupe.
+- Some days are open-ended: "Pilates (any class)", "Yoga", "your choice of stretch", "walk". For those set "any_class": true and "class_type" to one of: pilates, yoga, stretching, walking, running, cycling, strength, cardio, circuit, meditation. Write "title" as the plain label (e.g. "Pilates (any class)"), leave "source_url" empty, and "duration_min" null unless a length is given. For a specific named class (with a duration, a series, or an instructor) set "any_class": false and "class_type": "".
+- Exercise details listed UNDER a class are NOT separate items — supersets, sets/reps ("x3", "30 secs each side"), movement names (e.g. "Chest Press", "Bear Crawl 45 sec"). Ignore them entirely; only extract the classes/sessions themselves.
 
 Respond with ONLY valid JSON, no markdown fences, no preamble:
 {json_schema}"""

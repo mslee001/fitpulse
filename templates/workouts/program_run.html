@@ -40,6 +40,7 @@
         {% csrf_token %}
         <button class="btn btn-ghost btn-sm" type="submit" title="Re-run matching for this program — picks up anything a deleted pass orphaned, or that was never matched">Backfill History</button>
       </form>
+      <a class="btn btn-ghost btn-sm" href="{% url 'program_edit' program.slug %}" title="Change this program's classes, matching rules, and recovery tracking">Edit program</a>
       <a class="btn btn-ghost btn-sm" href="{% url 'program_progression' run.pk %}">Load progression</a>
       <a class="btn btn-ghost btn-sm" href="{% url 'program_running_progression' run.pk %}">Running progression</a>
       <form method="post" action="{% url 'program_delete_run' run.pk %}" style="display:inline"

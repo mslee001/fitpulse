@@ -1,5 +1,6 @@
 """Program & Collection Tracker — list/detail/run views and the completion grid builder."""
 import base64
+import re
 from datetime import date
 
 from django.contrib import messages
@@ -9,12 +10,12 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
-from .models import Program, ProgramRun, RunWeek, ProgramWorkout
+from .models import Program, ProgramRun, ProgramSlot, ProgramWeek, ProgramWorkout, RunWeek
 from .programs import (
-    backfill_program, create_plan, create_split, extract_ride_id_from_text,
-    normalize_ride_id_input, progression_categories, recompute_run_dates,
-    resolve_slot_ride_id, resolve_split_candidates, run_exercise_progression,
-    run_running_progression,
+    ANY_CLASS_PRESETS, backfill_program, create_plan, create_split, duplicate_program,
+    extract_ride_id_from_text, normalize_ride_id_input, preset_for, progression_categories,
+    recompute_run_dates, resolve_slot_match, resolve_slot_ride_id, resolve_split_candidates,
+    run_exercise_progression, run_running_progression, unique_slug,
 )
 
 
@@ -140,6 +141,10 @@ def program_new(request):
     })
 
 
+def _preset_choices():
+    return [(k, v[0]) for k, v in ANY_CLASS_PRESETS.items()]
+
+
 def _plan_rows_from_post(post):
     """Rebuild the review-table row list from a submitted review/create form —
     used both to redisplay the table on a validation error and to build the
@@ -155,6 +160,8 @@ def _plan_rows_from_post(post):
     included_idx = set(post.getlist("include"))
     repeat_days_idx = set(post.getlist("repeat_days"))
     repeat_weeks_idx = set(post.getlist("repeat_weeks"))
+    matches = post.getlist("match")
+    presets = post.getlist("preset")
 
     def _int(lst, i, default=None):
         try:
@@ -178,6 +185,8 @@ def _plan_rows_from_post(post):
             "ride_id": ride_ids[i].strip() if i < len(ride_ids) else "",
             "repeat_all_days": str(i) in repeat_days_idx,
             "repeat_all_weeks": str(i) in repeat_weeks_idx,
+            "match": matches[i] if i < len(matches) and matches[i] in ("ride", "any") else "ride",
+            "preset": presets[i] if i < len(presets) else "",
             "matched_via": "", "candidates": [],
         })
     return rows
@@ -222,19 +231,24 @@ def program_new_plan(request):
             for e in errors:
                 messages.error(request, e)
             return render(request, "workouts/program_new_plan.html", {
-                "rows": rows, "name": name, "instructor": instructor,
+                "rows": rows, "name": name, "instructor": instructor, "presets": _preset_choices(),
             })
 
         rows_by_week = {}
         for r in included:
+            # strict=False: an unusable ride link / typeless any-class row degrades to an
+            # empty match here and can be fixed on the Edit page, rather than blocking creation.
+            m = resolve_slot_match(r["match"], r["ride_id"], r["preset"], r["discipline"], strict=False)
             rows_by_week.setdefault(r["week"], []).append({
                 "day": r["day"], "order": r["order"], "title": r["title"],
                 "discipline": r["discipline"], "duration_min": r["duration_min"],
-                "optional": r["optional"], "ride_id": normalize_ride_id_input(r["ride_id"]),
+                "optional": r["optional"], "ride_id": m["peloton_ride_id"],
+                "match_discipline": m["match_discipline"], "match_title_keyword": m["match_title_keyword"],
                 "repeat_all_days": r["repeat_all_days"], "repeat_all_weeks": r["repeat_all_weeks"],
             })
         weeks_data = [{"number": n, "slots": slots} for n, slots in sorted(rows_by_week.items())]
-        program = create_plan(name, slug, instructor, weeks_data)
+        kind = request.POST.get("kind") if request.POST.get("kind") in ("plan", "split") else None
+        program = create_plan(name, slug, instructor, weeks_data, kind=kind)
         total = sum(len(w["slots"]) for w in weeks_data)
         messages.success(
             request,
@@ -273,16 +287,19 @@ def program_new_plan(request):
             return render(request, "workouts/program_new_plan.html",
                           {"raw_text": raw_text, "name": name, "instructor": instructor})
 
-        instructor = instructor or result.get("instructor_guess", "")
-        name = name or result.get("plan_name_guess", "")
+        instructor = instructor or (result.get("instructor_guess") or "")
+        name = name or (result.get("plan_name_guess") or "")
 
         rows = []
         for item in result["items"]:
             title = (item.get("title") or "").strip()
             if not title:
                 continue
-            resolved = resolve_slot_ride_id(
-                title, instructor=instructor, source_url=item.get("source_url", ""))
+            is_any = bool(item.get("any_class"))
+            class_type = (item.get("class_type") or "").strip().lower()
+            # Open-ended days ("Pilates (any class)") have no single ride to resolve.
+            resolved = ({"ride_id": "", "matched_via": "", "candidates": []} if is_any else
+                        resolve_slot_ride_id(title, instructor=instructor, source_url=item.get("source_url", "")))
             rows.append({
                 "week": item.get("week") or 1,
                 "day": item.get("day"),
@@ -294,6 +311,8 @@ def program_new_plan(request):
                 "included": True,
                 "repeat_all_days": False, "repeat_all_weeks": False,
                 "ride_id": resolved["ride_id"] or "",
+                "match": "any" if is_any else "ride",
+                "preset": (class_type if class_type in ANY_CLASS_PRESETS else "custom") if is_any else "",
                 "matched_via": resolved["matched_via"],
                 "candidates": resolved["candidates"],
             })
@@ -303,10 +322,210 @@ def program_new_plan(request):
 
         return render(request, "workouts/program_new_plan.html", {
             "rows": rows, "name": name, "instructor": instructor,
-            "note": result.get("note", ""),
+            "note": result.get("note", ""), "presets": _preset_choices(),
         })
 
     return render(request, "workouts/program_new_plan.html", {})
+
+
+# ---------- editing, duplicating, and blank programs ----------
+
+MAX_DAY = 31
+
+
+def _opt_int(raw, lo=0, hi=None, default=None):
+    """int from a form string; `default` if blank/garbage/out of range."""
+    try:
+        v = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    if v < lo or (hi is not None and v > hi):
+        return default
+    return v
+
+
+def _slot_row(pfx, *, slot=None, week_id=None, is_new=False):
+    """Everything the slot-row partial needs, from a saved slot or blank."""
+    if slot is None:
+        return {"pfx": pfx, "is_new": True, "title": "", "day": "", "order": 0, "duration_min": "",
+                "optional": False, "match": "ride", "ride_id": "", "preset": "", "discipline": "",
+                "keyword": "", "completions": 0}
+    match = "any" if slot.match_discipline else ("ride" if slot.peloton_ride_id else "title")
+    return {
+        "pfx": pfx, "is_new": is_new, "slot_id": slot.pk, "title": slot.title,
+        "day": slot.day if slot.day is not None else "", "order": slot.order,
+        "duration_min": slot.duration_min or "", "optional": slot.optional, "match": match,
+        "ride_id": slot.peloton_ride_id, "preset": preset_for(slot.match_discipline, slot.match_title_keyword),
+        "discipline": slot.match_discipline, "keyword": slot.match_title_keyword,
+        "completions": slot.programworkout_set.count(),
+    }
+
+
+def _slot_fields_from_post(post, pfx):
+    """Validated ProgramSlot field values for one row of the edit form; ValueError with
+    a user-facing message if the row can't be saved as entered."""
+    title = (post.get(pfx + "title") or "").strip()
+    if not title:
+        raise ValueError("a slot needs a title")
+    match = post.get(pfx + "match", "ride")
+    m = resolve_slot_match(
+        match, post.get(pfx + "ride_id", ""), post.get(pfx + "preset", ""),
+        post.get(pfx + "discipline", ""), post.get(pfx + "keyword", ""))
+    fields = {
+        "title": title[:200],
+        "day": _opt_int(post.get(pfx + "day"), lo=1, hi=MAX_DAY),
+        "order": _opt_int(post.get(pfx + "order"), lo=0, hi=99, default=0),
+        "duration_min": _opt_int(post.get(pfx + "duration"), lo=1, hi=600),
+        "optional": (pfx + "optional") in post,
+        **m,
+    }
+    if match == "any":
+        fields["discipline"] = m["match_discipline"]
+    return fields
+
+
+def _apply_program_edit(program, post):
+    """Apply the edit form. Returns (summary_parts, warnings). Valid changes are applied even
+    if another row is skipped — a skipped row is reported and left as it was."""
+    parts, warnings = [], []
+
+    name = (post.get("name") or "").strip()
+    if name:
+        program.name = name[:200]
+    program.instructor = (post.get("instructor") or "").strip()[:120]
+    program.description = (post.get("description") or "").strip()
+    program.track_recovery = "track_recovery" in post
+    program.recovery_walks = "recovery_walks" in post
+    program.recovery_stretches = "recovery_stretches" in post
+    program.recovery_window_min = _opt_int(post.get("recovery_window_min"), lo=0, hi=120,
+                                           default=program.recovery_window_min)
+    program.recovery_max_min = _opt_int(post.get("recovery_max_min"), lo=1, hi=240,
+                                        default=program.recovery_max_min)
+    program.save()
+
+    weeks = list(program.weeks.prefetch_related("slots"))
+    updated = removed = added = 0
+    for wk in weeks:
+        label = (post.get(f"week_{wk.pk}_label") or "").strip()[:120]
+        if label != wk.label:
+            wk.label = label
+            wk.save(update_fields=["label"])
+        for slot in wk.slots.all():
+            pfx = f"slot_{slot.pk}_"
+            if pfx + "present" not in post:
+                continue
+            if pfx + "delete" in post:
+                slot.delete()
+                removed += 1
+                continue
+            try:
+                fields = _slot_fields_from_post(post, pfx)
+            except ValueError as e:
+                warnings.append(f'Week {wk.number} "{slot.title}": {e} — left unchanged.')
+                continue
+            if fields["peloton_ride_id"] != slot.peloton_ride_id or fields["match_discipline"]:
+                slot.alt_ride_ids = []   # alternates belong to the old ride id
+            for k, v in fields.items():
+                setattr(slot, k, v)
+            slot.save()
+            updated += 1
+
+    # blank rows the user filled in: new_<weekid>_<k>_title
+    week_by_id = {w.pk: w for w in weeks}
+    new_keys = sorted(
+        (int(m.group(1)), int(m.group(2))) for k in post
+        if (m := re.fullmatch(r"new_(\d+)_(\d+)_title", k)))
+    for wid, k in new_keys:
+        pfx = f"new_{wid}_{k}_"
+        if not (post.get(pfx + "title") or "").strip() or wid not in week_by_id:
+            continue
+        try:
+            fields = _slot_fields_from_post(post, pfx)
+        except ValueError as e:
+            warnings.append(f'New slot "{post.get(pfx + "title")}": {e} — not added.')
+            continue
+        ProgramSlot.objects.create(week=week_by_id[wid], **fields)
+        added += 1
+
+    del_week = _opt_int(post.get("delete_week"), lo=1)
+    if del_week:
+        wk = week_by_id.get(del_week)
+        if wk is None:
+            pass
+        elif RunWeek.objects.filter(program_week=wk).exists():
+            warnings.append(f"Week {wk.number} has completions in a cycle — delete those passes first.")
+        elif len(weeks) == 1:
+            warnings.append("A program needs at least one week.")
+        else:
+            wk.delete()
+            parts.append(f"removed week {wk.number}")
+
+    if post.get("action") == "add_week":
+        next_no = max([w.number for w in weeks] or [0]) + 1
+        ProgramWeek.objects.create(program=program, number=next_no)
+        parts.append(f"added week {next_no}")
+
+    for n, word in ((updated, "updated"), (added, "added"), (removed, "removed")):
+        if n:
+            parts.insert(0, f"{n} slot{'s' if n != 1 else ''} {word}")
+    return parts, warnings
+
+
+def program_edit(request, slug):
+    """Edit a program's definition in the app: name, recovery-tracking rules, and every slot
+    (day/order/optional, and how a workout matches it — a specific class, any class of a
+    type, or by title). Replaces the one-off setup commands and shell edits."""
+    program = get_object_or_404(Program, slug=slug)
+    if request.method == "POST":
+        parts, warnings = _apply_program_edit(program, request.POST)
+        # New/changed slots may now match history you already have (and recovery rules may
+        # have changed) — re-run matching; idempotent, only adds.
+        made = backfill_program(program)
+        summary = "Saved" + (": " + ", ".join(parts) if parts else "")
+        if made:
+            summary += f". Matched {made} earlier workout{'s' if made != 1 else ''}"
+        messages.success(request, summary + ".")
+        for w in warnings:
+            messages.warning(request, w)
+        return redirect("program_edit", slug=program.slug)
+
+    weeks = []
+    for wk in program.weeks.order_by("number"):
+        rows = [_slot_row(f"slot_{s.pk}_", slot=s) for s in wk.slots.order_by("day", "order", "id")]
+        blanks = [_slot_row(f"new_{wk.pk}_{k}_") for k in range(2)]
+        weeks.append({"week": wk, "rows": rows, "blanks": blanks,
+                      "has_passes": RunWeek.objects.filter(program_week=wk).exists()})
+    return render(request, "workouts/program_edit.html", {
+        "program": program, "weeks": weeks,
+        "presets": _preset_choices(),
+        "blank_row": _slot_row("__PFX__"),
+    })
+
+
+@require_POST
+def program_duplicate(request, slug):
+    program = get_object_or_404(Program, slug=slug)
+    copy = duplicate_program(
+        program, name=request.POST.get("name"), keep_ride_ids="keep_ride_ids" in request.POST)
+    messages.success(
+        request,
+        f'Created "{copy.name}" from "{program.name}".'
+        + ("" if "keep_ride_ids" in request.POST else " Class links were cleared so it doesn't compete with the original — set each slot's class below."))
+    return redirect("program_edit", slug=copy.slug)
+
+
+@require_POST
+def program_new_blank(request):
+    """Start an empty program (one empty week) and go straight to the editor."""
+    name = (request.POST.get("name") or "").strip()
+    kind = request.POST.get("kind") if request.POST.get("kind") in ("plan", "split") else "split"
+    if not name:
+        messages.error(request, "Give the program a name.")
+        return redirect("program_new_plan")
+    program = Program.objects.create(name=name[:200], slug=unique_slug(name), kind=kind, match_strategy="ride_ids")
+    ProgramWeek.objects.create(program=program, number=1)
+    messages.success(request, f'"{program.name}" created — add its classes below.')
+    return redirect("program_edit", slug=program.slug)
 
 
 @require_POST

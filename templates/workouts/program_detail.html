@@ -11,6 +11,7 @@
       <h1 class="page-title">{{ program.name }}</h1>
     </div>
     <div class="page-header-actions">
+      <a class="btn btn-ghost btn-sm" href="{% url 'program_edit' program.slug %}">Edit program</a>
       <form method="post" action="{% url 'program_backfill' program.slug %}" style="display:inline">
         {% csrf_token %}
         <button class="btn btn-ghost btn-sm" type="submit" title="Re-run matching for this program — picks up anything a deleted pass orphaned, or that was never matched">Backfill History</button>
