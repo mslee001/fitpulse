@@ -39,7 +39,12 @@ class Command(BaseCommand):
         result = _reconcile_google_health_duplicates(dry_run=dry_run)
 
         for d in result["details"]:
-            if not d["had_raw_data"]:
+            if d.get("overlap_only"):
+                self.stdout.write(
+                    f"{d['google_workout_id']} overlaps {d['peloton_workout_id']} "
+                    f"({d['peloton_title']}) — deleting, not merging (its own stats don't describe that one workout)"
+                )
+            elif not d["had_raw_data"]:
                 self.stdout.write(self.style.WARNING(
                     f"{d['google_workout_id']} has no stored raw_data — deleting without reconciling"
                 ))

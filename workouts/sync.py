@@ -1836,6 +1836,63 @@ def _find_workout_match(created_at, workout_index, window_seconds=300):
     return best[1] if best else None
 
 
+# Below this many seconds of overlap, treat it as clock/reporting noise between
+# two genuinely separate, merely adjacent sessions rather than a duplicate.
+_OVERLAP_TOLERANCE_SECONDS = 180
+# No single Peloton/Garmin class (or unbroken run of them — see below) realistically
+# runs longer than this — bounds how far back _find_overlapping_workout looks, so it
+# stays a cheap slice of the index rather than a scan of the whole thing.
+_MAX_OVERLAP_LOOKBACK_MINUTES = 120
+
+
+def _find_overlapping_workout(created_at, duration_seconds, workout_index):
+    """
+    Find an existing workout (Peloton or Garmin — whichever index is passed) whose
+    time span overlaps this Google Health point's span by at least
+    _OVERLAP_TOLERANCE_SECONDS, even though the point's own start isn't near the
+    workout's start (which is what _find_workout_match looks for). Returns the
+    first overlap found — there may be more than one (see below); any one of them
+    is enough to know this point is redundant.
+
+    Needed because Google Health's own on-device auto-detection doesn't
+    necessarily draw the same boundaries around a session that Peloton/Garmin do,
+    in either direction:
+    - **Nested**: one Peloton/Garmin session gets split into separate sub-segment
+      entries — confirmed live 2026-09-28, a 45-minute circuit class's strength
+      portion auto-detected as a standalone "Free weights" entry starting ~14
+      minutes in, its running portion as "Treadmill run" starting ~30 minutes in.
+    - **Spanning**: several separate back-to-back Peloton sessions get folded into
+      ONE longer auto-detected entry — confirmed live 2026-09-28, a single 71-minute
+      "Bootcamp" entry covering the same real time as three separate Peloton
+      classes taken back-to-back (a 45-min circuit class, a 5-min cool-down walk,
+      and a 15-min stretch).
+    Both land as permanent duplicate rows under _find_workout_match alone, since
+    its window is centered on the POINT's own start — it never looks minutes
+    earlier for a workout that contains or overlaps it.
+
+    An overlapping point's own stats (calories, HR, pace) cover only its own slice
+    of the real activity, or a blend across several unrelated sessions — never the
+    same thing as any single existing workout's own stats. Callers must NOT
+    augment/merge fields from an overlap match the way a same-session duplicate's
+    fields get merged from _find_workout_match; only skip creating the duplicate
+    row.
+    """
+    if created_at is None or not workout_index:
+        return None
+    point_start = int(created_at.timestamp())
+    point_end = point_start + (duration_seconds or 0)
+    timestamps = [t for t, _ in workout_index]
+    lo = bisect.bisect_left(timestamps, point_start - _MAX_OVERLAP_LOOKBACK_MINUTES * 60)
+    hi = bisect.bisect_right(timestamps, point_end + _OVERLAP_TOLERANCE_SECONDS)
+    for i in range(lo, hi):
+        ts, candidate = workout_index[i]
+        c_end = ts + (candidate.duration_seconds or 0)
+        overlap = min(point_end, c_end) - max(point_start, ts)
+        if overlap >= _OVERLAP_TOLERANCE_SECONDS:
+            return candidate
+    return None
+
+
 def _augment_peloton_from_google_health(peloton_workout, point: dict) -> dict:
     """
     When a Google Health exercise entry duplicates a Peloton workout (either
@@ -1940,12 +1997,20 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
 
     for w in gh_workouts:
         match = _find_workout_match(w.created_at, peloton_index)
+        overlap_only = False
+        if match is None:
+            match = _find_overlapping_workout(w.created_at, w.duration_seconds, peloton_index)
+            overlap_only = match is not None
         if match is None:
             continue
 
         filled = []
         had_raw_data = bool(w.raw_data)
-        if had_raw_data:
+        # An overlap-only match (Google's own auto-detection drawing different session
+        # boundaries than Peloton did — nested inside it, or spanning across it and
+        # others) is never augmented — its stats don't describe the same thing as this
+        # one workout's own stats. See _find_overlapping_workout.
+        if had_raw_data and not overlap_only:
             if dry_run:
                 parsed = _parse_google_health_exercise(w.raw_data)
                 if parsed:
@@ -1965,6 +2030,7 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
             "peloton_title": match.title,
             "filled": filled,
             "had_raw_data": had_raw_data,
+            "overlap_only": overlap_only,
         })
         to_delete.append(w.pk)
 
@@ -2019,16 +2085,22 @@ def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
     details = []
 
     for w in gh_workouts:
-        if _find_workout_match(w.created_at, peloton_index) is not None:
+        if (_find_workout_match(w.created_at, peloton_index) is not None
+                or _find_overlapping_workout(w.created_at, w.duration_seconds, peloton_index) is not None):
             continue  # belongs to the Peloton-anchored reconciler instead
 
         match = _find_workout_match(w.created_at, garmin_index)
+        overlap_only = False
+        if match is None:
+            match = _find_overlapping_workout(w.created_at, w.duration_seconds, garmin_index)
+            overlap_only = match is not None
         if match is None:
             continue
 
         filled = []
         had_raw_data = bool(w.raw_data)
-        if had_raw_data:
+        # See _find_overlapping_workout — an overlap-only match is never augmented.
+        if had_raw_data and not overlap_only:
             if dry_run:
                 parsed = _parse_google_health_exercise(w.raw_data)
                 if parsed:
@@ -2048,6 +2120,7 @@ def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
             "garmin_title": match.title,
             "filled": filled,
             "had_raw_data": had_raw_data,
+            "overlap_only": overlap_only,
         })
         to_delete.append(w.pk)
 
@@ -2082,6 +2155,7 @@ def _run_google_health_exercise_sync(start, end) -> dict:
     peloton_index = _peloton_workout_index()
     garmin_index = _garmin_workout_index()
     created = updated = skipped_peloton = skipped_garmin = augmented = garmin_augmented = 0
+    skipped_overlapping = 0
     google_missing_fields: list = []  # candidates for the write-back path
 
     for point in points:
@@ -2131,6 +2205,20 @@ def _run_google_health_exercise_sync(start, end) -> dict:
                 garmin_augmented += 1
             continue
 
+        # Neither a same-session match — but this point could still overlap a
+        # Peloton/Garmin session Google drew different boundaries around: nested
+        # inside one, or spanning across one or more (see _find_overlapping_workout).
+        # Never augment an overlap-only match: its stats don't describe the same
+        # thing as any single existing workout's own stats.
+        if created_at is not None:
+            duration_str = ex.get("activeDuration", "")
+            point_duration = (int(duration_str.rstrip("s")) if duration_str.rstrip("s").isdigit()
+                              else _gh_duration_seconds(start_time, ex.get("interval", {}).get("endTime", start_time)))
+            if (_find_overlapping_workout(created_at, point_duration, peloton_index) is not None
+                    or _find_overlapping_workout(created_at, point_duration, garmin_index) is not None):
+                skipped_overlapping += 1
+                continue
+
         try:
             was_created, was_updated = _upsert_google_health_exercise(point)
             created += was_created
@@ -2148,6 +2236,7 @@ def _run_google_health_exercise_sync(start, end) -> dict:
         "peloton_augmented": augmented,
         "skipped_garmin_duplicates": skipped_garmin,
         "garmin_augmented": garmin_augmented,
+        "skipped_overlapping_workouts": skipped_overlapping,
         "google_missing_fields": google_missing_fields,
     }
 
