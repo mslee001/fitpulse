@@ -595,6 +595,9 @@ class CachedWorkout(models.Model):
     leaderboard_synced_at = models.DateTimeField(null=True, blank=True)
 
     source = models.CharField(max_length=20, default="peloton", db_index=True)
+    # Set when timing/stats were hand-corrected (e.g. a Tread reboot left
+    # Peloton with a ghost session) — syncs then leave CORRECTABLE_FIELDS alone.
+    user_corrected = models.BooleanField(default=False)
     exercise_sets_json = models.JSONField(default=list)
     raw_data = models.JSONField(default=dict)
 
@@ -607,6 +610,13 @@ class CachedWorkout(models.Model):
         "class_plan_json",
         "hr_z1_seconds", "hr_z2_seconds", "hr_z3_seconds", "hr_z4_seconds", "hr_z5_seconds",
         "detail_synced_at",
+    ]
+
+    # Fields a Peloton re-sync must not overwrite once user_corrected is set
+    CORRECTABLE_FIELDS = [
+        "created_at", "duration_seconds", "calories", "heart_rate_avg", "heart_rate_max",
+        "hr_z1_seconds", "hr_z2_seconds", "hr_z3_seconds", "hr_z4_seconds", "hr_z5_seconds",
+        "distance_miles", "avg_pace_seconds",
     ]
 
     class Meta:
@@ -696,7 +706,7 @@ class CachedWorkout(models.Model):
             self.class_plan_json = detail["class_plan"]
         # HR zone durations are more reliably populated from the detail endpoint
         hr_zones = detail.get("hr_zones") or {}
-        if hr_zones:
+        if hr_zones and not self.user_corrected:
             self.hr_z1_seconds = hr_zones.get("z1")
             self.hr_z2_seconds = hr_zones.get("z2")
             self.hr_z3_seconds = hr_zones.get("z3")

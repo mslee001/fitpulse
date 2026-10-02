@@ -151,8 +151,11 @@ def _fetch_and_store_performance(workout_ids, client):
         try:
             perf = client.get_parsed_performance(wid, every_n=5)
             if perf:
-                update_fields = {"performance_graph_json": perf, **_extract_perf_fields(perf)}
-                CachedWorkout.objects.filter(workout_id=wid).update(**update_fields)
+                qs = CachedWorkout.objects.filter(workout_id=wid)
+                update_fields = {"performance_graph_json": perf}
+                if not qs.filter(user_corrected=True).exists():
+                    update_fields.update(_extract_perf_fields(perf))
+                qs.update(**update_fields)
         except Exception as e:
             logger.warning("perf sync failed for %s: %s", wid, e)
 
@@ -174,9 +177,17 @@ def _upsert_page(raw_data):
         "avg_incline", "max_speed_mph", "max_incline", "elevation_gain",
         "created_at", "raw_data",
     ]
+    corrected = set(
+        CachedWorkout.objects
+        .filter(workout_id__in=[w.get("id") for w in raw_data], user_corrected=True)
+        .values_list("workout_id", flat=True)
+    )
     for workout_data in raw_data:
         obj = CachedWorkout.from_api(workout_data)
         defaults = {field: getattr(obj, field) for field in fields}
+        if obj.workout_id in corrected:
+            for field in CachedWorkout.CORRECTABLE_FIELDS:
+                defaults.pop(field, None)
         _, created = CachedWorkout.objects.update_or_create(
             workout_id=obj.workout_id,
             defaults=defaults,
