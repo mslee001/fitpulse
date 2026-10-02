@@ -2137,7 +2137,41 @@ def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
     }
 
 
+_gh_exercise_sync_lock = threading.Lock()
+
+
 def _run_google_health_exercise_sync(start, end) -> dict:
+    """
+    Guarded by _gh_exercise_sync_lock (non-blocking), same pattern and same
+    reason as _gh_wellness_sync_lock on _run_google_health_wellness_sync:
+    overlapping callers — a burst of separate webhook deliveries, or a
+    webhook racing a manually-triggered "Sync New"/"Sync All" — skip instead
+    of piling up concurrent exercise fetches. 2026-10-02 incident: five
+    separate webhook POSTs arrived within ~2 seconds (confirmed in Render's
+    logs), each spawning its own thread here with no lock to stop them —
+    unlike wellness sync, which the 2026-08-23 fix already covered. Each
+    thread independently builds a full in-memory index of every Peloton and
+    Garmin workout (_peloton_workout_index/_garmin_workout_index fetch whole
+    rows, including large JSON fields like performance_graph_json/raw_data,
+    not just IDs); concurrent copies of that is what spiked memory enough to
+    trigger Render's limit and restart the instance. A skipped run is
+    harmless: the next webhook or the regular polling sync covers the same
+    dates shortly after.
+    """
+    if not _gh_exercise_sync_lock.acquire(blocking=False):
+        logger.info("Google Health exercise sync: already in progress elsewhere, skipping this call")
+        return {"done": True, "skipped": "already_in_progress", "created": 0, "updated": 0}
+    try:
+        return _run_google_health_exercise_sync_locked(start, end)
+    finally:
+        _gh_exercise_sync_lock.release()
+
+
+def _run_google_health_exercise_sync_locked(start, end) -> dict:
+    """The actual sync body, always called with _gh_exercise_sync_lock held —
+    split out so the wrapper's try/finally guarantees the lock releases on
+    every exit path (normal return, an early return below, or any
+    unexpected exception) without needing to duplicate release calls."""
     if not _integration_enabled("google_health"):
         return {**_integration_disabled_result("google_health"), "created": 0, "updated": 0}
 
