@@ -1,15 +1,17 @@
 """
 Seed a fresh database with realistic demo data.
 
-Usage:
-    DB_FILE=demo.sqlite3 venv/bin/python3 manage.py migrate
-    DB_FILE=demo.sqlite3 venv/bin/python3 manage.py seed_demo [--user USERNAME]
+Usage (DATABASE_URL on the command line wins over the one in .env — never
+run this against the production database):
+    DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py migrate
+    DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py seed_demo [--user USERNAME]
+    DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py changepassword demo
 
 Seeds (and first clears) only the given user's data — by default a user named
 "demo", created with an unusable password if missing — never the owner's.
 
 Then run the server:
-    DB_FILE=demo.sqlite3 venv/bin/python3 manage.py runserver
+    DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py runserver
 """
 
 import datetime
@@ -247,8 +249,8 @@ class Command(BaseCommand):
         Integration.ensure_for_user(user)
 
         self.stdout.write(self.style.SUCCESS(
-            "\nDemo database seeded successfully.\n"
-            "Run with: DB_FILE=demo.sqlite3 venv/bin/python3 manage.py runserver"
+            f"\nDemo data seeded for user '{user.username}'.\n"
+            f"Set its password with: manage.py changepassword {user.username}, then runserver and log in."
         ))
 
 

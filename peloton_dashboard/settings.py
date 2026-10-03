@@ -64,7 +64,7 @@ DATABASES = {
     )
 }
 
-if os.environ.get("DATABASE_URL"):
+if os.environ.get("DATABASE_URL", "").startswith("postgres"):
     # Require SSL unless the URL sets its own sslmode (CI's throwaway Postgres
     # uses ?sslmode=disable). Production URLs are unaffected.
     DATABASES["default"].setdefault("OPTIONS", {}).setdefault("sslmode", "require")
