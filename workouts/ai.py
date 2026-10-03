@@ -55,6 +55,23 @@ logger = logging.getLogger(__name__)
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+# Raised by llm.guard() before any request goes out; views turn them into a
+# short note (partials/ai_unavailable.html) instead of an error.
+AI_UNAVAILABLE = (llm.AIBudgetExceeded, llm.AIFeatureDenied)
+
+
+def ai_unavailable_reason(exc):
+    if isinstance(exc, llm.AIBudgetExceeded):
+        return "You've reached this month's AI limit. It resets on the 1st."
+    return "This AI feature isn't turned on for your account."
+
+
+def render_ai_unavailable(request, exc, status=200):
+    from django.shortcuts import render
+    return render(request, "workouts/partials/ai_unavailable.html",
+                  {"ai_unavailable_reason": ai_unavailable_reason(exc)}, status=status)
+
+
 def _render_poll_partial(request, template_name, context, status=200):
     """Render an HTMX batch-poll partial.
 
@@ -239,6 +256,8 @@ def cached_settings_field(user, field_name, ttl_hours, generator, *, force=False
             return cached
     try:
         new_text = generator()
+    except AI_UNAVAILABLE:
+        raise
     except Exception as e:
         logger.warning("%s generation failed: %s", field_name, e)
         return cached or ""
@@ -263,6 +282,8 @@ def cached_daily_stats_field(stats, field_name, ttl_hours, generator, *, force=F
             return cached
     try:
         new_text = generator()
+    except AI_UNAVAILABLE:
+        raise
     except Exception as e:
         logger.warning("%s generation failed: %s", field_name, e)
         return cached
@@ -886,7 +907,7 @@ def _submit_insights_batch(user):
         + json.dumps(summary, indent=2)
         + INSIGHTS_PROMPT_SUFFIX
     )
-    return llm.submit_batch("peloton-insights", prompt, model=llm.SONNET, max_tokens=2000, system=build_insights_system(user))
+    return llm.submit_batch("peloton-insights", prompt, user=user, feature="ai_training_insights", model=llm.SONNET, max_tokens=2000, system=build_insights_system(user))
 
 
 def analytics_generate_insights(request):
@@ -898,6 +919,8 @@ def analytics_generate_insights(request):
         })
     try:
         batch_id = _submit_insights_batch(user)
+    except AI_UNAVAILABLE as e:
+        return render_ai_unavailable(request, e)
     except Exception as e:
         return render_insights_partial(request, {"error": f"Failed to submit batch: {e}"})
     settings_obj = UserSettings.for_user(user)
@@ -935,10 +958,11 @@ def analytics_check_insights(request):
 
     # Batch complete — fetch results; treat 429 as transient (stay pending)
     try:
-        insights_text = None
+        insights_text = result_row = None
         for row in llm.get_batch_results(batch_id):
             if row.get("result", {}).get("type") == "succeeded":
                 insights_text = llm.extract_text(row["result"]["message"]["content"])
+                result_row = row
                 break
     except Exception as e:
         logger.warning("batch results fetch failed for %s: %s", batch_id, e)
@@ -955,6 +979,7 @@ def analytics_check_insights(request):
     settings_obj.ai_insights_generated_at = tz.now()
     settings_obj.ai_insights_batch_id = None
     settings_obj.save(update_fields=["ai_insights", "ai_insights_generated_at", "ai_insights_batch_id"])
+    llm.log_batch_result(result_row)
 
     return render_insights_partial(request, {
         "insights": insights_text,
@@ -1172,7 +1197,7 @@ ANALYSIS RULES
         # Sonnet, not Haiku: this cites specific workouts/days/metrics causally
         # (fatigue attribution, intervention effects) and is cached 24h/7d, so
         # the extra cost is negligible against the reliability gain.
-        return llm.call(prompt, model=llm.SONNET, max_tokens=400)
+        return llm.call(prompt, user=user, feature="ai_day_analysis", model=llm.SONNET, max_tokens=400)
 
     # If a workout was synced after the last analysis, force a refresh
     force_regen = False
@@ -1204,7 +1229,11 @@ def next_workout_refresh(request):
     today_stats.ai_next_workout = None
     today_stats.ai_next_workout_generated_at = None
     today_stats.save(update_fields=["ai_next_workout", "ai_next_workout_generated_at"])
-    _get_or_generate_next_workout(user, today_stats)
+    try:
+        _get_or_generate_next_workout(user, today_stats)
+    except AI_UNAVAILABLE as e:
+        from django.contrib import messages
+        messages.info(request, ai_unavailable_reason(e))
     return redirect("calendar")
 
 
@@ -1361,7 +1390,7 @@ STRENGTH GUIDANCE: When recommending strength:
         # Sonnet, not Haiku: cached 24h, and this attributes fatigue/readiness
         # to specific workouts and days — the exact class of causal claim that
         # was hallucinating a nonexistent session under Haiku.
-        return llm.call(prompt, model=llm.SONNET, max_tokens=350)
+        return llm.call(prompt, user=user, feature="ai_next_workout", model=llm.SONNET, max_tokens=350)
 
     return cached_daily_stats_field(today_stats, "ai_next_workout", 24, _gen)
 
@@ -1505,8 +1534,10 @@ Rules:
 7. Focus on what's interesting or actionable — effort vs output tradeoffs, HR efficiency, pacing strategy, incline-adjusted performance, cross-discipline comparisons.{persona_rule}"""
 
     try:
-        text = llm.call(prompt, model=llm.HAIKU, max_tokens=450)
+        text = llm.call(prompt, user=user, feature="ai_training_insights", model=llm.HAIKU, max_tokens=450)
         return _render_compare_analysis_html(text, ids_param=request.GET.get("ids", ""))
+    except AI_UNAVAILABLE as e:
+        return render_ai_unavailable(request, e)
     except Exception as e:
         logger.warning("Compare analysis failed: %s", e)
         return _render_compare_analysis_html(None, ids_param=request.GET.get("ids", ""))
@@ -1667,7 +1698,7 @@ Only include this section if 7-DAY RECOVERY AVERAGES is present above. Discuss w
 ## To Watch
 The single most objective signal worth noting — a continued trend, a stall, or a gap between expected and observed. If an intervention's start date or dose change aligns with an objective change in the data above, note the timing and hedge it (e.g. "weight dropped 1.2 lb in the week after the dose increase — possibly related"). If nutrition data is present, connect calorie or protein intake to the body composition data. No directives."""
 
-        return llm.call(prompt, model=llm.HAIKU, max_tokens=500)
+        return llm.call(prompt, user=user, feature="ai_body_commentary", model=llm.HAIKU, max_tokens=500)
 
     return cached_settings_field(user, "ai_body_commentary", 24, _gen, force=force)
 
@@ -1678,7 +1709,10 @@ def body_commentary_refresh(request):
     from django.http import JsonResponse
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    _get_or_generate_body_commentary(user, force=True)
+    try:
+        _get_or_generate_body_commentary(user, force=True)
+    except AI_UNAVAILABLE as e:
+        return JsonResponse({"ok": False, "error": ai_unavailable_reason(e)})
     return JsonResponse({"ok": True})
 
 
@@ -2047,13 +2081,15 @@ Rules:
         model, max_tokens, timeout = llm.HAIKU, 600, 30
 
     try:
-        result = llm.call_json(prompt, model=model, max_tokens=max_tokens,
+        result = llm.call_json(prompt, user=user, feature="ai_food_parse", model=model, max_tokens=max_tokens,
                                message_content=message_content, timeout=timeout)
         result["ok"] = True
         result["model"] = model
         if image_b64 and not result.get("image_type"):
             result["image_type"] = "label"  # pre-classification behavior
         return result
+    except AI_UNAVAILABLE:
+        raise
     except json.JSONDecodeError as e:
         logger.warning("parse_food_text JSON decode failed: %s", e)
         return {"ok": False, "error": "parse_failed", "items": [], "confidence": "low", "note": "", "model": model}
@@ -2124,11 +2160,13 @@ SOURCE TEXT:
         message_content = prompt
 
     try:
-        result = llm.call_json(prompt, model=llm.HAIKU, max_tokens=4000,
+        result = llm.call_json(prompt, user=user, feature="ai_program_tools", model=llm.HAIKU, max_tokens=4000,
                                message_content=message_content, timeout=45)
         result["ok"] = True
         result.setdefault("items", [])
         return result
+    except AI_UNAVAILABLE:
+        raise
     except json.JSONDecodeError as e:
         logger.warning("parse_plan_skeleton JSON decode failed: %s", e)
         return {"ok": False, "error": "parse_failed", "items": []}
@@ -2231,10 +2269,12 @@ Respond with ONLY valid JSON, no markdown:
 }}"""
 
     try:
-        data = llm.call_json(prompt, model=llm.HAIKU, max_tokens=900, timeout=30)
+        data = llm.call_json(prompt, user=user, feature="ai_meal_suggest", model=llm.HAIKU, max_tokens=900, timeout=30)
         if gi_note_str:
             data["gi_note"] = gi_note_str
         return data
+    except AI_UNAVAILABLE:
+        raise
     except Exception as e:
         logger.warning("suggest_meals failed: %s", e)
         return {"suggestions": [], "tip": "", "gi_note": ""}
@@ -2388,7 +2428,7 @@ def _submit_nutrition_insights_batch(user, range_days: int = 30) -> str:
     prompt = _build_nutrition_insights_prompt(user, range_days)
     if not prompt:
         raise ValueError("No nutrition data logged for the selected period")
-    batch_id = llm.submit_batch("nutrition_insights", prompt, model=llm.SONNET, max_tokens=1800)
+    batch_id = llm.submit_batch("nutrition_insights", prompt, user=user, feature="ai_nutrition_insights", model=llm.SONNET, max_tokens=1800)
     settings = UserSettings.for_user(user)
     settings.ai_nutrition_insights_batch_id = batch_id
     settings.ai_nutrition_insights_range = range_days
@@ -2427,10 +2467,11 @@ def nutrition_insights_check(request):
         return render_nutrition_insights_partial(request, {"pending": True})
 
     try:
-        insights_text = None
+        insights_text = result_row = None
         for row in llm.get_batch_results(batch_id):
             if row.get("result", {}).get("type") == "succeeded":
                 insights_text = llm.extract_text(row["result"]["message"]["content"])
+                result_row = row
                 break
     except Exception as e:
         logger.warning("nutrition insights batch results failed for %s: %s", batch_id, e)
@@ -2449,6 +2490,7 @@ def nutrition_insights_check(request):
     settings.save(update_fields=[
         "ai_nutrition_insights", "ai_nutrition_insights_generated_at", "ai_nutrition_insights_batch_id",
     ])
+    llm.log_batch_result(result_row)
     return render_nutrition_insights_partial(request, {
         "insights": insights_text,
         "generated_at": settings.ai_nutrition_insights_generated_at,
@@ -2464,6 +2506,8 @@ def nutrition_insights_refresh(request):
     range_days = {"7d": 7, "30d": 30, "90d": 90, "1y": 365}.get(range_param, 30)
     try:
         _submit_nutrition_insights_batch(user, range_days=range_days)
+    except AI_UNAVAILABLE as e:
+        return render_ai_unavailable(request, e)
     except Exception as e:
         return render_nutrition_insights_partial(request, {"error": f"Failed to submit batch: {e}"})
     return render_nutrition_insights_partial(request, {"pending": True})
@@ -2584,7 +2628,7 @@ One paragraph summary of the most notable finding.
 
 Be specific and data-driven. Avoid generic advice."""
 
-        return llm.call(prompt, model=llm.SONNET, max_tokens=1600, timeout=60)
+        return llm.call(prompt, user=user, feature="ai_intervention_interpretation", model=llm.SONNET, max_tokens=1600, timeout=60)
     except Exception as e:
         logger.warning("Intervention interpretation failed: %s", e)
         return ""
@@ -2757,7 +2801,7 @@ Be specific and data-driven. Avoid generic advice. Do not recommend medical deci
 def _submit_pattern_insights_batch(user) -> str:
     """Submit pattern insights to Batch API. Saves batch_id to UserSettings. Returns batch_id."""
     prompt = _build_pattern_insights_prompt(user)
-    batch_id = llm.submit_batch("pattern_insights", prompt, model=llm.SONNET, max_tokens=2400)
+    batch_id = llm.submit_batch("pattern_insights", prompt, user=user, feature="ai_pattern_insights", model=llm.SONNET, max_tokens=2400)
     settings = UserSettings.for_user(user)
     settings.ai_pattern_insights_batch_id = batch_id
     settings.save(update_fields=["ai_pattern_insights_batch_id"])
@@ -2795,10 +2839,11 @@ def pattern_insights_check(request):
         return render_pattern_insights_partial(request, {"pending": True})
 
     try:
-        insights_text = None
+        insights_text = result_row = None
         for row in llm.get_batch_results(batch_id):
             if row.get("result", {}).get("type") == "succeeded":
                 insights_text = llm.extract_text(row["result"]["message"]["content"])
+                result_row = row
                 break
     except Exception as e:
         logger.warning("pattern insights batch results failed for %s: %s", batch_id, e)
@@ -2817,6 +2862,7 @@ def pattern_insights_check(request):
     settings.save(update_fields=[
         "ai_pattern_insights", "ai_pattern_insights_generated_at", "ai_pattern_insights_batch_id",
     ])
+    llm.log_batch_result(result_row)
     return render_pattern_insights_partial(request, {
         "insights": insights_text,
         "generated_at": settings.ai_pattern_insights_generated_at,
@@ -2830,6 +2876,8 @@ def pattern_insights_refresh(request):
         return HttpResponseNotAllowed(["POST"])
     try:
         _submit_pattern_insights_batch(user)
+    except AI_UNAVAILABLE as e:
+        return render_ai_unavailable(request, e)
     except Exception as e:
         return render_pattern_insights_partial(request, {"error": f"Failed to submit batch: {e}"})
     return render_pattern_insights_partial(request, {"pending": True})
@@ -3006,7 +3054,7 @@ def _submit_weekly_review_batch(user, week_start):
     """Submit weekly review to Batch API. Creates/updates WeeklyReview with batch_id. Returns instance."""
     from .models import WeeklyReview
     prompt = _build_weekly_review_prompt(user, week_start)
-    batch_id = llm.submit_batch("weekly_review", prompt, model=llm.SONNET, max_tokens=1600)
+    batch_id = llm.submit_batch("weekly_review", prompt, user=user, feature="ai_weekly_review", model=llm.SONNET, max_tokens=1600)
     review, _ = WeeklyReview.objects.update_or_create(user=user,
         week_start=week_start,
         defaults={"content": "", "ai_model": llm.SONNET, "batch_id": batch_id},
@@ -3059,10 +3107,11 @@ def weekly_review_check(request):
         return _pending()
 
     try:
-        content = None
+        content = result_row = None
         for row in llm.get_batch_results(review.batch_id):
             if row.get("result", {}).get("type") == "succeeded":
                 content = llm.extract_text(row["result"]["message"]["content"])
+                result_row = row
                 break
     except Exception as e:
         logger.warning("weekly review batch results failed for %s: %s", review.batch_id, e)
@@ -3075,6 +3124,7 @@ def weekly_review_check(request):
         }, status=286)
 
     WeeklyReview.objects.for_user(user).filter(week_start=week_start).update(content=content, batch_id=None)
+    llm.log_batch_result(result_row)
     review.refresh_from_db()
     return render_weekly_review_partial(request, {"review": review}, status=286)
 
@@ -3097,6 +3147,8 @@ def _get_or_generate_weekly_review(user, week_start, force: bool = False):
 
     try:
         return _submit_weekly_review_batch(user, week_start)
+    except AI_UNAVAILABLE:
+        raise
     except Exception as e:
         logger.warning("Weekly review batch submit failed: %s", e)
         try:
@@ -3164,7 +3216,9 @@ Respond using these markdown headers exactly:
 ## Focus for next cycle"""
 
     try:
-        text = llm.call(prompt, model=llm.SONNET, max_tokens=1800, timeout=60)
+        text = llm.call(prompt, user=user, feature="ai_program_tools", model=llm.SONNET, max_tokens=1800, timeout=60)
+    except AI_UNAVAILABLE:
+        raise
     except Exception as e:
         logger.warning("Program retrospective generation failed: %s", e)
         return run.retrospective or ""
@@ -3272,7 +3326,7 @@ def run_stats_chat(user, context, history, user_message):
             "tools": _chat_tools_with_cache(),
             "messages": messages,
         }
-        data = llm.call_raw(body, timeout=30)
+        data = llm.call_raw(body, user=user, feature="ai_chat", timeout=30)
 
         messages.append({"role": "assistant", "content": data["content"]})
 

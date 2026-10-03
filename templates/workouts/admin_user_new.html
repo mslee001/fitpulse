@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}New user — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">NEW USER</h1>
+  <p class="page-sub"><a href="{% url 'admin_users' %}">← Users</a></p>
+</div>
+
+<div class="chart-card" style="max-width:560px">
+  {% if error %}<div class="peloton-msg peloton-msg--error" style="margin-bottom:1rem">{{ error }}</div>{% endif %}
+  <form method="post" style="display:flex;flex-direction:column;gap:0.9rem">
+    {% csrf_token %}
+    <div class="form-group">
+      <label class="form-label" for="id_username">Username</label>
+      <input class="form-input" id="id_username" name="username" value="{{ username }}" required autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="id_first_name">First name (optional)</label>
+      <input class="form-input" id="id_first_name" name="first_name" value="{{ first_name }}" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="id_preset">Start with</label>
+      <select class="form-select" id="id_preset" name="preset">
+        {% for key, value in presets.items %}
+        <option value="{{ key }}" {% if key == preset %}selected{% endif %}>{{ value.0 }}</option>
+        {% endfor %}
+      </select>
+      <p class="muted" style="font-size:0.78rem;margin:0.35rem 0 0">You can change individual features on the next page.</p>
+    </div>
+    <button type="submit" class="btn btn-accent" style="align-self:flex-start">Create user</button>
+  </form>
+</div>
+{% endblock %}

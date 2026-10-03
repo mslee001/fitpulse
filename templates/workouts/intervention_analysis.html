@@ -132,6 +132,7 @@
   </div>
 
   <!-- AI Interpretation -->
+  {% if can.ai_intervention_interpretation %}
   <div class="chart-card" id="ai-interp-card" style="margin-top:1.5rem">
     <div class="chart-header">
       <h3 class="chart-title">AI INTERPRETATION</h3>
@@ -139,6 +140,7 @@
     </div>
     <div id="ai-interp-body" class="ai-interpretation"></div>
   </div>
+  {% endif %}
 
   <!-- Save Analysis -->
   <div class="chart-card" style="margin-top:1.5rem">
@@ -147,7 +149,7 @@
     </div>
     <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
       <input id="save-label" type="text" class="form-input" placeholder="Analysis label…" style="flex:1;min-width:200px">
-      <button class="btn btn-accent" onclick="saveAnalysis()">Save with AI Interpretation</button>
+      <button class="btn btn-accent" onclick="saveAnalysis()">{% if can.ai_intervention_interpretation %}Save with AI Interpretation{% else %}Save{% endif %}</button>
       <span id="save-status" style="font-size:0.85rem;color:var(--text-muted)"></span>
     </div>
   </div>
@@ -313,7 +315,8 @@ function renderResults(data) {
     `Before: ${data.before_start} → ${data.before_end} (${data.before_n} days) | After: ${data.after_start} → ${data.after_end} (${data.after_n} days)`;
 
   // Clear AI
-  document.getElementById('ai-interp-body').textContent = '';
+  const interpBody = document.getElementById('ai-interp-body');
+  if (interpBody) interpBody.textContent = '';
 
   // Render metrics table
   const tbody = document.getElementById('metrics-tbody');
@@ -365,7 +368,8 @@ function renderResults(data) {
 async function saveAnalysis() {
   if (!_lastResult) { setStatus('save-status', 'Run an analysis first.', 'var(--accent-red)'); return; }
   setStatus('save-status', 'Saving + generating AI interpretation…', 'var(--text-muted)');
-  document.getElementById('ai-loading').style.display = '';
+  const aiLoading = document.getElementById('ai-loading');
+  if (aiLoading) aiLoading.style.display = '';
   const ivId = document.getElementById('iv-select').value;
   const payload = {
     label:        document.getElementById('save-label').value || 'Untitled',
@@ -395,7 +399,8 @@ async function saveAnalysis() {
   } catch(e) {
     setStatus('save-status', 'Error: ' + e.message, 'var(--accent-red)');
   } finally {
-    document.getElementById('ai-loading').style.display = 'none';
+    const aiLoadingEl = document.getElementById('ai-loading');
+    if (aiLoadingEl) aiLoadingEl.style.display = 'none';
   }
 }
 

@@ -1,0 +1,7 @@
+{% if messages %}
+<div style="margin-bottom:1rem">
+  {% for message in messages %}
+  <div class="peloton-msg peloton-msg--{{ message.tags }}">{{ message }}</div>
+  {% endfor %}
+</div>
+{% endif %}

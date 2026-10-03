@@ -62,6 +62,7 @@
     </div>
   </div>
 
+  {% if can.ai_training_insights %}
   <div class="chart-card compare-ai-card">
     <div class="chart-header">
       <h3 class="chart-title">AI ANALYSIS</h3>
@@ -77,6 +78,7 @@
       <span id="compare-ai-spinner" class="cai-spinner htmx-indicator" style="margin-left:0.75rem;vertical-align:middle"></span>
     </div>
   </div>
+  {% endif %}
 
 </div>
 

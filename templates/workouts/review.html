@@ -40,6 +40,10 @@
         {% include "workouts/partials/weekly_review_content.html" with review=current_review %}
       {% endif %}
     </div>
+    {% elif ai_unavailable_reason %}
+    <div class="card" style="margin-bottom:1.5rem">
+      {% include "workouts/partials/ai_unavailable.html" %}
+    </div>
     {% else %}
     <div class="card" style="margin-bottom:1.5rem">
       <div style="color:var(--text-dim);font-size:0.9rem;padding:1rem 0">

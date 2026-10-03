@@ -28,6 +28,9 @@ from .models import (
     NutritionProfile, FoodEntry, SavedMeal, HungerCheck, SideEffectLog, TargetAdjustment,
     AthleteProfile,
 )
+from .access import has_feature
+from .onboarding_views import safe_next
+from .ai import AI_UNAVAILABLE, ai_unavailable_reason
 from .sync import _client, _garmin_client, _integration_enabled
 
 logger = logging.getLogger(__name__)
@@ -1203,6 +1206,7 @@ def analytics_page(request):
     INSIGHTS_AUTO_REFRESH_DAYS = 7
     if (
         api_key
+        and has_feature(request.user, "ai_training_insights")
         and not settings_obj.ai_insights_batch_id
         and (
             not settings_obj.ai_insights_generated_at
@@ -1294,9 +1298,18 @@ def google_health_oauth_connect(request):
     from django.urls import reverse
     from .services.google_health_client import build_google_health_auth_url
 
+    from .access import access_for
+    from .models import GoogleHealthAuth
+    if not (request.user.is_superuser or access_for(request.user).google_test_user_added
+            or GoogleHealthAuth.for_user(request.user)):
+        # Google only lets accounts added as test users through the consent screen.
+        messages.error(request, "Google Health isn't ready for your account yet — Megan needs to add you first.")
+        return redirect(safe_next(request, reverse("integrations_settings")))
+
     state = secrets.token_urlsafe(32)
     session_key_before = request.session.session_key
     request.session["google_health_oauth_state"] = state
+    request.session["google_health_oauth_next"] = safe_next(request, reverse("integrations_settings"))
     # Force an explicit save rather than relying solely on SessionMiddleware's
     # automatic save-on-response — this is about to redirect straight to an
     # external domain, so there's no room for doubt about whether the
@@ -1319,9 +1332,11 @@ def google_health_oauth_callback(request):
     straight from Google, so it must degrade gracefully rather than show
     a raw error page for any of the several ways this can fail."""
     from django.urls import reverse
-    from .models import Integration
+    from .background import start_backfill
+    from .models import GoogleHealthAuth, Integration
     from .services.google_health_client import GoogleHealthClient
 
+    nxt = request.session.pop("google_health_oauth_next", None) or reverse("integrations_settings")
     try:
         expected_state = request.session.pop("google_health_oauth_state", None)
         returned_state = request.GET.get("state")
@@ -1345,29 +1360,37 @@ def google_health_oauth_callback(request):
                 "(the link may have expired, or been opened in a different "
                 "browser session). Try Reconnect again.",
             )
-            return redirect("integrations_settings")
+            return redirect(nxt)
 
         error = request.GET.get("error")
         if error:
             messages.error(request, f"Google Health reconnect failed: Google returned an error ({error}).")
-            return redirect("integrations_settings")
+            return redirect(nxt)
 
         code = request.GET.get("code")
         if not code:
             messages.error(request, "Google Health reconnect failed: no authorization code was returned.")
-            return redirect("integrations_settings")
+            return redirect(nxt)
 
         redirect_uri = request.build_absolute_uri(reverse("google_health_oauth_callback"))
+        first_connection = GoogleHealthAuth.for_user(request.user) is None
         client = GoogleHealthClient(request.user)
         client.exchange_code(code, redirect_uri=redirect_uri)
 
-        Integration.objects.for_user(request.user).filter(key="google_health").update(is_authenticated=True)
-        messages.success(request, "Google Health reconnected successfully.")
+        Integration.ensure_for_user(request.user)
+        integrations = Integration.objects.for_user(request.user).filter(key="google_health")
+        if first_connection:
+            integrations.update(is_authenticated=True, is_enabled=True)
+            start_backfill(request.user, "google_health")
+            messages.success(request, "Google Health connected. Importing your history…")
+        else:
+            integrations.update(is_authenticated=True)
+            messages.success(request, "Google Health reconnected successfully.")
     except Exception as e:
         logger.exception("Google Health OAuth callback failed")
         messages.error(request, f"Google Health reconnect failed: {e}")
 
-    return redirect("integrations_settings")
+    return redirect(nxt)
 
 
 def webhook_errors_page(request):
@@ -1481,19 +1504,45 @@ def strength_trends(request):
 
 @require_POST
 def set_peloton_auth(request):
-    from .models import PelotonAuth
+    """Connect or rotate Peloton from just the session cookie: /api/me says
+    whose account it is. The first connection starts a history import."""
+    from django.db import IntegrityError, transaction
+    from .background import start_backfill
+    from .models import Integration, PelotonAuth
+    from .services.peloton_client import PelotonAuthError, PelotonClient, PelotonNetworkError
+
+    nxt = safe_next(request, "integrations_settings")
     session_id = request.POST.get("session_id", "").strip()
-    user_id = request.POST.get("user_id", "").strip()
-    notes = request.POST.get("notes", "").strip()
-    if not session_id or not user_id:
-        messages.error(request, "Both session ID and user ID are required.")
-    else:
-        PelotonAuth.objects.update_or_create(
-            user=request.user,
-            defaults={"session_id": session_id, "peloton_user_id": user_id, "notes": notes},
-        )
-        messages.success(request, "Peloton credentials updated.")
-    return redirect("integrations_settings")
+    notes = request.POST.get("notes", "").strip()[:500]
+    if not session_id:
+        messages.error(request, "Paste your peloton_session_id cookie.")
+        return redirect(nxt)
+    try:
+        me = PelotonClient.fetch_me(session_id)
+    except (PelotonAuthError, PelotonNetworkError) as e:
+        messages.error(request, str(e))
+        return redirect(nxt)
+    if PelotonAuth.objects.filter(peloton_user_id=me["id"]).exclude(user=request.user).exists():
+        messages.error(request, "That Peloton account is already connected to another FitPulse user.")
+        return redirect(nxt)
+    first_connection = not CachedWorkout.objects.for_user(request.user).filter(source="peloton").exists()
+    try:
+        with transaction.atomic():
+            PelotonAuth.objects.update_or_create(
+                user=request.user,
+                defaults={"session_id": session_id, "peloton_user_id": me["id"],
+                          "peloton_username": me["username"], "notes": notes},
+            )
+    except IntegrityError:
+        messages.error(request, "That Peloton account is already connected to another FitPulse user.")
+        return redirect(nxt)
+    Integration.ensure_for_user(request.user)
+    Integration.objects.for_user(request.user).filter(key="peloton").update(is_enabled=True, is_authenticated=True)
+    if first_connection:
+        start_backfill(request.user, "peloton")
+    who = f"@{me['username']}" if me["username"] else "your Peloton account"
+    messages.success(request, f"Connected as {who}." + (" Importing your workouts…" if first_connection else ""))
+    return redirect(nxt)
 
 
 @require_POST
@@ -1507,8 +1556,9 @@ def set_athlete_profile(request):
     athlete.health_context_override = request.POST.get("health_context_override", "").strip()
     raw_keywords = request.POST.get("rehab_keywords", "")
     athlete.rehab_keywords = [k.strip().lower() for k in raw_keywords.split(",") if k.strip()]
+    athlete.saved_at = timezone.now()
     athlete.save()
-    return redirect("settings")
+    return redirect(safe_next(request, "settings"))
 
 
 @require_POST
@@ -1533,7 +1583,7 @@ def set_dumbbells(request):
         settings_obj.dumbbells_lb = sorted(weights)
         settings_obj.save(update_fields=["dumbbells_lb", "updated_at"])
         messages.success(request, f"Saved {len(weights)} dumbbell weight{'s' if len(weights) != 1 else ''}.")
-    return redirect("settings")
+    return redirect(safe_next(request, "settings"))
 
 
 @require_POST
@@ -1549,7 +1599,7 @@ def set_ftp(request):
     else:
         settings_obj.ftp = None
     settings_obj.save()
-    return redirect(request.POST.get("next") or "settings")
+    return redirect(safe_next(request, "settings"))
 
 
 # ---------------------------------------------------------------------------
@@ -1631,7 +1681,7 @@ def calendar_view(request, year=None, month=None):
     legend_colors = {d: c for d, c in DISCIPLINE_COLORS.items() if d in used_disciplines}
 
     today_stats, _ = DailyStats.objects.get_or_create(user=request.user, date=today)
-    next_workout_rec = today_stats.ai_next_workout or None
+    next_workout_rec = (today_stats.ai_next_workout or None) if has_feature(request.user, "ai_next_workout") else None
 
     return render(request, "workouts/calendar.html", {
         "grid": grid,
@@ -1681,7 +1731,12 @@ def day_view(request, date_str):
         except Exception as e:
             logger.warning("Day view wellness sync failed for %s: %s", date_str, e)
 
-    ai_analysis = _get_or_generate_day_analysis(request.user, day, workouts, stats)
+    ai_analysis = ai_unavailable = None
+    if has_feature(request.user, "ai_day_analysis"):
+        try:
+            ai_analysis = _get_or_generate_day_analysis(request.user, day, workouts, stats)
+        except AI_UNAVAILABLE as e:
+            ai_unavailable = ai_unavailable_reason(e)
 
     today = datetime.date.today()
     prev_day = day - datetime.timedelta(days=1)
@@ -1708,6 +1763,7 @@ def day_view(request, date_str):
         "workouts": workouts,
         "stats": stats,
         "ai_analysis": ai_analysis,
+        "ai_unavailable_reason": ai_unavailable,
         "prev_day": prev_day,
         "next_day": next_day if next_day <= today else None,
         "discipline_colors": DISCIPLINE_COLORS,
@@ -2037,7 +2093,7 @@ def body_view(request):
     # Pattern insight headline — extract the "Highest-confidence pattern" from cached insights
     pattern_insight_headline = None
     _ps = UserSettings.for_user(request.user)
-    if _ps.ai_pattern_insights:
+    if _ps.ai_pattern_insights and has_feature(request.user, "ai_pattern_insights"):
         for line in _ps.ai_pattern_insights.splitlines():
             line = line.strip()
             if line.startswith("## Highest") and not pattern_insight_headline:
@@ -2047,7 +2103,12 @@ def body_view(request):
                 break
 
     # Body commentary
-    commentary = _get_or_generate_body_commentary(request.user)
+    commentary = ai_unavailable = None
+    if has_feature(request.user, "ai_body_commentary"):
+        try:
+            commentary = _get_or_generate_body_commentary(request.user)
+        except AI_UNAVAILABLE as e:
+            ai_unavailable = ai_unavailable_reason(e)
 
     # Nutrition 7-day summary for body page card
     from .nutrition import compute_macro_targets
@@ -2081,6 +2142,7 @@ def body_view(request):
         "delta_7d": delta_7d,
         "delta_30d": delta_30d,
         "commentary": commentary,
+        "ai_unavailable_reason": ai_unavailable,
         "nutrition_targets": nutrition_targets,
         "nutrition_avg_cal": nutrition_avg_cal,
         "nutrition_avg_prot": nutrition_avg_prot,
@@ -2240,13 +2302,15 @@ def save_analysis_api(request):
             "before": get_nutrition_gap(request.user, before_start, before_end),
             "after": get_nutrition_gap(request.user, after_start, after_end),
         }
-        ai_text = _generate_intervention_interpretation(
-            request.user,
-            analysis_result,
-            intervention=intervention,
-            interventions_context_str=iv_ctx,
-            nutrition_gaps=n_gaps,
-        )
+        ai_text = ""
+        if has_feature(request.user, "ai_intervention_interpretation"):
+            ai_text = _generate_intervention_interpretation(
+                request.user,
+                analysis_result,
+                intervention=intervention,
+                interventions_context_str=iv_ctx,
+                nutrition_gaps=n_gaps,
+            )
     else:
         ai_text = ""
 
@@ -2466,13 +2530,21 @@ def nutrition_parse_api(request):
     saved_meals_data = list(
         SavedMeal.objects.for_user(request.user).values("name", "calories", "protein_g", "carbs_g", "fat_g", "fiber_g")
     )
-    result = parse_food_text(
-        request.user, raw_text, meal,
-        saved_meals=saved_meals_data,
-        image_b64=image_b64,
-        image_media_type=image_media_type,
-        serving_note=serving_note,
-    )
+    try:
+        result = parse_food_text(
+            request.user, raw_text, meal,
+            saved_meals=saved_meals_data,
+            image_b64=image_b64,
+            image_media_type=image_media_type,
+            serving_note=serving_note,
+        )
+    except AI_UNAVAILABLE as e:
+        return render(request, "workouts/partials/nutrition_parse_result.html", {
+            "error": ai_unavailable_reason(e),
+            "raw_text": raw_text,
+            "meal": meal,
+            "page_date": page_date,
+        })
 
     # Photo-only parses have no typed text; label the entry with what was found
     # so the logged row isn't blank.
@@ -2650,14 +2722,19 @@ def nutrition_suggest_api(request):
         symptom__in=["nausea", "bloating"],
     ).exists()
 
-    result = suggest_meals(
-        request.user, remaining_cal, remaining_prot, remaining_carbs, remaining_fat, remaining_fiber,
-        meal_summary, time_of_day,
-        recent_meals=recent_meal_names,
-        top_foods=top_foods_data,
-        current_hunger=current_hunger,
-        gi_symptoms=gi_symptoms,
-    )
+    try:
+        result = suggest_meals(
+            request.user, remaining_cal, remaining_prot, remaining_carbs, remaining_fat, remaining_fiber,
+            meal_summary, time_of_day,
+            recent_meals=recent_meal_names,
+            top_foods=top_foods_data,
+            current_hunger=current_hunger,
+            gi_symptoms=gi_symptoms,
+        )
+    except AI_UNAVAILABLE as e:
+        return render(request, "workouts/partials/nutrition_suggestions.html", {
+            "error": ai_unavailable_reason(e), "page_date": page_date,
+        })
 
     return render(request, "workouts/partials/nutrition_suggestions.html", {
         "suggestions": result.get("suggestions", []),
@@ -2946,7 +3023,7 @@ def nutrition_analytics_page(request):
     from .ai import _submit_nutrition_insights_batch
     _s = UserSettings.for_user(request.user)
     _api_key = _os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if _api_key and not _s.ai_nutrition_insights_batch_id:
+    if _api_key and has_feature(request.user, "ai_nutrition_insights") and not _s.ai_nutrition_insights_batch_id:
         _stale = (
             not _s.ai_nutrition_insights_generated_at
             or (datetime.date.today() - _s.ai_nutrition_insights_generated_at.date()).days >= 7
@@ -3243,11 +3320,13 @@ def today_page(request):
     next_workout_text = None
     today_stats = DailyStats.objects.for_user(request.user).filter(date=today_date).first()
     if today_stats:
-        try:
-            day_analysis_text = _get_or_generate_day_analysis(request.user, today_date, todays_workouts, today_stats)
-        except Exception:
-            pass
-        next_workout_text = today_stats.ai_next_workout or None
+        if has_feature(request.user, "ai_day_analysis"):
+            try:
+                day_analysis_text = _get_or_generate_day_analysis(request.user, today_date, todays_workouts, today_stats)
+            except Exception:
+                pass
+        if has_feature(request.user, "ai_next_workout"):
+            next_workout_text = today_stats.ai_next_workout or None
 
     return render(request, "workouts/today.html", {
         "today_date": today_date,
@@ -3275,7 +3354,11 @@ def weekly_review_page(request):
         last_monday = today - datetime.timedelta(days=days_since_monday + 7)
 
     force = request.GET.get("refresh") == "1"
-    current_review = _get_or_generate_weekly_review(request.user, last_monday, force=force)
+    ai_unavailable = None
+    try:
+        current_review = _get_or_generate_weekly_review(request.user, last_monday, force=force)
+    except AI_UNAVAILABLE as e:
+        current_review, ai_unavailable = None, ai_unavailable_reason(e)
 
     archive = list(
         WeeklyReview.objects.for_user(request.user).exclude(week_start=last_monday)
@@ -3286,6 +3369,7 @@ def weekly_review_page(request):
 
     return render(request, "workouts/review.html", {
         "current_review": current_review,
+        "ai_unavailable_reason": ai_unavailable,
         "archive": archive,
         "last_monday": last_monday,
     })
@@ -3362,6 +3446,8 @@ def chat_message_api(request):
 
     try:
         answer, updated_history = run_stats_chat(request.user, context, history, user_message)
+    except AI_UNAVAILABLE as e:
+        return render(request, "workouts/partials/chat_error.html", {"error": ai_unavailable_reason(e)})
     except Exception as e:
         logger.warning("Stats chat failed: %s", e)
         return render(request, "workouts/partials/chat_error.html", {

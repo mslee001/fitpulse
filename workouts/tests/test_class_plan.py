@@ -7,6 +7,7 @@ from django.urls import reverse
 from workouts.models import CachedWorkout
 from workouts.services.peloton_client import parse_class_plan
 from workouts.views import _manual_movement_context
+from workouts.tests.helpers import make_user
 
 
 def _sub(kind, name, movements):
@@ -57,7 +58,7 @@ class ParseClassPlanTests(SimpleTestCase):
 class ManualMovementsTests(TestCase):
     def setUp(self):
         from django.utils import timezone
-        user = get_user_model().objects.create_user("t", password="x")
+        user = make_user("t", features=["training"])
         self.w = CachedWorkout.objects.create(
             user=user, workout_id="testworkout1", ride_id="r1", title="Circuit", discipline="circuit",
             source="peloton", created_at=timezone.now(),

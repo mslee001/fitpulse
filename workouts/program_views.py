@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
+from .access import has_feature
 from .models import Program, ProgramRun, ProgramSlot, ProgramWeek, ProgramWorkout, RunWeek
 from .programs import (
     ANY_CLASS_PRESETS, backfill_program, create_plan, create_split, duplicate_program,
@@ -278,7 +279,13 @@ def program_new_plan(request):
             return render(request, "workouts/program_new_plan.html",
                           {"raw_text": raw_text, "name": name, "instructor": instructor})
 
-        result = parse_plan_skeleton(request.user, raw_text, image_b64=image_b64, image_media_type=image_media_type)
+        from .ai import AI_UNAVAILABLE, ai_unavailable_reason
+        try:
+            result = parse_plan_skeleton(request.user, raw_text, image_b64=image_b64, image_media_type=image_media_type)
+        except AI_UNAVAILABLE as e:
+            messages.error(request, ai_unavailable_reason(e))
+            return render(request, "workouts/program_new_plan.html",
+                          {"raw_text": raw_text, "name": name, "instructor": instructor})
         if not result.get("ok") or not result.get("items"):
             messages.error(
                 request,
@@ -559,12 +566,15 @@ def program_run(request, pk):
     # (and showing a necessarily-partial analysis) on every view of a run
     # that's still in progress.
     retro_text = None
-    if not run.is_current:
-        from .ai import _get_or_generate_retrospective
-        if request.GET.get("refresh_retro") == "1":
-            _get_or_generate_retrospective(request.user, run, force=True)
-            return redirect("program_run", pk=run.pk)
-        retro_text = _get_or_generate_retrospective(request.user, run)
+    if not run.is_current and has_feature(request.user, "ai_program_tools"):
+        from .ai import AI_UNAVAILABLE, _get_or_generate_retrospective
+        try:
+            if request.GET.get("refresh_retro") == "1":
+                _get_or_generate_retrospective(request.user, run, force=True)
+                return redirect("program_run", pk=run.pk)
+            retro_text = _get_or_generate_retrospective(request.user, run)
+        except AI_UNAVAILABLE:
+            retro_text = run.retrospective or None
 
     return render(request, "workouts/program_run.html", {
         "program": run.program, "run": run,
@@ -728,9 +738,12 @@ def program_running_progression(request, pk):
 def program_retrospective(request, pk):
     """Sonnet retrospective for a run — cached, regenerable via ?refresh=1. Works
     mid-cycle too (a partial read), not just after the run is marked ended."""
-    from .ai import _get_or_generate_retrospective
+    from .ai import AI_UNAVAILABLE, _get_or_generate_retrospective, ai_unavailable_reason
     run = get_object_or_404(ProgramRun.objects.filter(program__user=request.user).select_related("program"), pk=pk)
     force = request.GET.get("refresh") == "1"
-    text = _get_or_generate_retrospective(request.user, run, force=force)
+    try:
+        text = _get_or_generate_retrospective(request.user, run, force=force)
+    except AI_UNAVAILABLE as e:
+        text = run.retrospective or ai_unavailable_reason(e)
     return render(request, "workouts/program_retrospective.html",
                   {"program": run.program, "run": run, "text": text})

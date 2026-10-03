@@ -103,6 +103,7 @@
       <div class="stat-value">{{ rows|length }}</div>
     </div>
   </div>
+  {% if can.ai_program_tools %}
   <div class="stat-card" style="flex:1; min-width:0">
     <div class="chart-header" style="margin-bottom:0.6rem">
       <span class="stat-label">Retrospective</span>
@@ -116,6 +117,7 @@
     <p class="stat-sub">Couldn't generate a retrospective right now — try Regenerate.</p>
     {% endif %}
   </div>
+  {% endif %}
 </div>
 {% endif %}
 

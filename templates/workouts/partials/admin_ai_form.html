@@ -1,0 +1,22 @@
+<div id="admin-ai-form">
+  {% if target.is_superuser %}
+  <p style="margin:0 0 0.75rem">No cap (owner). This month: <strong>${{ spent|floatformat:2 }}</strong></p>
+  {% else %}
+  <form hx-post="{% url 'admin_user_ai' target.pk %}" hx-target="#admin-ai-form" hx-swap="outerHTML"
+        style="display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:0.75rem">
+    {% csrf_token %}
+    <label style="display:flex;align-items:center;gap:0.5rem">
+      <input type="checkbox" name="ai_enabled" {% if access.ai_enabled %}checked{% endif %}> AI features on
+    </label>
+    <div class="form-group" style="margin:0">
+      <label class="form-label" for="id_budget">Monthly budget (USD, blank = no cap)</label>
+      <input class="form-input" id="id_budget" name="monthly_ai_budget_usd" style="width:9rem"
+             value="{% if access.monthly_ai_budget_usd is not None %}{{ access.monthly_ai_budget_usd }}{% endif %}" inputmode="decimal">
+    </div>
+    <button type="submit" class="btn btn-sm btn-accent">Save</button>
+    {% if saved %}<span class="muted" style="font-size:0.8rem">Saved</span>{% endif %}
+  </form>
+  {% if error %}<div class="peloton-msg peloton-msg--error">{{ error }}</div>{% endif %}
+  <p style="margin:0 0 0.75rem">This month: <strong>{{ ai_label }}</strong></p>
+  {% endif %}
+</div>

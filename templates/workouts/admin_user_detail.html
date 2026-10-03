@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ target.username }} — Users — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">{{ target.username|upper }}{% if target.is_superuser %} <span class="badge badge-accent">Owner</span>{% endif %}</h1>
+  <p class="page-sub"><a href="{% url 'admin_users' %}">← Users</a></p>
+</div>
+
+{% include "workouts/partials/messages.html" %}
+
+<div class="admin-grid">
+  {# ── Account ── #}
+  <div class="chart-card">
+    <div class="chart-header"><h3 class="chart-title">ACCOUNT</h3></div>
+    <dl class="admin-dl">
+      <dt>Username</dt><dd>{{ target.username }}</dd>
+      <dt>Name</dt><dd>{{ target.get_full_name|default:"—" }}</dd>
+      <dt>Status</dt><dd>{% if target.is_active %}Active{% else %}Deactivated{% endif %}</dd>
+      <dt>Last login</dt><dd>{{ target.last_login|date:"M j, Y g:i A"|default:"never" }}</dd>
+      <dt>Created</dt><dd>{{ target.date_joined|date:"M j, Y" }}</dd>
+    </dl>
+    <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+      <form method="post" action="{% url 'admin_user_reset_password' target.pk %}"
+            onsubmit="return confirm('Give {{ target.username }} a new temporary password?')">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-ghost">Reset password</button>
+      </form>
+      <form method="post" action="{% url 'admin_user_active' target.pk %}">
+        {% csrf_token %}
+        <button class="btn btn-sm btn-ghost" {% if target.is_active and not can_deactivate %}disabled title="You can't deactivate yourself or the last owner"{% endif %}>
+          {% if target.is_active %}Deactivate{% else %}Activate{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {# ── AI ── #}
+  <div class="chart-card">
+    <div class="chart-header"><h3 class="chart-title">AI</h3></div>
+    {% include "workouts/partials/admin_ai_form.html" %}
+    {% if usage %}
+    <table class="admin-table">
+      <thead><tr><th>Feature</th><th>Calls</th><th>Tokens in</th><th>Tokens out</th><th>Cost</th></tr></thead>
+      <tbody>
+        {% for row in usage %}
+        <tr><td>{{ row.label }}</td><td>{{ row.calls }}</td><td>{{ row.tokens_in }}</td><td>{{ row.tokens_out }}</td><td>${{ row.cost|floatformat:2 }}</td></tr>
+        {% endfor %}
+        <tr><td><strong>Total</strong></td><td></td><td></td><td></td><td><strong>${{ spent|floatformat:2 }}</strong></td></tr>
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted" style="font-size:0.85rem;margin:0">No AI use this month.</p>
+    {% endif %}
+  </div>
+
+  {# ── Features ── #}
+  <div class="chart-card admin-grid-wide">
+    <div class="chart-header"><h3 class="chart-title">FEATURES</h3></div>
+    {% if target.is_superuser %}<p class="muted" style="font-size:0.85rem;margin:0 0 0.75rem">The owner has every feature.</p>{% endif %}
+    <div class="feature-groups">
+      {% for group, rows in groups %}
+      <div>
+        <div class="stat-label" style="margin-bottom:0.5rem">{{ group }}</div>
+        {% for row in rows %}{% include "workouts/partials/admin_feature_row.html" %}{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# ── Setup ── #}
+  <div class="chart-card">
+    <div class="chart-header"><h3 class="chart-title">SETUP</h3></div>
+    <p style="margin:0 0 0.75rem">{{ setup }}</p>
+    {% if steps %}
+    <ul class="admin-steps">
+      {% for step in steps %}
+      <li><span class="step-pill step-pill--{{ step.status }}">{% if step.status == "blocked" %}Waiting on Megan{% elif step.status == "todo" %}To do{% else %}{{ step.status|title }}{% endif %}</span> {{ step.title }}{% if not step.required %} <span class="muted">(optional)</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% include "workouts/partials/admin_gh_test_user.html" %}
+    <form method="post" action="{% url 'admin_user_reset_onboarding' target.pk %}">
+      {% csrf_token %}
+      <button class="btn btn-sm btn-ghost">Reset onboarding</button>
+    </form>
+  </div>
+
+  {# ── Connections ── #}
+  <div class="chart-card">
+    <div class="chart-header"><h3 class="chart-title">CONNECTIONS</h3></div>
+    <table class="admin-table">
+      <thead><tr><th>Source</th><th>Enabled</th><th>Connected</th><th>Last synced</th><th>Import</th></tr></thead>
+      <tbody>
+        {% for c in connections %}
+        <tr>
+          <td>{{ c.integration.display_name }}</td>
+          <td>{% if c.integration.is_enabled %}yes{% else %}<span class="muted">no</span>{% endif %}</td>
+          <td>
+            {% if c.connected %}yes{% if c.peloton_username %} (@{{ c.peloton_username }}){% endif %}{% else %}<span class="muted">no</span>{% endif %}
+            {% if c.gh_days is not None %}<span class="conn-dot conn-dot--{{ c.gh_freshness }}" style="margin-left:0.3rem"></span> {{ c.gh_days }}d ago{% endif %}
+            {% if c.webhook_active is not None %}<br><span class="muted" style="font-size:0.75rem">webhook {% if c.webhook_active %}on{% else %}off{% endif %}</span>{% endif %}
+          </td>
+          <td>{{ c.integration.last_synced_at|date:"M j, g:i A"|default:"never" }}</td>
+          <td>{% if c.job %}{{ c.job.get_status_display }}{% if c.job.finished_at %} <span class="muted" style="font-size:0.75rem">{{ c.job.finished_at|date:"M j" }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted" style="font-size:0.78rem;margin:0.75rem 0 0">{{ webhook_errors }} sync error{{ webhook_errors|pluralize }} in the last 14 days.</p>
+  </div>
+</div>
+{% endblock %}

@@ -21,7 +21,13 @@
 
   <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
     {% if integration.key == 'google_health' %}
-    <a href="{% url 'google_health_oauth_connect' %}" class="btn btn-sm btn-ghost">Reconnect</a>
+    <a href="{% url 'google_health_oauth_connect' %}" class="btn btn-sm btn-ghost">{% if google_health_auth %}Reconnect{% else %}Connect{% endif %}</a>
+    {% elif integration.key == 'withings' %}
+    <form method="post" action="{% url 'withings_oauth_connect' %}" style="margin:0">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{% url 'integrations_settings' %}">
+      <button type="submit" class="btn btn-sm btn-ghost">{% if integration.is_authenticated %}Reconnect{% else %}Connect Withings{% endif %}</button>
+    </form>
     {% endif %}
     {% if integration.is_enabled and integration.sync_all_url_name %}
     <a href="{% url integration.sync_all_url_name %}" target="_blank"

@@ -310,6 +310,11 @@
       <div class="stat-label">Day Analysis</div>
       <div style="margin-top:0.75rem">{{ ai_analysis|format_day_analysis|safe }}</div>
     </div>
+    {% elif ai_unavailable_reason %}
+    <div class="stat-card" style="margin-bottom:1.5rem">
+      <div class="stat-label">Day Analysis</div>
+      {% include "workouts/partials/ai_unavailable.html" %}
+    </div>
     {% endif %}
 
     {# ── Nutrition ── #}

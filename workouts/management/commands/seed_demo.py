@@ -236,6 +236,16 @@ class Command(BaseCommand):
         # ── WeeklyReview ──────────────────────────────────────────────────────
         _seed_weekly_review(user)
 
+        # Demo user can use everything and skips Get Started.
+        from workouts.access import FEATURES, access_for
+        from workouts.models import Integration
+        access = access_for(user)
+        access.features, access.ai_enabled = list(FEATURES), True
+        access.must_change_password = False
+        access.onboarding_completed_at = timezone.now()
+        access.save()
+        Integration.ensure_for_user(user)
+
         self.stdout.write(self.style.SUCCESS(
             "\nDemo database seeded successfully.\n"
             "Run with: DB_FILE=demo.sqlite3 venv/bin/python3 manage.py runserver"

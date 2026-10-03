@@ -24,6 +24,11 @@ WHEN = datetime.combine(DAY, datetime.min.time(), tzinfo=dt_tz.utc) + timedelta(
 class IsolationTests(TwoUserTestCase):
     def setUp(self):
         super().setUp()
+        # Bob can use everything, so every 404 below is about ownership, not access.
+        from workouts.access import FEATURES, access_for
+        access = access_for(self.b)
+        access.features, access.ai_enabled = list(FEATURES), True
+        access.save()
         a = self.a
         self.workout = CachedWorkout.objects.create(
             user=a, workout_id="alice-w1", ride_id=RIDE, title="ALICE-ONLY-WORKOUT", discipline="strength",

@@ -49,6 +49,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "workouts.context_processors.access",
             ],
         },
     },
@@ -72,6 +73,13 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
 
 LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/"
@@ -99,6 +107,10 @@ GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD", "")
 # Temporary: store the first few real Google Health webhook payloads (as
 # WebhookError rows) to learn whether a notification identifies its user.
 GOOGLE_HEALTH_CAPTURE_PAYLOADS = os.environ.get("GOOGLE_HEALTH_CAPTURE_PAYLOADS", "1") == "1"
+
+# Withings posts every user's weigh-in notifications here (one URL for all users;
+# the payload's userid says whose). Subscribed right after the web OAuth flow.
+WITHINGS_CALLBACK_URL = os.getenv("WITHINGS_CALLBACK_URL", "")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True

@@ -42,6 +42,7 @@
     {% endif %}
   </div>
 
+  {% if can.ai_next_workout %}
   <div class="today-hero-recommendation">
     <div class="card-label">NEXT WORKOUT</div>
     {% if next_workout_text %}
@@ -50,6 +51,7 @@
       <p class="muted">No recommendation yet. Once today's readiness score is available, refresh from the Calendar page.</p>
     {% endif %}
   </div>
+  {% endif %}
 </section>
 
 <!-- WELLNESS row -->

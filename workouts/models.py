@@ -1,4 +1,5 @@
 import re
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -975,6 +976,9 @@ class AthleteProfile(models.Model):
         help_text="Substring matches that flag a workout title as PT/rehab and exclude it from "
                   "training-load reasoning. Example: ['shoulder pt', 'physical therapy', 'rehab', 'prehab'].")
 
+    # Set when the profile form is first saved — Get Started's "AI coaching profile" step.
+    saved_at = models.DateTimeField(null=True, blank=True)
+
     health_context_override = models.TextField(blank=True,
         help_text="Free-form context to inject verbatim into health/nutrition prompts. "
                   "Leave blank to derive from Interventions only.")
@@ -1240,6 +1244,7 @@ class PelotonAuth(models.Model):
     # The Peloton account id (named peloton_user_id so it can't be confused
     # with the Django `user` FK above, whose attribute is user_id).
     peloton_user_id = models.CharField(max_length=64, help_text="Peloton user ID")
+    peloton_username = models.CharField(max_length=64, blank=True)   # from /api/me, for "Connected as @…"
     last_updated = models.DateTimeField(auto_now=True)
     notes = models.CharField(
         max_length=500,
@@ -1250,6 +1255,11 @@ class PelotonAuth(models.Model):
     class Meta:
         verbose_name = "Peloton Auth"
         verbose_name_plural = "Peloton Auth"
+        constraints = [
+            # One Peloton account can't feed two FitPulse users.
+            models.UniqueConstraint(fields=["peloton_user_id"], condition=~models.Q(peloton_user_id=""),
+                                    name="uniq_peloton_user_id"),
+        ]
 
     def __str__(self):
         return f"PelotonAuth(peloton_user_id={self.peloton_user_id}, updated={self.last_updated})"
@@ -1608,3 +1618,89 @@ class ProgramWorkout(models.Model):
 
     def __str__(self):
         return f"{self.run_week} · {self.workout_id}"
+
+
+class AIUsage(models.Model):
+    """One Anthropic response's token usage and cost, for per-user monthly
+    budgets and the admin page. Counts and cost only — never prompt or response text."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    feature = models.CharField(max_length=48, db_index=True)   # slug from access.FEATURES
+    model = models.CharField(max_length=64)
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    cache_read_tokens = models.PositiveIntegerField(default=0)
+    cache_write_tokens = models.PositiveIntegerField(default=0)
+    is_batch = models.BooleanField(default=False)
+    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    objects = UserOwnedManager()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"AIUsage({self.feature}, {self.model}, ${self.cost_usd})"
+
+
+class UserAccess(models.Model):
+    """What a user may use (see access.FEATURES), their AI budget, and account
+    state for the forced password change and Get Started onboarding.
+    Created for every new user with everything off."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="access")
+    features = models.JSONField(default=list, blank=True)        # list of feature slugs
+    ai_enabled = models.BooleanField(default=False)               # master AI switch
+    monthly_ai_budget_usd = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    must_change_password = models.BooleanField(default=False)
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True)
+    google_test_user_added = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"UserAccess({self.user_id}, {len(self.features)} features)"
+
+
+def _create_user_access(sender, instance, created, **kwargs):
+    if created:
+        UserAccess.objects.get_or_create(user=instance)
+
+
+models.signals.post_save.connect(_create_user_access, sender=settings.AUTH_USER_MODEL,
+                                 dispatch_uid="workouts_create_user_access")
+
+
+class SyncJob(models.Model):
+    """A background first-time backfill (see background.start_backfill), polled by
+    the Get Started page while it runs."""
+    STATUS = [("running", "Running"), ("done", "Done"), ("failed", "Failed")]
+    STALE_AFTER = timedelta(minutes=90)
+    STALE_ERROR = "Interrupted, probably by a deploy or restart"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    source = models.CharField(max_length=32)        # peloton / withings / google_health
+    status = models.CharField(max_length=12, choices=STATUS, default="running")
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    summary = models.JSONField(default=dict, blank=True)   # the _run_*_sync_all result dict
+    error = models.TextField(blank=True)
+
+    objects = UserOwnedManager()
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"SyncJob({self.source}, {self.status})"
+
+    @property
+    def is_stale(self):
+        return self.status == "running" and timezone.now() - self.started_at > self.STALE_AFTER
+
+    def refreshed(self):
+        """Mark a running job that outlived STALE_AFTER as failed (its thread died
+        with a deploy/restart) and return self."""
+        if self.is_stale:
+            self.status, self.error, self.finished_at = "failed", self.STALE_ERROR, timezone.now()
+            self.save(update_fields=["status", "error", "finished_at"])
+        return self

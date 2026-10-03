@@ -5,6 +5,7 @@
 <div class="page-header">
   <h1 class="page-title">INTEGRATIONS</h1>
   <p class="page-sub">Enable or disable each data source — disabled integrations disappear from the Sync menu and their sync functions no-op</p>
+  <p class="page-sub"><a href="{% url 'get_started' %}">Setup guide →</a></p>
 </div>
 
 {% if messages %}
@@ -49,10 +50,12 @@
           <span style="color:var(--text-dim);min-width:90px">Cookie</span>
           <span style="font-family:'JetBrains Mono',monospace">{{ peloton_auth.masked_session_id }}</span>
         </div>
+        {% if peloton_auth.peloton_username %}
         <div style="display:flex;gap:1rem">
-          <span style="color:var(--text-dim);min-width:90px">User ID</span>
-          <span style="font-family:'JetBrains Mono',monospace">{{ peloton_auth.peloton_user_id }}</span>
+          <span style="color:var(--text-dim);min-width:90px">Account</span>
+          <span>Connected as @{{ peloton_auth.peloton_username }}</span>
         </div>
+        {% endif %}
         <div style="display:flex;gap:1rem">
           <span style="color:var(--text-dim);min-width:90px">Updated</span>
           <span style="color:var(--text-muted)">{{ peloton_auth.last_updated|date:"M j, Y g:i A" }}</span>
@@ -75,12 +78,6 @@
             <div class="form-group">
               <label class="form-label">Session cookie</label>
               <input type="password" name="session_id" class="form-input" autocomplete="off" placeholder="Paste full cookie value" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">User ID</label>
-              <input type="text" name="user_id" class="form-input"
-                     value="{% if peloton_auth %}{{ peloton_auth.peloton_user_id }}{% endif %}"
-                     placeholder="Your Peloton user ID" required>
             </div>
             <div class="form-group">
               <label class="form-label">Notes (optional)</label>

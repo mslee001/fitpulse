@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}{% if complete %}Setup guide{% else %}Get Started{% endif %} — FitPulse{% endblock %}
+
+{% block content %}
+<div class="gs-page">
+  <div class="page-header">
+    {% if complete %}
+    <h1 class="page-title">SETUP COMPLETE</h1>
+    <p class="page-sub">Reconnect a source or update your profile any time.</p>
+    {% else %}
+    <h1 class="page-title">WELCOME TO FITPULSE</h1>
+    <p class="page-sub">Connect the accounts you use, fill in a couple of profile details, and you're set. Skip anything you don't use. You can connect it later from Settings → Data Sources.</p>
+    {% endif %}
+  </div>
+
+  {% include "workouts/partials/messages.html" %}
+
+  {% with gs="/get-started/" %}
+
+  {# ── Password (only if somehow not done) ── #}
+  {% if steps.password.status != "done" %}
+  <section class="chart-card gs-card" id="password">
+    <div class="gs-card-head"><h3 class="chart-title">PASSWORD</h3><span class="step-pill step-pill--todo">To do</span></div>
+    <a class="btn btn-accent" href="{% url 'password_change' %}">Choose a password</a>
+  </section>
+  {% endif %}
+
+  {# ── Peloton ── #}
+  {% with step=steps.peloton %}
+  <section class="chart-card gs-card" id="peloton">
+    <div class="gs-card-head">
+      <h3 class="chart-title">PELOTON</h3>
+      {% include "workouts/partials/gs_pill.html" %}
+    </div>
+    {% if step.status == "done" %}
+      <p class="gs-line">Connected{% if peloton_auth.peloton_username %} as @{{ peloton_auth.peloton_username }}{% endif %}.
+        <details class="gs-inline"><summary>Reconnect</summary>{% include "workouts/partials/gs_peloton_form.html" %}</details></p>
+      {% include "workouts/partials/gs_sync_status.html" with job=jobs.peloton source="peloton" %}
+    {% elif step.status == "skipped" %}
+      <p class="gs-line muted">Skipped.</p>
+      <form method="post" action="{% url 'gs_unskip' 'peloton' %}">{% csrf_token %}<button class="btn btn-sm btn-ghost">Connect Peloton after all</button></form>
+    {% else %}
+      <div class="gs-copy">
+        <p>FitPulse reads your Peloton workouts using your browser's sign-in cookie. This takes about two minutes and needs a <strong>computer</strong> (it doesn't work on a phone).</p>
+        <ol>
+          <li>On your computer, go to <strong>onepeloton.com</strong> and log in.</li>
+          <li>Open developer tools: <strong>Chrome/Edge</strong> View → Developer → Developer Tools (or ⌥⌘I on Mac, F12 on Windows). <strong>Safari</strong> first turn on Settings → Advanced → "Show features for web developers", then Develop → Show Web Inspector.</li>
+          <li>Go to the <strong>Application</strong> tab (Safari: <strong>Storage</strong>) → <strong>Cookies</strong> → <code>https://www.onepeloton.com</code>.</li>
+          <li>Find <strong><code>peloton_session_id</code></strong> and copy its <strong>Value</strong>.</li>
+          <li>Paste it below and click <strong>Connect</strong>.</li>
+        </ol>
+        <p>The cookie expires every so often. If your workouts stop syncing, repeat these steps from Settings → Data Sources. Treat the cookie like a password: don't share it anywhere else.</p>
+      </div>
+      {% include "workouts/partials/gs_peloton_form.html" %}
+      <form method="post" action="{% url 'gs_skip' 'peloton' %}" class="gs-skip">{% csrf_token %}<button class="btn-link">I don't use Peloton — skip</button></form>
+    {% endif %}
+  </section>
+  {% endwith %}
+
+  {# ── Withings ── #}
+  {% with step=steps.withings %}
+  <section class="chart-card gs-card" id="withings">
+    <div class="gs-card-head">
+      <h3 class="chart-title">WITHINGS SCALE</h3>
+      {% include "workouts/partials/gs_pill.html" %}
+    </div>
+    {% if step.status == "done" %}
+      <p class="gs-line">Connected — new weigh-ins arrive automatically.</p>
+      {% include "workouts/partials/gs_withings_button.html" with label="Reconnect" %}
+      {% include "workouts/partials/gs_sync_status.html" with job=jobs.withings source="withings" %}
+    {% elif step.status == "skipped" %}
+      <p class="gs-line muted">Skipped.</p>
+      <form method="post" action="{% url 'gs_unskip' 'withings' %}">{% csrf_token %}<button class="btn btn-sm btn-ghost">Connect Withings after all</button></form>
+    {% else %}
+      <div class="gs-copy">
+        <p>Connect your Withings scale so weigh-ins show up automatically. Click <strong>Connect Withings</strong>, sign in to Withings, and approve access. You'll come straight back here. New weigh-ins arrive within a few minutes of stepping on the scale.</p>
+      </div>
+      {% if withings_auth %}<p class="gs-line muted">Signed in, but automatic weigh-in updates aren't on yet — try connecting again.</p>{% endif %}
+      {% include "workouts/partials/gs_withings_button.html" with label="Connect Withings" %}
+      {% include "workouts/partials/gs_sync_status.html" with job=jobs.withings source="withings" %}
+      <form method="post" action="{% url 'gs_skip' 'withings' %}" class="gs-skip">{% csrf_token %}<button class="btn-link">I don't have a Withings scale — skip</button></form>
+    {% endif %}
+  </section>
+  {% endwith %}
+
+  {# ── Google Health ── #}
+  {% with step=steps.google_health %}
+  <section class="chart-card gs-card" id="google_health">
+    <div class="gs-card-head">
+      <h3 class="chart-title">GOOGLE HEALTH</h3>
+      {% include "workouts/partials/gs_pill.html" %}
+    </div>
+    {% if step.status == "done" %}
+      <p class="gs-line">Connected {{ google_health_auth.days_since_connected }} day{{ google_health_auth.days_since_connected|pluralize }} ago.
+        Google makes private apps reconnect every 7 days.</p>
+      <a href="{% url 'google_health_oauth_connect' %}?next={{ gs|urlencode }}%23google_health" class="btn btn-sm btn-ghost">Reconnect</a>
+      {% include "workouts/partials/gs_sync_status.html" with job=jobs.google_health source="google_health" %}
+    {% elif step.status == "skipped" %}
+      <p class="gs-line muted">Skipped.</p>
+      <form method="post" action="{% url 'gs_unskip' 'google_health' %}">{% csrf_token %}<button class="btn btn-sm btn-ghost">Connect Google Health after all</button></form>
+    {% else %}
+      <div class="gs-copy">
+        <p>Connect Google Health for sleep, heart rate, HRV, steps and watch workouts.</p>
+        <p><strong>Before you start:</strong> FitPulse is a private app, so Google only allows accounts Megan has added. Send Megan the Google account email you use for Google Health / Fitbit. This button turns on once she's added you.</p>
+        <p>When you connect, Google will warn that <strong>"Google hasn't verified this app."</strong> That's expected for a private household app. Click <strong>Advanced</strong> → <strong>Go to FitPulse (unsafe)</strong>, then approve the permissions.</p>
+        <p>Google makes private apps reconnect <strong>every 7 days</strong>. FitPulse shows a reminder on the Data Sources page when it's time. Reconnecting is one click.</p>
+      </div>
+      {% if step.status == "blocked" %}
+      <button class="btn btn-accent" disabled title="Waiting on Megan to add your Google account">Connect Google Health</button>
+      {% else %}
+      <a href="{% url 'google_health_oauth_connect' %}?next={{ gs|urlencode }}%23google_health" class="btn btn-accent">Connect Google Health</a>
+      {% endif %}
+      <form method="post" action="{% url 'gs_skip' 'google_health' %}" class="gs-skip">{% csrf_token %}<button class="btn-link">I don't use Google Health — skip</button></form>
+    {% endif %}
+  </section>
+  {% endwith %}
+
+  {# ── Nutrition profile ── #}
+  {% if steps.nutrition_profile %}
+  {% with step=steps.nutrition_profile %}
+  <section class="chart-card gs-card" id="nutrition_profile">
+    <div class="gs-card-head">
+      <h3 class="chart-title">NUTRITION PROFILE</h3>
+      {% include "workouts/partials/gs_pill.html" %}
+    </div>
+    <p class="gs-copy">Used to calculate your daily calorie and protein targets. You can fine-tune them later under Nutrition → Macro Settings.</p>
+    <form method="post" action="{% url 'gs_nutrition_profile' %}" class="gs-form-grid">
+      {% csrf_token %}
+      <div class="form-group"><label class="form-label">Height (cm)</label>
+        <input class="form-input" name="height_cm" inputmode="decimal" value="{{ nutrition_profile.height_cm|default_if_none:'' }}" required></div>
+      <div class="form-group"><label class="form-label">Age</label>
+        <input class="form-input" name="age" inputmode="numeric" value="{{ nutrition_profile.age|default_if_none:'' }}" required></div>
+      <div class="form-group"><label class="form-label">Sex (for calorie math)</label>
+        <select class="form-select" name="biological_sex">
+          <option value="female" {% if nutrition_profile.biological_sex != "male" %}selected{% endif %}>Female</option>
+          <option value="male" {% if nutrition_profile.biological_sex == "male" %}selected{% endif %}>Male</option>
+        </select></div>
+      <div class="form-group"><label class="form-label">Activity level</label>
+        <select class="form-select" name="activity_level">
+          {% for val, label in activ_choices %}<option value="{{ val }}" {% if nutrition_profile.activity_level == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div>
+      <div class="form-group"><label class="form-label">Goal</label>
+        <select class="form-select" name="goal">
+          <option value="loss" {% if nutrition_profile.goal == "loss" %}selected{% endif %}>Lose weight</option>
+          <option value="maintain" {% if nutrition_profile.goal == "maintain" %}selected{% endif %}>Maintain</option>
+          <option value="gain" {% if nutrition_profile.goal == "gain" %}selected{% endif %}>Gain</option>
+        </select></div>
+      <div><button type="submit" class="btn btn-accent">{% if step.status == "done" %}Update{% else %}Save{% endif %}</button></div>
+    </form>
+  </section>
+  {% endwith %}
+  {% endif %}
+
+  {# ── AI coaching profile ── #}
+  {% if steps.athlete_profile %}
+  {% with step=steps.athlete_profile %}
+  <section class="chart-card gs-card" id="athlete_profile">
+    <div class="gs-card-head">
+      <h3 class="chart-title">AI COACHING PROFILE</h3>
+      {% include "workouts/partials/gs_pill.html" %}
+    </div>
+    <p class="gs-copy">Gives the AI context about your training background and how you like feedback.</p>
+    {% if step.status == "done" %}<details class="gs-inline"><summary>Edit</summary>{% endif %}
+    {% include "workouts/partials/athlete_profile_form.html" with next_url=gs|add:"#athlete_profile" onboarding=True %}
+    {% if step.status == "done" %}</details>{% endif %}
+  </section>
+  {% endwith %}
+  {% endif %}
+
+  {# ── Equipment (optional) ── #}
+  {% if steps.equipment %}
+  {% with step=steps.equipment %}
+  <section class="chart-card gs-card" id="equipment">
+    <div class="gs-card-head">
+      <h3 class="chart-title">EQUIPMENT <span class="muted" style="font-size:0.75rem">(optional)</span></h3>
+      {% include "workouts/partials/gs_pill.html" %}
+    </div>
+    <form method="post" action="{% url 'set_ftp' %}" class="gs-inline-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ gs }}#equipment">
+      <label class="form-label" for="gs-ftp">Bike FTP (watts)</label>
+      <input class="form-input" id="gs-ftp" name="ftp" inputmode="numeric" style="width:8rem" value="{{ settings_row.ftp|default_if_none:'' }}">
+      <button type="submit" class="btn btn-sm btn-ghost">Save</button>
+    </form>
+    {% if can.strength %}
+    <form method="post" action="{% url 'set_dumbbells' %}" class="gs-inline-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ gs }}#equipment">
+      <label class="form-label" for="gs-dumbbells">Dumbbells you own (lb)</label>
+      <input class="form-input" id="gs-dumbbells" name="dumbbells" style="min-width:14rem"
+             value="{% for d in settings_row.dumbbells_lb %}{{ d|floatformat:'-1' }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+      <button type="submit" class="btn btn-sm btn-ghost">Save</button>
+    </form>
+    {% endif %}
+    {% if step.status != "done" %}<p class="gs-skip muted" style="font-size:0.8rem">Optional — you can skip this.</p>{% endif %}
+  </section>
+  {% endwith %}
+  {% endif %}
+
+  {# ── Finish ── #}
+  {% if not complete %}
+  <section class="chart-card gs-card" id="finish">
+    <form method="post" action="{% url 'gs_finish' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-accent" {% if not can_finish %}disabled{% endif %}>Finish setup</button>
+    </form>
+    {% if missing %}
+    <ul class="gs-missing">{% for item in missing %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% endwith %}
+</div>
+{% endblock %}

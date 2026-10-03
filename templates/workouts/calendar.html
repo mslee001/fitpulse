@@ -23,6 +23,7 @@
 
   <!-- Next Workout Recommendation -->
   <div class="cal-sidebar">
+    {% if can.ai_next_workout %}
     <div class="stat-card">
       <div class="stat-label" style="display:flex;justify-content:space-between;align-items:center;">
         Next Workout
@@ -43,6 +44,7 @@
         <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">Waiting on today's readiness score (Garmin or Google Health wellness sync) before a recommendation can be generated.</p>
       {% endif %}
     </div>
+    {% endif %}
 
     {% if today_stats and today_stats.has_wellness_data %}
     <div class="stat-card" style="margin-top:1rem;">

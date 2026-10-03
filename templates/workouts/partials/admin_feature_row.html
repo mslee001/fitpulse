@@ -1,0 +1,15 @@
+<div class="feature-row">
+  <form hx-post="{% url 'admin_user_feature_toggle' target.pk row.slug %}"
+        hx-target="closest .feature-row" hx-swap="outerHTML" style="margin:0">
+    {% csrf_token %}
+    <label style="display:flex;align-items:flex-start;gap:0.6rem;cursor:pointer">
+      <input type="checkbox" {% if row.granted %}checked{% endif %} onchange="htmx.trigger(this.form, 'submit')"
+             {% if target.is_superuser %}disabled{% endif %}>
+      <span>
+        <span style="font-weight:600">{{ row.label }}</span>
+        {% if row.needs %}<span class="muted" style="font-size:0.75rem;margin-left:0.4rem">Needs: {{ row.needs|join:", " }}</span>{% endif %}
+        {% if row.note %}<span class="muted" style="display:block;font-size:0.75rem;margin-top:0.15rem">{{ row.note }}</span>{% endif %}
+      </span>
+    </label>
+  </form>
+</div>

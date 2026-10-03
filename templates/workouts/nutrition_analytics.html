@@ -186,6 +186,7 @@
 {% endif %}
 
 {# ── AI insights ── #}
+{% if can.ai_nutrition_insights %}
 <div class="card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">AI INSIGHTS</div>
@@ -208,6 +209,7 @@
     {% include "workouts/partials/nutrition_insights.html" with pending=insights_pending %}
   </div>
 </div>
+{% endif %}
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {

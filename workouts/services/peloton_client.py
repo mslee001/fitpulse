@@ -14,6 +14,10 @@ class PelotonAuthError(Exception):
     """Raised when the Peloton session cookie is missing or expired."""
 
 
+class PelotonNetworkError(Exception):
+    """Peloton couldn't be reached (retryable), as opposed to a rejected cookie."""
+
+
 # Movement names in a class's segment data that aren't exercises — pacing cues,
 # rests, and transitions Peloton models as "movements" alongside real ones.
 _NON_EXERCISE_MOVEMENTS = {
@@ -76,6 +80,29 @@ class PelotonClient:
         self.session.cookies.set("peloton_session_id", auth.session_id)
         self.session.headers.update({"peloton-platform": "web"})
         self.user_id = auth.peloton_user_id
+
+    @staticmethod
+    def fetch_me(session_id: str) -> dict:
+        """Validate a pasted peloton_session_id cookie against /api/me. Returns
+        {"id", "username"} — the only keys read from the response. Raises
+        PelotonAuthError for a rejected cookie, PelotonNetworkError otherwise."""
+        try:
+            resp = requests.get(
+                f"{PelotonClient.BASE_URL}/api/me",
+                cookies={"peloton_session_id": session_id},
+                headers={"peloton-platform": "web"},
+                timeout=15,
+            )
+        except requests.RequestException as e:
+            raise PelotonNetworkError("Couldn't reach Peloton just now. Try again in a minute.") from e
+        if resp.status_code in (401, 403):
+            raise PelotonAuthError("That cookie didn't work. It may have expired. Copy it again.")
+        if resp.status_code >= 400:
+            raise PelotonNetworkError(f"Peloton returned an error ({resp.status_code}). Try again in a minute.")
+        data = resp.json()
+        if not data.get("id"):
+            raise PelotonAuthError("That cookie didn't work. It may have expired. Copy it again.")
+        return {"id": data["id"], "username": data.get("username") or ""}
 
     def _get(self, path: str, params: dict = None) -> dict:
         url = f"{self.BASE_URL}{path}"

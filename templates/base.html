@@ -51,6 +51,7 @@
       <a href="{% url 'today' %}" class="nav-link {% block nav_today %}{% endblock %}">Today</a>
 
       <!-- TRAINING -->
+      {% if can.training %}
       <div class="nav-group {% block nav_training %}{% endblock %}">
         <a href="{% url 'history' %}" class="nav-link nav-group-toggle">Training <span class="caret">▾</span></a>
         <div class="nav-dropdown">
@@ -59,24 +60,29 @@
           <a class="nav-dropdown-item" href="{% url 'compare' %}">Compare</a>
           <a class="nav-dropdown-item" href="{% url 'calendar' %}">Calendar</a>
           <a class="nav-dropdown-item" href="{% url 'analytics' %}">Analytics</a>
-          <a class="nav-dropdown-item" href="{% url 'program_list' %}">Programs</a>
-          <a class="nav-dropdown-item" href="{% url 'strength_trends' %}">Strength</a>
+          {% if can.programs %}<a class="nav-dropdown-item" href="{% url 'program_list' %}">Programs</a>{% endif %}
+          {% if can.strength %}<a class="nav-dropdown-item" href="{% url 'strength_trends' %}">Strength</a>{% endif %}
           <div class="nav-dropdown-divider"></div>
           <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'settings' %}">Settings</a>
+          {% if is_owner %}<a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'admin_users' %}">Users</a>{% endif %}
         </div>
       </div>
+      {% endif %}
 
       <!-- BODY -->
+      {% if can.body or can.interventions or can.symptoms %}
       <div class="nav-group {% block nav_body_group %}{% endblock %}">
-        <a href="{% url 'body' %}" class="nav-link nav-group-toggle">Body <span class="caret">▾</span></a>
+        <a href="{% if can.body %}{% url 'body' %}{% elif can.interventions %}{% url 'interventions' %}{% else %}{% url 'symptoms' %}{% endif %}" class="nav-link nav-group-toggle">Body <span class="caret">▾</span></a>
         <div class="nav-dropdown">
-          <a class="nav-dropdown-item" href="{% url 'interventions' %}">Interventions</a>
-          <a class="nav-dropdown-item" href="{% url 'symptoms' %}">Symptoms</a>
-          <a class="nav-dropdown-item" href="{% url 'body' %}">Analytics</a>
+          {% if can.interventions %}<a class="nav-dropdown-item" href="{% url 'interventions' %}">Interventions</a>{% endif %}
+          {% if can.symptoms %}<a class="nav-dropdown-item" href="{% url 'symptoms' %}">Symptoms</a>{% endif %}
+          {% if can.body %}<a class="nav-dropdown-item" href="{% url 'body' %}">Analytics</a>{% endif %}
         </div>
       </div>
+      {% endif %}
 
       <!-- NUTRITION -->
+      {% if can.nutrition %}
       <div class="nav-group {% block nav_nutrition_group %}{% endblock %}">
         <a href="{% url 'nutrition' %}" class="nav-link nav-group-toggle">Nutrition <span class="caret">▾</span></a>
         <div class="nav-dropdown">
@@ -88,16 +94,19 @@
 
         </div>
       </div>
+      {% endif %}
 
       <!-- INSIGHTS -->
+      {% if can.ai_pattern_insights or can.ai_weekly_review or can.interventions %}
       <div class="nav-group {% block nav_insights_group %}{% endblock %}">
-        <a href="{% url 'insights' %}" class="nav-link nav-group-toggle">Insights <span class="caret">▾</span></a>
+        <a href="{% if can.ai_pattern_insights %}{% url 'insights' %}{% elif can.ai_weekly_review %}{% url 'weekly_review' %}{% else %}{% url 'intervention_analysis' %}{% endif %}" class="nav-link nav-group-toggle">Insights <span class="caret">▾</span></a>
         <div class="nav-dropdown">
-          <a class="nav-dropdown-item" href="{% url 'insights' %}">Pattern Insights</a>
-          <a class="nav-dropdown-item" href="{% url 'weekly_review' %}">Weekly Review</a>
-          <a class="nav-dropdown-item" href="{% url 'intervention_analysis' %}">Intervention Analysis</a>
+          {% if can.ai_pattern_insights %}<a class="nav-dropdown-item" href="{% url 'insights' %}">Pattern Insights</a>{% endif %}
+          {% if can.ai_weekly_review %}<a class="nav-dropdown-item" href="{% url 'weekly_review' %}">Weekly Review</a>{% endif %}
+          {% if can.interventions %}<a class="nav-dropdown-item" href="{% url 'intervention_analysis' %}">Intervention Analysis</a>{% endif %}
         </div>
       </div>
+      {% endif %}
       {% if user.is_authenticated %}
       <form method="post" action="{% url 'logout' %}" class="nav-mobile-signout">
         {% csrf_token %}
@@ -134,7 +143,7 @@
           <span>New Peloton workouts</span>
         </a>
         {% endif %}
-        {% if 'garmin' in enabled %}
+        {% if 'garmin' in enabled and is_owner %}
         <div class="sync-divider"></div>
         <a class="sync-option" data-sync href="{% url 'sync_garmin_new' %}" target="_blank">
           <strong>Garmin Sync New</strong>
@@ -164,14 +173,41 @@
           <strong>Integrations</strong>
           <span>Manage data sources, run full backfills</span>
         </a>
+        {% if not can.training %}
+        <a class="sync-option" href="{% url 'settings' %}">
+          <strong>Settings</strong>
+          <span>Profile and preferences</span>
+        </a>
+        {% endif %}
       </div>
     </div>
   </nav>
 
   <main class="main">
+    {% if setup_pending %}
+    {% for step in setup_pending %}
+    <div class="setup-banner" data-step="{{ step.key }}" hidden>
+      <a href="{% url 'get_started' %}#{{ step.key }}">Finish setting up {{ step.title }} →</a>
+      <button type="button" class="setup-banner-close" aria-label="Dismiss">&times;</button>
+    </div>
+    {% endfor %}
+    <script>
+      document.querySelectorAll('.setup-banner').forEach(function (el) {
+        var key = 'setupBannerDismissed:' + el.dataset.step;
+        var dismissed = false;
+        try { dismissed = localStorage.getItem(key) === '1'; } catch (e) {}
+        if (!dismissed) el.hidden = false;
+        el.querySelector('.setup-banner-close').addEventListener('click', function () {
+          el.hidden = true;
+          try { localStorage.setItem(key, '1'); } catch (e) {}
+        });
+      });
+    </script>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 
+  {% if can.ai_chat %}
   <div id="chat-sidebar" class="chat-sidebar" data-open="false">
     <div id="chat-backdrop" class="chat-backdrop"></div>
 
@@ -224,6 +260,7 @@
       </form>
     </div>
   </div>
+  {% endif %}
 
   <script>
     document.addEventListener('click', e => {
@@ -362,6 +399,7 @@
 
     (function() {
       var sidebar = document.getElementById('chat-sidebar');
+      if (!sidebar) return;   // stats chat isn't turned on for this user
       var toggle = document.getElementById('chat-toggle');
       var closeBtn = document.getElementById('chat-close');
       var backdrop = document.getElementById('chat-backdrop');
