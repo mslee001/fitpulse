@@ -4,25 +4,34 @@ from django.db.models import Max
 register = template.Library()
 
 
-@register.simple_tag
-def last_synced():
+def _request_user(context):
+    request = context.get("request")
+    return getattr(request, "user", None)
+
+
+@register.simple_tag(takes_context=True)
+def last_synced(context):
     from workouts.models import CachedWorkout
-    result = CachedWorkout.objects.aggregate(Max('synced_at'))
+    result = CachedWorkout.objects.for_user(_request_user(context)).aggregate(Max('synced_at'))
     return result.get('synced_at__max')
 
 
-@register.simple_tag
-def last_daily_sync():
+@register.simple_tag(takes_context=True)
+def last_daily_sync(context):
     from workouts.models import UserSettings
-    return UserSettings.objects.filter(pk=1).values_list('last_daily_sync_at', flat=True).first()
+    user = _request_user(context)
+    if not user or not user.is_authenticated:
+        return None
+    return UserSettings.for_user(user).last_daily_sync_at
 
 
-@register.simple_tag
-def enabled_integrations():
+@register.simple_tag(takes_context=True)
+def enabled_integrations(context):
     """Set of Integration.key values currently enabled — used to gate the nav
     Sync dropdown so a disabled integration's buttons don't render at all."""
     from workouts.models import Integration
-    return set(Integration.objects.filter(is_enabled=True).values_list('key', flat=True))
+    qs = Integration.objects.for_user(_request_user(context)).filter(is_enabled=True)
+    return set(qs.values_list('key', flat=True))
 
 
 @register.filter

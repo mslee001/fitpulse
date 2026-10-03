@@ -1,7 +1,7 @@
 """
 WithingsClient — OAuth 2.0 client for the Withings Health API.
 
-Tokens are stored in the WithingsAuth DB singleton (pk=1), shared between
+Tokens are stored per user in the WithingsAuth table, shared between
 the laptop and the hosted Render app. Run `migrate_withings_tokens` once to
 seed from the old JSON file, or `withings_login` to do a fresh OAuth flow.
 
@@ -40,10 +40,12 @@ KG_TO_LB = 2.20462
 AUTH_URL = "https://account.withings.com/oauth2_user/authorize2"
 TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2"
 MEASURE_URL = "https://wbsapi.withings.net/measure"
+NOTIFY_URL = "https://wbsapi.withings.net/notify"
 
 
 class WithingsClient:
-    def __init__(self):
+    def __init__(self, user):
+        self.user = user
         self.client_id = os.environ.get("WITHINGS_CLIENT_ID", "")
         self.client_secret = os.environ.get("WITHINGS_CLIENT_SECRET", "")
         self.redirect_uri = os.environ.get("WITHINGS_REDIRECT_URI", "")
@@ -52,9 +54,9 @@ class WithingsClient:
     # ── Token helpers ─────────────────────────────────────────────────────────
 
     def _load_tokens(self) -> None:
-        """Load tokens from the WithingsAuth DB singleton into self._tokens."""
+        """Load this user's tokens from WithingsAuth into self._tokens."""
         from workouts.models import WithingsAuth
-        auth = WithingsAuth.get()
+        auth = WithingsAuth.for_user(self.user)
         if not auth:
             raise RuntimeError(
                 "No Withings credentials in DB. "
@@ -69,11 +71,11 @@ class WithingsClient:
         }
 
     def _save_tokens(self) -> None:
-        """Persist tokens to the WithingsAuth DB singleton."""
+        """Persist tokens to this user's WithingsAuth row."""
         from workouts.models import WithingsAuth
         expires_at = datetime.fromtimestamp(self._tokens["expires_at"], tz=timezone.utc)
         WithingsAuth.objects.update_or_create(
-            pk=1,
+            user=self.user,
             defaults={
                 "userid": str(self._tokens.get("userid", "")),
                 "access_token": self._tokens["access_token"],
@@ -91,27 +93,30 @@ class WithingsClient:
 
     # ── OAuth helpers ─────────────────────────────────────────────────────────
 
-    def get_authorization_url(self, state: str) -> str:
-        """Build the OAuth2 authorization URL the user must open in their browser."""
+    def get_authorization_url(self, state: str, redirect_uri: str = None) -> str:
+        """Build the OAuth2 authorization URL the user must open in their browser.
+        redirect_uri defaults to WITHINGS_REDIRECT_URI (the CLI command); the web
+        flow passes one built from the current request."""
         params = {
             "response_type": "code",
             "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
+            "redirect_uri": redirect_uri or self.redirect_uri,
             "scope": "user.metrics",
             "state": state,
         }
         return AUTH_URL + "?" + urllib.parse.urlencode(params)
 
-    def exchange_code(self, code: str) -> dict:
-        """Exchange an authorization code for tokens and save to DB."""
+    def request_tokens(self, code: str, redirect_uri: str = None) -> dict:
+        """Exchange an authorization code for tokens without saving them. Returns
+        {access_token, refresh_token, expires_at, userid}; also kept on the client."""
         resp = requests.post(TOKEN_URL, data={
             "action": "requesttoken",
             "grant_type": "authorization_code",
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "code": code,
-            "redirect_uri": self.redirect_uri,
-        })
+            "redirect_uri": redirect_uri or self.redirect_uri,
+        }, timeout=30)
         resp.raise_for_status()
         body = resp.json()
         if body.get("status") != 0:
@@ -123,6 +128,11 @@ class WithingsClient:
             "expires_at": int(time.time()) + int(token_data.get("expires_in", 10800)),
             "userid": str(token_data.get("userid", "")),
         }
+        return self._tokens
+
+    def exchange_code(self, code: str, redirect_uri: str = None) -> dict:
+        """Exchange an authorization code for tokens and save them to this user's row."""
+        self.request_tokens(code, redirect_uri)
         self._save_tokens()
         return self._tokens
 
@@ -177,6 +187,46 @@ class WithingsClient:
                 raise RuntimeError(f"Withings API error {status}: {body.get('error', body)}")
             return body
         raise RuntimeError("Withings request failed after token refresh")
+
+    # ── Webhook subscriptions ─────────────────────────────────────────────────
+    # One callback URL (WITHINGS_CALLBACK_URL) serves every user: Withings posts
+    # the account's userid, and withings_webhook routes on that.
+
+    def _notify(self, data: dict) -> dict:
+        """POST to /notify with this user's token; returns the raw response body."""
+        self._ensure_token_valid()
+        resp = requests.post(
+            NOTIFY_URL,
+            headers={"Authorization": f"Bearer {self._tokens['access_token']}"},
+            data=data,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def subscribe_webhook(self, callback_url: str, appli: int = 1) -> dict:
+        """Subscribe this account to weight notifications (appli=1). Raises on a
+        non-zero status; on success marks the user's WithingsAuth subscribed."""
+        from django.utils import timezone as dj_timezone
+        from workouts.models import WithingsAuth
+        body = self._notify({"action": "subscribe", "callbackurl": callback_url,
+                             "appli": appli, "comment": "FitPulse"})
+        if body.get("status") != 0:
+            raise RuntimeError(f"Withings subscribe failed: {body}")
+        WithingsAuth.objects.filter(user=self.user).update(
+            last_subscribed_at=dj_timezone.now(), webhook_subscription_active=True,
+        )
+        return body
+
+    def list_webhooks(self, appli: int = 1) -> dict:
+        return self._notify({"action": "list", "appli": appli})
+
+    def revoke_webhook(self, callback_url: str, appli: int = 1) -> dict:
+        from workouts.models import WithingsAuth
+        body = self._notify({"action": "revoke", "callbackurl": callback_url, "appli": appli})
+        if body.get("status") == 0:
+            WithingsAuth.objects.filter(user=self.user).update(webhook_subscription_active=False)
+        return body
 
     # ── Measurement parsing ───────────────────────────────────────────────────
 

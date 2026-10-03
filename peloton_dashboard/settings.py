@@ -96,6 +96,10 @@ PELOTON_API_BASE = "https://api.onepeloton.com"
 GARMIN_EMAIL = os.getenv("GARMIN_EMAIL", "")
 GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD", "")
 
+# Temporary: store the first few real Google Health webhook payloads (as
+# WebhookError rows) to learn whether a notification identifies its user.
+GOOGLE_HEALTH_CAPTURE_PAYLOADS = os.environ.get("GOOGLE_HEALTH_CAPTURE_PAYLOADS", "1") == "1"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True
 TIME_ZONE = "America/Los_Angeles"

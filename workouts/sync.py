@@ -42,7 +42,7 @@ def _associate_program_safe(workout):
         logger.exception("program association failed for workout %s", getattr(workout, "pk", "?"))
 
 
-def _reconcile_programs_safe():
+def _reconcile_programs_safe(user):
     """Best-effort catch-up of program "any class" matches and recovery attachments
     (cool-down walks/stretches) — run after syncs, since a recovery session usually
     syncs after its workout. Never raises: must not break a sync."""
@@ -53,15 +53,42 @@ def _reconcile_programs_safe():
         return None
 
 
-def _integration_enabled(key: str) -> bool:
+def _integration_enabled(user, key: str) -> bool:
     """
-    True if Integration(key=key).is_enabled, defaulting to True if the row
-    is somehow missing (fail open rather than silently blocking sync for an
-    integration that predates the Integration model, e.g. if a migration
-    hasn't run yet in some environment).
+    True if this user's Integration(key=key).is_enabled, defaulting to True if
+    the row is somehow missing (fail open rather than silently blocking sync for
+    an integration that predates the Integration model, e.g. if a migration
+    hasn't run yet in some environment). Garmin is owner-only: always False
+    for anyone but a superuser, row or no row.
     """
     from .models import Integration
-    return Integration.objects.filter(key=key).values_list("is_enabled", flat=True).first() is not False
+    if key == "garmin" and not user.is_superuser:
+        return False
+    return Integration.objects.for_user(user).filter(key=key).values_list("is_enabled", flat=True).first() is not False
+
+
+def _garmin_owner_only_result() -> dict:
+    return {"error": "Garmin is owner-only"}
+
+
+def _require_same_user(user, workout) -> None:
+    """Dedup/augment helpers write onto an existing workout — refuse loudly if it
+    isn't this user's, rather than quietly merging into a housemate's data."""
+    if workout.user_id != user.id:
+        raise ValueError(
+            f"workout {workout.pk} belongs to user {workout.user_id}, not {user.id}")
+
+
+# Per-user non-blocking locks for the Google Health syncs (see
+# _run_google_health_wellness_sync / _run_google_health_exercise_sync), so one
+# user's in-flight sync never blocks — or gets skipped because of — another's.
+_user_locks: dict[tuple[str, int], threading.Lock] = {}
+_user_locks_guard = threading.Lock()
+
+
+def user_lock(name: str, user_id: int) -> threading.Lock:
+    with _user_locks_guard:
+        return _user_locks.setdefault((name, user_id), threading.Lock())
 
 
 def _integration_disabled_result(key: str) -> dict:
@@ -72,16 +99,16 @@ def _integration_disabled_result(key: str) -> dict:
 # Client factories
 # ---------------------------------------------------------------------------
 
-def _client():
-    return PelotonClient()
+def _client(user):
+    return PelotonClient(user)
 
 
 def _garmin_client():
     return GarminClient()
 
 
-def _withings_client():
-    return WithingsClient()
+def _withings_client(user):
+    return WithingsClient(user)
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +120,7 @@ def _withings_client():
 _CLASS_PLAN_DISCS = {"strength", "circuit"}
 
 
-def _fetch_and_store_details(workout_ids, client):
+def _fetch_and_store_details(user, workout_ids, client):
     """Fetch /api/workout/:id for each ID and persist detail fields to the DB.
     Also fetches the class exercise plan for strength/circuit workouts, cached
     per ride_id within this call so repeat takes of a class cost one request."""
@@ -101,7 +128,7 @@ def _fetch_and_store_details(workout_ids, client):
     for wid in workout_ids:
         try:
             detail = client.get_parsed_workout_detail(wid)
-            w = CachedWorkout.objects.get(workout_id=wid)
+            w = CachedWorkout.objects.for_user(user).get(workout_id=wid)
             if w.discipline in _CLASS_PLAN_DISCS and w.ride_id:
                 try:
                     if w.ride_id not in plan_cache:
@@ -139,10 +166,10 @@ def _extract_perf_fields(perf: dict) -> dict:
     }
 
 
-def _fetch_and_store_performance(workout_ids, client):
+def _fetch_and_store_performance(user, workout_ids, client):
     """Fetch performance_graph for each ID and persist. Skips already-synced workouts."""
     eligible = list(
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(user)
         .filter(workout_id__in=workout_ids, discipline__in=_PERF_DISCS,
                 performance_graph_json__isnull=True)
         .values_list("workout_id", flat=True)
@@ -151,7 +178,7 @@ def _fetch_and_store_performance(workout_ids, client):
         try:
             perf = client.get_parsed_performance(wid, every_n=5)
             if perf:
-                qs = CachedWorkout.objects.filter(workout_id=wid)
+                qs = CachedWorkout.objects.for_user(user).filter(workout_id=wid)
                 update_fields = {"performance_graph_json": perf}
                 if not qs.filter(user_corrected=True).exists():
                     update_fields.update(_extract_perf_fields(perf))
@@ -160,11 +187,11 @@ def _fetch_and_store_performance(workout_ids, client):
             logger.warning("perf sync failed for %s: %s", wid, e)
 
 
-def _upsert_page(raw_data):
+def _upsert_page(user, raw_data):
     """Write one page of Peloton API workout objects to the DB. Returns (created, updated)."""
     created_count = 0
     updated_count = 0
-    current_ftp = UserSettings.get().ftp
+    current_ftp = UserSettings.for_user(user).ftp
     fields = [
         "ride_id", "title", "discipline", "fitness_discipline_display",
         "workout_type", "instructor_name", "instructor_image_url",
@@ -178,7 +205,7 @@ def _upsert_page(raw_data):
         "created_at", "raw_data",
     ]
     corrected = set(
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(user)
         .filter(workout_id__in=[w.get("id") for w in raw_data], user_corrected=True)
         .values_list("workout_id", flat=True)
     )
@@ -188,13 +215,13 @@ def _upsert_page(raw_data):
         if obj.workout_id in corrected:
             for field in CachedWorkout.CORRECTABLE_FIELDS:
                 defaults.pop(field, None)
-        _, created = CachedWorkout.objects.update_or_create(
+        _, created = CachedWorkout.objects.update_or_create(user=user,
             workout_id=obj.workout_id,
             defaults=defaults,
         )
         # Stamp FTP only on new records — don't overwrite a manually-corrected historical value.
         if created:
-            CachedWorkout.objects.filter(workout_id=obj.workout_id).update(ftp=current_ftp)
+            CachedWorkout.objects.for_user(user).filter(workout_id=obj.workout_id).update(ftp=current_ftp)
             created_count += 1
         else:
             updated_count += 1
@@ -205,8 +232,8 @@ def _upsert_page(raw_data):
 # Peloton sync runners
 # ---------------------------------------------------------------------------
 
-def _run_peloton_sync_all():
-    if not _integration_enabled("peloton"):
+def _run_peloton_sync_all(user):
+    if not _integration_enabled(user, "peloton"):
         return _integration_disabled_result("peloton")
     limit = 100
     page = 0
@@ -219,29 +246,29 @@ def _run_peloton_sync_all():
             total_on_peloton = raw.get("total", 0)
             if not data:
                 break
-            c, u = _upsert_page(data)
+            c, u = _upsert_page(user, data)
             total_created += c
             total_updated += u
             page_ids = [w.get("id") for w in data if w.get("id")]
             unsynced = list(
-                CachedWorkout.objects
+                CachedWorkout.objects.for_user(user)
                 .filter(workout_id__in=page_ids, detail_synced_at__isnull=True)
                 .values_list("workout_id", flat=True)
             )
             if unsynced:
-                _fetch_and_store_details(unsynced, client)
-            _fetch_and_store_performance(page_ids, client)
+                _fetch_and_store_details(user, unsynced, client)
+            _fetch_and_store_performance(user, page_ids, client)
             # oldest-first: fill_or_append's pass-placement logic assumes strict
             # date order, but CachedWorkout's default ordering is newest-first
-            for w in CachedWorkout.objects.filter(workout_id__in=page_ids).order_by("created_at"):
+            for w in CachedWorkout.objects.for_user(user).filter(workout_id__in=page_ids).order_by("created_at"):
                 _associate_program_safe(w)
             page += 1
             if page * limit >= total_on_peloton:
                 break
-        reconciled = _reconcile_google_health_duplicates()
-        garmin_reconciled = _reconcile_garmin_duplicates()
-        _reconcile_programs_safe()
-        Integration.objects.filter(key="peloton").update(last_synced_at=tz.now())
+        reconciled = _reconcile_google_health_duplicates(user)
+        garmin_reconciled = _reconcile_garmin_duplicates(user)
+        _reconcile_programs_safe(user)
+        Integration.objects.for_user(user).filter(key="peloton").update(last_synced_at=tz.now())
         return {
             "done": True,
             "total_on_peloton": total_on_peloton,
@@ -255,14 +282,14 @@ def _run_peloton_sync_all():
         return {"error": str(e), "created": total_created, "updated": total_updated}
 
 
-def _run_peloton_sync_new(days=None):
-    if not _integration_enabled("peloton"):
+def _run_peloton_sync_new(user, days=None):
+    if not _integration_enabled(user, "peloton"):
         return _integration_disabled_result("peloton")
     cutoff_dt = None
     if days:
         cutoff_dt = datetime.now(tz=timezone.utc) - timedelta(days=int(days))
 
-    existing_ids = set(CachedWorkout.objects.values_list("workout_id", flat=True))
+    existing_ids = set(CachedWorkout.objects.for_user(user).values_list("workout_id", flat=True))
     limit = 100
     page = 0
     total_created = total_updated = 0
@@ -287,23 +314,23 @@ def _run_peloton_sync_new(days=None):
                     break
                 page_workouts.append(workout)
             if page_workouts:
-                c, u = _upsert_page(page_workouts)
+                c, u = _upsert_page(user, page_workouts)
                 total_created += c
                 total_updated += u
                 page_workout_ids = [w.get("id") for w in page_workouts if w.get("id")]
-                _fetch_and_store_details(page_workout_ids, client)
-                _fetch_and_store_performance(page_workout_ids, client)
+                _fetch_and_store_details(user, page_workout_ids, client)
+                _fetch_and_store_performance(user, page_workout_ids, client)
                 # oldest-first: fill_or_append's pass-placement logic assumes strict
                 # date order, but CachedWorkout's default ordering is newest-first
-                for w in CachedWorkout.objects.filter(workout_id__in=page_workout_ids).order_by("created_at"):
+                for w in CachedWorkout.objects.for_user(user).filter(workout_id__in=page_workout_ids).order_by("created_at"):
                     _associate_program_safe(w)
             if stop or len(data) < limit:
                 break
             page += 1
-        reconciled = _reconcile_google_health_duplicates()
-        garmin_reconciled = _reconcile_garmin_duplicates()
-        _reconcile_programs_safe()
-        Integration.objects.filter(key="peloton").update(last_synced_at=tz.now())
+        reconciled = _reconcile_google_health_duplicates(user)
+        garmin_reconciled = _reconcile_garmin_duplicates(user)
+        _reconcile_programs_safe(user)
+        Integration.objects.for_user(user).filter(key="peloton").update(last_synced_at=tz.now())
         return {
             "done": True,
             "created": total_created,
@@ -320,12 +347,12 @@ def _run_peloton_sync_new(days=None):
 # Garmin deduplication helpers
 # ---------------------------------------------------------------------------
 
-def _peloton_timestamp_index():
+def _peloton_timestamp_index(user):
     """Sorted list of Unix timestamps for all Peloton-sourced workouts.
     Used to detect Garmin activities that duplicate Peloton workouts."""
     return sorted(
         int(dt.timestamp())
-        for dt in CachedWorkout.objects
+        for dt in CachedWorkout.objects.for_user(user)
         .filter(source="peloton")
         .values_list("created_at", flat=True)
         if dt is not None
@@ -345,7 +372,7 @@ def _is_peloton_duplicate(garmin_start_dt, peloton_timestamps, window_seconds=12
 # Garmin form augmentation
 # ---------------------------------------------------------------------------
 
-def _augment_peloton_run(parsed: dict, garmin_activity_id: int, client) -> None:
+def _augment_peloton_run(user, parsed: dict, garmin_activity_id: int, client) -> None:
     """
     When a Garmin running activity duplicates an existing Peloton workout, stamp
     the Peloton record with walking-filtered Garmin running form metrics so they
@@ -356,13 +383,14 @@ def _augment_peloton_run(parsed: dict, garmin_activity_id: int, client) -> None:
     if not garmin_start:
         return
     window = timedelta(seconds=120)
-    match = CachedWorkout.objects.filter(
+    match = CachedWorkout.objects.for_user(user).filter(
         source="peloton",
         discipline="running",
         created_at__range=(garmin_start - window, garmin_start + window),
     ).first()
     if not match:
         return
+    _require_same_user(user, match)
 
     # Cadence threshold for filtering walking from running averages.
     RUN_CADENCE_MIN = 140
@@ -440,7 +468,7 @@ def _augment_peloton_run(parsed: dict, garmin_activity_id: int, client) -> None:
             for slug in garmin_form:
                 garmin_form[slug]["elapsed"] = elapsed_times
 
-        CachedWorkout.objects.filter(pk=match.pk).update(
+        CachedWorkout.objects.for_user(user).filter(pk=match.pk).update(
             run_cadence_avg=match.run_cadence_avg,
             stride_length_avg=match.stride_length_avg,
             vertical_oscillation_avg=match.vertical_oscillation_avg,
@@ -453,7 +481,7 @@ def _augment_peloton_run(parsed: dict, garmin_activity_id: int, client) -> None:
         match.garmin_activity_start = garmin_start
         match.garmin_form_json = garmin_form
 
-        _apply_garmin_form(match)
+        _apply_garmin_form(user, match)
         _associate_program_safe(match)
     except Exception as e:
         # Fallback: use Garmin summary averages if the time-series fetch fails.
@@ -481,14 +509,14 @@ _GOOGLE_HEALTH_FILLABLE_FIELDS = [
 ] + _GARMIN_FORM_FIELDS
 
 
-def _reconcile_garmin_duplicates(dry_run=False) -> dict:
+def _reconcile_garmin_duplicates(user, dry_run=False) -> dict:
     """
     Re-check every existing source="garmin" CachedWorkout row against the
     current set of Peloton workouts and merge/delete any new match.
 
     Needed because Garmin sync's dedup (_is_peloton_duplicate) only checks
     against Peloton workouts that exist *at that moment* — a one-time
-    snapshot taken at the start of each Garmin sync run (_peloton_timestamp_index()).
+    snapshot taken at the start of each Garmin sync run (_peloton_timestamp_index(user)).
     If Garmin syncs before the matching Peloton workout does, the two land as
     separate rows and nothing re-checks them afterward — Peloton sync never
     looked at garmin rows at all. Calling this after every Peloton sync
@@ -514,8 +542,8 @@ def _reconcile_garmin_duplicates(dry_run=False) -> dict:
     each entry in "details" is {"garmin_workout_id", "peloton_workout_id",
     "peloton_title", "discipline", "filled", "skipped"}.
     """
-    peloton_index = _peloton_workout_index()
-    garmin_workouts = list(CachedWorkout.objects.filter(source="garmin").order_by("created_at"))
+    peloton_index = _peloton_workout_index(user)
+    garmin_workouts = list(CachedWorkout.objects.for_user(user).filter(source="garmin").order_by("created_at"))
 
     matches = []
     for gw in garmin_workouts:
@@ -523,7 +551,7 @@ def _reconcile_garmin_duplicates(dry_run=False) -> dict:
         if match is not None:
             matches.append((gw, match))
 
-    garmin_enabled = _integration_enabled("garmin")
+    garmin_enabled = _integration_enabled(user, "garmin")
     client = None
     if not dry_run and garmin_enabled and any(gw.discipline == "running" for gw, _ in matches):
         try:
@@ -547,7 +575,7 @@ def _reconcile_garmin_duplicates(dry_run=False) -> dict:
                 try:
                     garmin_activity_id = int(gw.workout_id.removeprefix("garmin_"))
                     before = {f: getattr(match, f) for f in _GARMIN_FORM_FIELDS}
-                    _augment_peloton_run({"created_at": gw.created_at}, garmin_activity_id, client)
+                    _augment_peloton_run(user, {"created_at": gw.created_at}, garmin_activity_id, client)
                     match.refresh_from_db()
                     filled = [f for f in _GARMIN_FORM_FIELDS
                               if before[f] is None and getattr(match, f) is not None]
@@ -572,7 +600,7 @@ def _reconcile_garmin_duplicates(dry_run=False) -> dict:
 
     deleted = 0
     if not dry_run and to_delete:
-        deleted = CachedWorkout.objects.filter(pk__in=to_delete).delete()[0]
+        deleted = CachedWorkout.objects.for_user(user).filter(pk__in=to_delete).delete()[0]
 
     return {
         "checked": len(garmin_workouts),
@@ -655,7 +683,7 @@ def _find_hr_offset(garmin_form: dict, peloton_perf: dict, max_offset: int = 300
     return best_offset if best_corr >= 0.7 else None
 
 
-def _apply_garmin_form(match: "CachedWorkout") -> None:
+def _apply_garmin_form(user, match: "CachedWorkout") -> None:
     """
     Resample and align cached Garmin form metrics into the Peloton performance graph.
     Reads from match.garmin_form_json and match.garmin_activity_start — no API calls.
@@ -670,6 +698,7 @@ def _apply_garmin_form(match: "CachedWorkout") -> None:
     """
     if not match.garmin_form_json or not match.performance_graph_json:
         return
+    _require_same_user(user, match)
 
     existing_perf = match.performance_graph_json
     peloton_every_n = existing_perf.get("every_n", 5)
@@ -732,18 +761,18 @@ def _apply_garmin_form(match: "CachedWorkout") -> None:
     update_fields: dict = {"garmin_offset_seconds": round(offset_secs)}
     if merged:
         update_fields["performance_graph_json"] = existing_perf
-    CachedWorkout.objects.filter(pk=match.pk).update(**update_fields)
+    CachedWorkout.objects.for_user(user).filter(pk=match.pk).update(**update_fields)
 
 
 # ---------------------------------------------------------------------------
 # Garmin activity upsert + extras
 # ---------------------------------------------------------------------------
 
-def _upsert_garmin_activity(parsed: dict) -> tuple[bool, bool]:
+def _upsert_garmin_activity(user, parsed: dict) -> tuple[bool, bool]:
     """Insert or update a CachedWorkout from a parsed Garmin activity dict.
     Returns (created, updated)."""
     wid = parsed["workout_id"]
-    existing = CachedWorkout.objects.filter(workout_id=wid).first()
+    existing = CachedWorkout.objects.for_user(user).filter(workout_id=wid).first()
     if existing:
         for field, value in parsed.items():
             if field != "raw_data" and value is not None:
@@ -752,11 +781,12 @@ def _upsert_garmin_activity(parsed: dict) -> tuple[bool, bool]:
         existing.save()
         return False, True
     obj = CachedWorkout.from_garmin(parsed)
+    obj.user = user
     obj.save()
     return True, False
 
 
-def _fetch_garmin_extra(wid: str, garmin_id: int, client, discipline: str) -> None:
+def _fetch_garmin_extra(user, wid: str, garmin_id: int, client, discipline: str) -> None:
     """Fetch performance graph, HR zones, splits, and exercise sets for one Garmin activity."""
     update_perf: dict = {}
     update_direct: dict = {}
@@ -805,22 +835,24 @@ def _fetch_garmin_extra(wid: str, garmin_id: int, client, discipline: str) -> No
             logger.warning("Garmin exercise sets fetch failed for %s: %s", wid, e)
 
     if update_perf:
-        CachedWorkout.objects.filter(workout_id=wid).update(performance_graph_json=update_perf)
+        CachedWorkout.objects.for_user(user).filter(workout_id=wid).update(performance_graph_json=update_perf)
     if update_direct:
-        CachedWorkout.objects.filter(workout_id=wid).update(**update_direct)
+        CachedWorkout.objects.for_user(user).filter(workout_id=wid).update(**update_direct)
 
 
 # ---------------------------------------------------------------------------
 # Garmin sync runners
 # ---------------------------------------------------------------------------
 
-def _run_garmin_sync_new():
-    if not _integration_enabled("garmin"):
+def _run_garmin_sync_new(user):
+    if not user.is_superuser:
+        return _garmin_owner_only_result()
+    if not _integration_enabled(user, "garmin"):
         return _integration_disabled_result("garmin")
     existing_ids = set(
-        CachedWorkout.objects.filter(source="garmin").values_list("workout_id", flat=True)
+        CachedWorkout.objects.for_user(user).filter(source="garmin").values_list("workout_id", flat=True)
     )
-    peloton_timestamps = _peloton_timestamp_index()
+    peloton_timestamps = _peloton_timestamp_index(user)
     limit = 100
     start = 0
     total_created = total_updated = total_skipped = 0
@@ -839,18 +871,18 @@ def _run_garmin_sync_new():
                 parsed = client.parse_activity(activity)
                 if _is_peloton_duplicate(parsed.get("created_at"), peloton_timestamps):
                     if parsed.get("discipline") == "running":
-                        _augment_peloton_run(parsed, activity["activityId"], client)
+                        _augment_peloton_run(user, parsed, activity["activityId"], client)
                     total_skipped += 1
                     continue
-                created, updated = _upsert_garmin_activity(parsed)
+                created, updated = _upsert_garmin_activity(user, parsed)
                 total_created += created
                 total_updated += updated
-                _fetch_garmin_extra(wid, activity["activityId"], client, parsed.get("discipline", ""))
+                _fetch_garmin_extra(user, wid, activity["activityId"], client, parsed.get("discipline", ""))
             if stop or len(activities) < limit:
                 break
             start += limit
-        gh_reconciled = _reconcile_garmin_google_health_duplicates()
-        Integration.objects.filter(key="garmin").update(last_synced_at=tz.now())
+        gh_reconciled = _reconcile_garmin_google_health_duplicates(user)
+        Integration.objects.for_user(user).filter(key="garmin").update(last_synced_at=tz.now())
         return {
             "done": True,
             "created": total_created,
@@ -862,10 +894,12 @@ def _run_garmin_sync_new():
         return {"error": str(e), "created": total_created, "updated": total_updated}
 
 
-def _run_garmin_sync_all():
-    if not _integration_enabled("garmin"):
+def _run_garmin_sync_all(user):
+    if not user.is_superuser:
+        return _garmin_owner_only_result()
+    if not _integration_enabled(user, "garmin"):
         return _integration_disabled_result("garmin")
-    peloton_timestamps = _peloton_timestamp_index()
+    peloton_timestamps = _peloton_timestamp_index(user)
     limit = 100
     start = 0
     total_created = total_updated = total_skipped = 0
@@ -880,18 +914,18 @@ def _run_garmin_sync_all():
                 parsed = client.parse_activity(activity)
                 if _is_peloton_duplicate(parsed.get("created_at"), peloton_timestamps):
                     if parsed.get("discipline") == "running":
-                        _augment_peloton_run(parsed, activity["activityId"], client)
+                        _augment_peloton_run(user, parsed, activity["activityId"], client)
                     total_skipped += 1
                     continue
-                created, updated = _upsert_garmin_activity(parsed)
+                created, updated = _upsert_garmin_activity(user, parsed)
                 total_created += created
                 total_updated += updated
-                _fetch_garmin_extra(wid, activity["activityId"], client, parsed.get("discipline", ""))
+                _fetch_garmin_extra(user, wid, activity["activityId"], client, parsed.get("discipline", ""))
             if len(activities) < limit:
                 break
             start += limit
-        gh_reconciled = _reconcile_garmin_google_health_duplicates()
-        Integration.objects.filter(key="garmin").update(last_synced_at=tz.now())
+        gh_reconciled = _reconcile_garmin_google_health_duplicates(user)
+        Integration.objects.for_user(user).filter(key="garmin").update(last_synced_at=tz.now())
         return {
             "done": True,
             "created": total_created,
@@ -903,8 +937,10 @@ def _run_garmin_sync_all():
         return {"error": str(e), "created": total_created, "updated": total_updated}
 
 
-def _run_wellness_sync(dates):
-    if not _integration_enabled("garmin"):
+def _run_wellness_sync(user, dates):
+    if not user.is_superuser:
+        return {**_garmin_owner_only_result(), "synced": 0, "errors": 0}
+    if not _integration_enabled(user, "garmin"):
         return {**_integration_disabled_result("garmin"), "synced": 0, "errors": 0}
     synced = errors = 0
     try:
@@ -915,7 +951,7 @@ def _run_wellness_sync(dates):
         date_str = d.isoformat()
         try:
             data = client.get_wellness_data(date_str)
-            stats, _ = DailyStats.objects.get_or_create(date=d)
+            stats, _ = DailyStats.objects.get_or_create(user=user, date=d)
             for field, value in data.items():
                 setattr(stats, field, value)
             stats.wellness_source = "garmin"
@@ -931,7 +967,7 @@ def _run_wellness_sync(dates):
     today = date.today()
     if today in dates:
         yesterday = today - timedelta(days=1)
-        yesterday_stats = DailyStats.objects.filter(date=yesterday, body_battery_end__isnull=True).first()
+        yesterday_stats = DailyStats.objects.for_user(user).filter(date=yesterday, body_battery_end__isnull=True).first()
         if yesterday_stats:
             try:
                 data = client.get_wellness_data(yesterday.isoformat())
@@ -944,7 +980,7 @@ def _run_wellness_sync(dates):
             except Exception as e:
                 logger.warning("Yesterday body battery backfill failed for %s: %s", yesterday, e)
 
-    Integration.objects.filter(key="garmin").update(last_synced_at=tz.now())
+    Integration.objects.for_user(user).filter(key="garmin").update(last_synced_at=tz.now())
     return {"done": True, "synced": synced, "errors": errors}
 
 
@@ -1215,18 +1251,18 @@ def _gh_apply_hr_zone_minutes(point, daily):
     daily[d][field] = daily[d].get(field, 0) + minutes
 
 
-def _gh_sync_height():
+def _gh_sync_height(user):
     """One-time convenience: auto-fill NutritionProfile.height_cm from Google
     Health's height data type if it's not already set. Never overwrites a
     value the user (or Withings, if that's ever wired up) already entered."""
     from .models import NutritionProfile
     from .services.google_health_client import GoogleHealthClient
 
-    profile = NutritionProfile.get()
+    profile = NutritionProfile.for_user(user)
     if profile.height_cm is not None:
         return
     try:
-        client = GoogleHealthClient()
+        client = GoogleHealthClient(user)
         points = client.get_height(date.today() - timedelta(days=5 * 365), date.today())
     except Exception as e:
         logger.warning("Google Health height backfill failed: %s", e)
@@ -1242,10 +1278,7 @@ def _gh_sync_height():
     logger.info("Auto-filled NutritionProfile.height_cm=%.1f from Google Health", profile.height_cm)
 
 
-_gh_wellness_sync_lock = threading.Lock()
-
-
-def _run_google_health_wellness_sync(dates: list) -> dict:
+def _run_google_health_wellness_sync(user, dates: list) -> dict:
     """
     Sync Google Health wellness data into DailyStats for the given dates.
     Fetches each data type once across the full [min(dates), max(dates)]
@@ -1255,7 +1288,8 @@ def _run_google_health_wellness_sync(dates: list) -> dict:
     per-type methods) — Garmin-exclusive fields (body battery, stress,
     training load/readiness, fitness age, daily goals) are never touched.
 
-    Guarded by _gh_wellness_sync_lock (non-blocking) so overlapping callers
+    Guarded by user_lock("gh_wellness", user.id) (non-blocking, one lock per
+    user — one user's sync never blocks another's) so overlapping callers
     — a webhook-triggered background thread racing another one, or a
     webhook racing a manually-triggered "Sync New"/"Sync All" — skip
     instead of piling up concurrent full 17-endpoint fetches against
@@ -1269,21 +1303,22 @@ def _run_google_health_wellness_sync(dates: list) -> dict:
     """
     if not dates:
         return {"done": True, "synced": 0, "errors": 0}
-    if not _integration_enabled("google_health"):
+    if not _integration_enabled(user, "google_health"):
         return {**_integration_disabled_result("google_health"), "synced": 0, "errors": 0}
 
-    if not _gh_wellness_sync_lock.acquire(blocking=False):
+    lock = user_lock("gh_wellness", user.id)
+    if not lock.acquire(blocking=False):
         logger.info("Google Health wellness sync: already in progress elsewhere, skipping this call")
         return {"done": True, "skipped": "already_in_progress", "synced": 0, "errors": 0}
 
     try:
-        return _run_google_health_wellness_sync_locked(dates)
+        return _run_google_health_wellness_sync_locked(user, dates)
     finally:
-        _gh_wellness_sync_lock.release()
+        lock.release()
 
 
-def _run_google_health_wellness_sync_locked(dates: list) -> dict:
-    """The actual sync body, always called with _gh_wellness_sync_lock held —
+def _run_google_health_wellness_sync_locked(user, dates: list) -> dict:
+    """The actual sync body, always called with the user's gh_wellness lock held —
     split out so the wrapper's try/finally guarantees the lock releases on
     every exit path (normal return, the early returns below, or any
     unexpected exception) without needing to duplicate release calls at
@@ -1293,7 +1328,7 @@ def _run_google_health_wellness_sync_locked(dates: list) -> dict:
     from .models import Integration
 
     try:
-        client = GoogleHealthClient()
+        client = GoogleHealthClient(user)
     except Exception as e:
         return {"error": str(e), "synced": 0, "errors": len(dates)}
 
@@ -1342,7 +1377,7 @@ def _run_google_health_wellness_sync_locked(dates: list) -> dict:
             # have nothing to say about. Matters most for wide "Sync All"
             # ranges where most days in a multi-year span may be empty.
             continue
-        stats, _ = DailyStats.objects.get_or_create(date=d)
+        stats, _ = DailyStats.objects.get_or_create(user=user, date=d)
         if stats.wellness_source == "garmin":
             logger.warning(
                 "Google Health wellness sync: %s already has Garmin wellness data — "
@@ -1362,11 +1397,11 @@ def _run_google_health_wellness_sync_locked(dates: list) -> dict:
     for d in dates:
         if daily.get(d, {}).get("hrv_last_night") is None:
             continue
-        window = DailyStats.objects.filter(
+        window = DailyStats.objects.for_user(user).filter(
             date__gte=d - timedelta(days=6), date__lte=d, hrv_last_night__isnull=False
         ).values_list("hrv_last_night", flat=True)
         if window:
-            DailyStats.objects.filter(date=d).update(hrv_weekly_avg=round(sum(window) / len(window), 1))
+            DailyStats.objects.for_user(user).filter(date=d).update(hrv_weekly_avg=round(sum(window) / len(window), 1))
 
     # resting_hr_baseline: trailing 30-day avg of resting_hr, same pattern as
     # hrv_weekly_avg above — used by DailyStats.readiness_score to judge
@@ -1374,22 +1409,22 @@ def _run_google_health_wellness_sync_locked(dates: list) -> dict:
     for d in dates:
         if daily.get(d, {}).get("resting_hr") is None:
             continue
-        window = DailyStats.objects.filter(
+        window = DailyStats.objects.for_user(user).filter(
             date__gte=d - timedelta(days=29), date__lte=d, resting_hr__isnull=False
         ).values_list("resting_hr", flat=True)
         if window:
-            DailyStats.objects.filter(date=d).update(resting_hr_baseline=round(sum(window) / len(window), 1))
+            DailyStats.objects.for_user(user).filter(date=d).update(resting_hr_baseline=round(sum(window) / len(window), 1))
 
     # sleep_baseline_seconds: trailing 30-day avg of sleep_seconds, same
     # pattern as resting_hr_baseline/hrv_weekly_avg above.
     for d in dates:
         if daily.get(d, {}).get("sleep_seconds") is None:
             continue
-        window = DailyStats.objects.filter(
+        window = DailyStats.objects.for_user(user).filter(
             date__gte=d - timedelta(days=29), date__lte=d, sleep_seconds__isnull=False
         ).values_list("sleep_seconds", flat=True)
         if window:
-            DailyStats.objects.filter(date=d).update(sleep_baseline_seconds=round(sum(window) / len(window), 1))
+            DailyStats.objects.for_user(user).filter(date=d).update(sleep_baseline_seconds=round(sum(window) / len(window), 1))
 
     # wellness_days_synced: trailing 30-day count of days with at least one
     # recovery signal (HRV, resting HR, or sleep) — compute_readiness_proxy()
@@ -1397,27 +1432,27 @@ def _run_google_health_wellness_sync_locked(dates: list) -> dict:
     for d in dates:
         if d not in daily:
             continue
-        count = DailyStats.objects.filter(
+        count = DailyStats.objects.for_user(user).filter(
             date__gte=d - timedelta(days=29), date__lte=d
         ).filter(
             Q(hrv_last_night__isnull=False) | Q(resting_hr__isnull=False) | Q(sleep_seconds__isnull=False)
         ).count()
-        DailyStats.objects.filter(date=d).update(wellness_days_synced=count)
+        DailyStats.objects.for_user(user).filter(date=d).update(wellness_days_synced=count)
 
     # computed_readiness_score/label: only meaningful once the baselines and
     # wellness_days_synced above are current for this sync run, so it runs last.
     for d in dates:
         if d not in daily:
             continue
-        stats_row = DailyStats.objects.filter(date=d).first()
+        stats_row = DailyStats.objects.for_user(user).filter(date=d).first()
         if not stats_row:
             continue
         score, label = stats_row.compute_readiness_proxy()
-        DailyStats.objects.filter(date=d).update(computed_readiness_score=score, computed_readiness_label=label or "")
+        DailyStats.objects.for_user(user).filter(date=d).update(computed_readiness_score=score, computed_readiness_label=label or "")
 
-    _gh_sync_height()
+    _gh_sync_height(user)
 
-    Integration.objects.filter(key="google_health").update(last_synced_at=tz.now())
+    Integration.objects.for_user(user).filter(key="google_health").update(last_synced_at=tz.now())
     return {"done": True, "synced": synced, "errors": errors}
 
 
@@ -1450,9 +1485,10 @@ def _push_food_entry_to_google_health(entry) -> bool:
     created data point's resource name on the entry so it can be cleaned up
     if the entry is later deleted. No-op if the integration is disabled/not
     authenticated, or if the nutrition.writeonly scope wasn't granted."""
+    from .models import GoogleHealthAuth
     from .services.google_health_client import GoogleHealthClient, GoogleHealthReauthRequired
 
-    if not _integration_enabled("google_health"):
+    if not _integration_enabled(entry.user, "google_health") or not GoogleHealthAuth.for_user(entry.user):
         return False
 
     start = entry.logged_at
@@ -1499,7 +1535,7 @@ def _push_food_entry_to_google_health(entry) -> bool:
     }
 
     try:
-        client = GoogleHealthClient()
+        client = GoogleHealthClient(entry.user)
         resp = client._request("POST", "dataTypes/nutrition-log/dataPoints", json_body=body)
     except GoogleHealthReauthRequired as e:
         logger.warning("Google Health food export skipped (reauth required): %s", e)
@@ -1515,15 +1551,17 @@ def _push_food_entry_to_google_health(entry) -> bool:
     return True
 
 
-def _delete_food_entry_from_google_health(resource_name: str) -> bool:
+def _delete_food_entry_from_google_health(user, resource_name: str) -> bool:
     """Best-effort cleanup of a previously-exported nutrition-log entry when
     the source FoodEntry is deleted in FitPulse."""
     from .services.google_health_client import GoogleHealthClient
 
-    if not resource_name:
+    from .models import GoogleHealthAuth
+
+    if not resource_name or not GoogleHealthAuth.for_user(user):
         return False
     try:
-        client = GoogleHealthClient()
+        client = GoogleHealthClient(user)
         client._request(
             "POST", "dataTypes/nutrition-log/dataPoints:batchDelete",
             json_body={"names": [resource_name]},
@@ -1719,7 +1757,7 @@ def _parse_google_health_exercise(point: dict) -> dict | None:
     )
 
 
-def _upsert_google_health_exercise(point: dict) -> tuple:
+def _upsert_google_health_exercise(user, point: dict) -> tuple:
     """Insert or update a CachedWorkout from one Google Health exercise data
     point (already filtered to exclude Peloton-sourced/duplicate entries).
     Returns (created, updated). Google Health's exercise type is a
@@ -1771,53 +1809,53 @@ def _upsert_google_health_exercise(point: dict) -> tuple:
         row.raw_data = point
         row.save()
 
-    existing = CachedWorkout.objects.filter(workout_id=wid).first()
+    existing = CachedWorkout.objects.for_user(user).filter(workout_id=wid).first()
     if existing:
         _apply_to_existing(existing)
         return False, True
 
     try:
-        obj = CachedWorkout(workout_id=wid, ride_id="", workout_type="",
+        obj = CachedWorkout(user=user, workout_id=wid, ride_id="", workout_type="",
                              instructor_name="", instructor_image_url="", class_image_url="",
                              **fields)
         obj.save()
         return True, False
     except IntegrityError:
-        # Lost a race on workout_id's unique constraint — another call for
+        # Lost a race on the (user, workout_id) unique constraint — another call for
         # this same point (e.g. two webhook deliveries for the same UPSERT
         # notification, processed in overlapping background threads; Google
         # explicitly warns retries can duplicate notifications) already
         # created the row between our filter() and save(). Fall back to
         # updating what it created instead of erroring out.
-        existing = CachedWorkout.objects.get(workout_id=wid)
+        existing = CachedWorkout.objects.for_user(user).get(workout_id=wid)
         _apply_to_existing(existing)
         return False, True
 
 
-def _peloton_workout_index():
+def _peloton_workout_index(user):
     """Sorted [(timestamp, CachedWorkout)] for all Peloton-sourced workouts —
-    like _peloton_timestamp_index() but keeps the object so callers can
+    like _peloton_timestamp_index(user) but keeps the object so callers can
     augment it, not just detect the overlap."""
     return sorted(
         (
             (int(w.created_at.timestamp()), w)
-            for w in CachedWorkout.objects.filter(source="peloton")
+            for w in CachedWorkout.objects.for_user(user).filter(source="peloton")
             if w.created_at is not None
         ),
         key=lambda pair: pair[0],
     )
 
 
-def _garmin_workout_index():
+def _garmin_workout_index(user):
     """Sorted [(timestamp, CachedWorkout)] for all Garmin-sourced workouts —
-    same shape as _peloton_workout_index(), used to catch Garmin↔Google
+    same shape as _peloton_workout_index(user), used to catch Garmin↔Google
     Health duplicates that have no Peloton workout at all (e.g. an outdoor
     hike neither service routes through Peloton), which the Peloton-anchored
     matching above never looks at."""
     return sorted(
         (
             (int(w.created_at.timestamp()), w)
-            for w in CachedWorkout.objects.filter(source="garmin")
+            for w in CachedWorkout.objects.for_user(user).filter(source="garmin")
             if w.created_at is not None
         ),
         key=lambda pair: pair[0],
@@ -1904,7 +1942,7 @@ def _find_overlapping_workout(created_at, duration_seconds, workout_index):
     return None
 
 
-def _augment_peloton_from_google_health(peloton_workout, point: dict) -> dict:
+def _augment_peloton_from_google_health(user, peloton_workout, point: dict) -> dict:
     """
     When a Google Health exercise entry duplicates a Peloton workout (either
     via Peloton's own Fitbit integration, or the watch's independent
@@ -1917,6 +1955,7 @@ def _augment_peloton_from_google_health(peloton_workout, point: dict) -> dict:
 
     Returns {"filled": [...], "google_missing": [...], "point_id": str}.
     """
+    _require_same_user(user, peloton_workout)
     parsed = _parse_google_health_exercise(point)
     if parsed is None:
         return {"filled": [], "google_missing": [], "point_id": None}
@@ -1945,7 +1984,7 @@ def _augment_peloton_from_google_health(peloton_workout, point: dict) -> dict:
     return {"filled": filled, "google_missing": google_missing, "point_id": parsed["point_id"]}
 
 
-def _augment_garmin_from_google_health(garmin_workout, point: dict) -> dict:
+def _augment_garmin_from_google_health(user, garmin_workout, point: dict) -> dict:
     """
     Like _augment_peloton_from_google_health, but for the case that function
     doesn't cover: a Google Health exercise entry that duplicates a
@@ -1959,6 +1998,7 @@ def _augment_garmin_from_google_health(garmin_workout, point: dict) -> dict:
 
     Returns {"filled": [...], "point_id": str}.
     """
+    _require_same_user(user, garmin_workout)
     parsed = _parse_google_health_exercise(point)
     if parsed is None:
         return {"filled": [], "point_id": None}
@@ -1979,7 +2019,7 @@ def _augment_garmin_from_google_health(garmin_workout, point: dict) -> dict:
     return {"filled": filled, "point_id": parsed["point_id"]}
 
 
-def _reconcile_google_health_duplicates(dry_run=False) -> dict:
+def _reconcile_google_health_duplicates(user, dry_run=False) -> dict:
     """
     Re-check every existing source="google_health" CachedWorkout row against
     the current set of Peloton workouts and merge any new match.
@@ -1996,11 +2036,11 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
     each entry in "details" is {"google_workout_id", "peloton_workout_id",
     "peloton_title", "filled", "had_raw_data"}.
     """
-    if not _integration_enabled("google_health"):
+    if not _integration_enabled(user, "google_health"):
         return {"checked": 0, "matched": 0, "augmented": 0, "deleted": 0, "details": []}
 
-    peloton_index = _peloton_workout_index()
-    gh_workouts = list(CachedWorkout.objects.filter(source="google_health").order_by("created_at"))
+    peloton_index = _peloton_workout_index(user)
+    gh_workouts = list(CachedWorkout.objects.for_user(user).filter(source="google_health").order_by("created_at"))
 
     augmented = 0
     to_delete = []
@@ -2030,7 +2070,7 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
                     if parsed["heart_rate_avg"] is not None and match.heart_rate_avg_best is None:
                         filled.append("heart_rate_avg")
             else:
-                filled = _augment_peloton_from_google_health(match, w.raw_data)["filled"]
+                filled = _augment_peloton_from_google_health(user, match, w.raw_data)["filled"]
 
         if filled:
             augmented += 1
@@ -2047,7 +2087,7 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
 
     deleted = 0
     if not dry_run and to_delete:
-        deleted = CachedWorkout.objects.filter(pk__in=to_delete).delete()[0]
+        deleted = CachedWorkout.objects.for_user(user).filter(pk__in=to_delete).delete()[0]
 
     return {
         "checked": len(gh_workouts),
@@ -2058,7 +2098,7 @@ def _reconcile_google_health_duplicates(dry_run=False) -> dict:
     }
 
 
-def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
+def _reconcile_garmin_google_health_duplicates(user, dry_run=False) -> dict:
     """
     Re-check every existing source="google_health" CachedWorkout row against
     Garmin-sourced workouts and merge any match that has no Peloton
@@ -2084,12 +2124,12 @@ def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
     each entry in "details" is {"google_workout_id", "garmin_workout_id",
     "garmin_title", "filled", "had_raw_data"}.
     """
-    if not _integration_enabled("google_health"):
+    if not _integration_enabled(user, "google_health"):
         return {"checked": 0, "matched": 0, "augmented": 0, "deleted": 0, "details": []}
 
-    peloton_index = _peloton_workout_index()
-    garmin_index = _garmin_workout_index()
-    gh_workouts = list(CachedWorkout.objects.filter(source="google_health").order_by("created_at"))
+    peloton_index = _peloton_workout_index(user)
+    garmin_index = _garmin_workout_index(user)
+    gh_workouts = list(CachedWorkout.objects.for_user(user).filter(source="google_health").order_by("created_at"))
 
     augmented = 0
     to_delete = []
@@ -2120,7 +2160,7 @@ def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
                     if parsed["heart_rate_avg"] is not None and match.heart_rate_avg_best is None:
                         filled.append("heart_rate_avg")
             else:
-                filled = _augment_garmin_from_google_health(match, w.raw_data)["filled"]
+                filled = _augment_garmin_from_google_health(user, match, w.raw_data)["filled"]
 
         if filled:
             augmented += 1
@@ -2137,7 +2177,7 @@ def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
 
     deleted = 0
     if not dry_run and to_delete:
-        deleted = CachedWorkout.objects.filter(pk__in=to_delete).delete()[0]
+        deleted = CachedWorkout.objects.for_user(user).filter(pk__in=to_delete).delete()[0]
 
     return {
         "checked": len(gh_workouts),
@@ -2148,13 +2188,10 @@ def _reconcile_garmin_google_health_duplicates(dry_run=False) -> dict:
     }
 
 
-_gh_exercise_sync_lock = threading.Lock()
-
-
-def _run_google_health_exercise_sync(start, end) -> dict:
+def _run_google_health_exercise_sync(user, start, end) -> dict:
     """
-    Guarded by _gh_exercise_sync_lock (non-blocking), same pattern and same
-    reason as _gh_wellness_sync_lock on _run_google_health_wellness_sync:
+    Guarded by user_lock("gh_exercise", user.id) (non-blocking, per user), same
+    pattern and same reason as the gh_wellness lock on _run_google_health_wellness_sync:
     overlapping callers — a burst of separate webhook deliveries, or a
     webhook racing a manually-triggered "Sync New"/"Sync All" — skip instead
     of piling up concurrent exercise fetches. 2026-10-02 incident: five
@@ -2169,27 +2206,28 @@ def _run_google_health_exercise_sync(start, end) -> dict:
     harmless: the next webhook or the regular polling sync covers the same
     dates shortly after.
     """
-    if not _gh_exercise_sync_lock.acquire(blocking=False):
+    lock = user_lock("gh_exercise", user.id)
+    if not lock.acquire(blocking=False):
         logger.info("Google Health exercise sync: already in progress elsewhere, skipping this call")
         return {"done": True, "skipped": "already_in_progress", "created": 0, "updated": 0}
     try:
-        return _run_google_health_exercise_sync_locked(start, end)
+        return _run_google_health_exercise_sync_locked(user, start, end)
     finally:
-        _gh_exercise_sync_lock.release()
+        lock.release()
 
 
-def _run_google_health_exercise_sync_locked(start, end) -> dict:
-    """The actual sync body, always called with _gh_exercise_sync_lock held —
+def _run_google_health_exercise_sync_locked(user, start, end) -> dict:
+    """The actual sync body, always called with the user's gh_exercise lock held —
     split out so the wrapper's try/finally guarantees the lock releases on
     every exit path (normal return, an early return below, or any
     unexpected exception) without needing to duplicate release calls."""
-    if not _integration_enabled("google_health"):
+    if not _integration_enabled(user, "google_health"):
         return {**_integration_disabled_result("google_health"), "created": 0, "updated": 0}
 
     from .services.google_health_client import GoogleHealthClient, GoogleHealthReauthRequired
 
     try:
-        client = GoogleHealthClient()
+        client = GoogleHealthClient(user)
         points = client.get_exercise(start, end)
     except GoogleHealthReauthRequired as e:
         logger.error("Google Health exercise sync aborted: %s", e)
@@ -2197,8 +2235,8 @@ def _run_google_health_exercise_sync_locked(start, end) -> dict:
     except Exception as e:
         return {"error": str(e), "created": 0, "updated": 0}
 
-    peloton_index = _peloton_workout_index()
-    garmin_index = _garmin_workout_index()
+    peloton_index = _peloton_workout_index(user)
+    garmin_index = _garmin_workout_index(user)
     created = updated = skipped_peloton = skipped_garmin = augmented = garmin_augmented = 0
     skipped_overlapping = 0
     google_missing_fields: list = []  # candidates for the write-back path
@@ -2222,7 +2260,7 @@ def _run_google_health_exercise_sync_locked(start, end) -> dict:
         if is_official or match is not None:
             skipped_peloton += 1
             if match is not None:
-                result = _augment_peloton_from_google_health(match, point)
+                result = _augment_peloton_from_google_health(user, match, point)
                 if result["filled"]:
                     augmented += 1
                 if result["google_missing"]:
@@ -2246,7 +2284,7 @@ def _run_google_health_exercise_sync_locked(start, end) -> dict:
         garmin_match = _find_workout_match(created_at, garmin_index) if created_at else None
         if garmin_match is not None:
             skipped_garmin += 1
-            if _augment_garmin_from_google_health(garmin_match, point)["filled"]:
+            if _augment_garmin_from_google_health(user, garmin_match, point)["filled"]:
                 garmin_augmented += 1
             continue
 
@@ -2265,14 +2303,14 @@ def _run_google_health_exercise_sync_locked(start, end) -> dict:
                 continue
 
         try:
-            was_created, was_updated = _upsert_google_health_exercise(point)
+            was_created, was_updated = _upsert_google_health_exercise(user, point)
             created += was_created
             updated += was_updated
         except Exception as e:
             logger.warning("Google Health exercise upsert failed for %s: %s", point.get("name"), e)
 
     from .models import Integration
-    Integration.objects.filter(key="google_health").update(last_synced_at=tz.now())
+    Integration.objects.for_user(user).filter(key="google_health").update(last_synced_at=tz.now())
     return {
         "done": True,
         "created": created,
@@ -2286,7 +2324,7 @@ def _run_google_health_exercise_sync_locked(start, end) -> dict:
     }
 
 
-def _run_google_health_exercise_sync_new(since=None) -> dict:
+def _run_google_health_exercise_sync_new(user, since=None) -> dict:
     """Syncs since `since` (pass the previous Integration.last_synced_at,
     captured by the caller before this run bumps it — see
     _run_google_health_sync_new), or the last 30 days if never synced.
@@ -2303,45 +2341,45 @@ def _run_google_health_exercise_sync_new(since=None) -> dict:
     was silently re-scanning and re-matching the same ~280 points from that
     whole two-month span instead of just what was actually new."""
     start = (since.date() - timedelta(days=1)) if since else (date.today() - timedelta(days=30))
-    return _run_google_health_exercise_sync(start, date.today())
+    return _run_google_health_exercise_sync(user, start, date.today())
 
 
-def _run_google_health_exercise_sync_all() -> dict:
+def _run_google_health_exercise_sync_all(user) -> dict:
     """Full historical backfill — 3 years back is generous for a Pixel Watch
     account; the client's date-bounded pagination stops naturally once it
     runs out of real data well before that."""
     start = date.today() - timedelta(days=365 * 3)
-    return _run_google_health_exercise_sync(start, date.today())
+    return _run_google_health_exercise_sync(user, start, date.today())
 
 
-def _run_google_health_sync_new() -> dict:
+def _run_google_health_sync_new(user) -> dict:
     from .models import Integration
 
     # Captured before wellness sync runs, since that call bumps
     # Integration.last_synced_at itself — exercise sync needs the timestamp
     # from the *previous* run, not the one this run is about to set.
-    integration = Integration.objects.filter(key="google_health").first()
+    integration = Integration.objects.for_user(user).filter(key="google_health").first()
     since = integration.last_synced_at if integration else None
 
     dates = [date.today() - timedelta(days=i) for i in range(7)]
-    wellness = _run_google_health_wellness_sync(dates)
-    exercise = _run_google_health_exercise_sync_new(since=since)
+    wellness = _run_google_health_wellness_sync(user, dates)
+    exercise = _run_google_health_exercise_sync_new(user, since=since)
     # Catches existing google_health rows whose Garmin match arrived after
     # they synced — the live per-point check in _run_google_health_exercise_sync
     # only sees the Garmin rows that already existed at that moment.
-    gh_reconciled = _reconcile_garmin_google_health_duplicates()
+    gh_reconciled = _reconcile_garmin_google_health_duplicates(user)
     exercise["garmin_merged"] = gh_reconciled["deleted"]
-    _reconcile_programs_safe()
+    _reconcile_programs_safe(user)
     return {"wellness": wellness, "exercise": exercise}
 
 
-def _run_google_health_sync_all() -> dict:
+def _run_google_health_sync_all(user) -> dict:
     dates = [date.today() - timedelta(days=i) for i in range(365 * 3)]
-    wellness = _run_google_health_wellness_sync(dates)
-    exercise = _run_google_health_exercise_sync_all()
-    gh_reconciled = _reconcile_garmin_google_health_duplicates()
+    wellness = _run_google_health_wellness_sync(user, dates)
+    exercise = _run_google_health_exercise_sync_all(user)
+    gh_reconciled = _reconcile_garmin_google_health_duplicates(user)
     exercise["garmin_merged"] = gh_reconciled["deleted"]
-    _reconcile_programs_safe()
+    _reconcile_programs_safe(user)
     return {"wellness": wellness, "exercise": exercise}
 
 
@@ -2464,6 +2502,42 @@ def _gh_webhook_interval_dates(interval: dict) -> set:
     return found
 
 
+def _gh_connected_users():
+    """Every active user with a connected Google Health account and the
+    integration enabled — the fan-out targets for a notification until we know
+    whether a notification identifies its user (see _gh_user_from_notification)."""
+    from .models import GoogleHealthAuth
+    return [a.user for a in GoogleHealthAuth.objects.select_related("user")
+            if a.user.is_active and a.refresh_token and _integration_enabled(a.user, "google_health")]
+
+
+def _gh_user_from_notification(item):
+    """Placeholder. Once a captured payload shows a per-user identifier (e.g. a
+    user/health-user id field), map it to GoogleHealthAuth here and replace the
+    fan-out in _process_google_health_notification with direct routing.
+    Returns a User or None; until then, always None."""
+    return None
+
+
+# Temporary: keep the first few real notification payloads (as WebhookError rows,
+# source="google_health_payload") so their shape can be checked for a per-user
+# identifier. These self-prune after WebhookError.RETENTION_DAYS like any other row.
+_GH_PAYLOAD_CAPTURE_LIMIT = 3
+
+
+def _capture_google_health_payload(payload) -> None:
+    from django.conf import settings as dj_settings
+    if not getattr(dj_settings, "GOOGLE_HEALTH_CAPTURE_PAYLOADS", False):
+        return
+    if WebhookError.objects.filter(source="google_health_payload").count() >= _GH_PAYLOAD_CAPTURE_LIMIT:
+        return
+    WebhookError.record(
+        source="google_health_payload",
+        summary="Captured raw notification for user-routing check",
+        detail=json.dumps(payload, indent=2, default=str),
+    )
+
+
 def _process_google_health_notification(kind, date_list, data_types=()):
     """Background-thread body for google_health_webhook — runs after the
     204 response has already been sent, so an exception here can't affect
@@ -2476,23 +2550,50 @@ def _process_google_health_notification(kind, date_list, data_types=()):
     which coalesces every item of that kind in one webhook delivery into a
     single call here (see google_health_webhook). data_types is the
     originating dataType string(s), kept only for logging/WebhookError
-    context since this function no longer branches on it."""
+    context since this function no longer branches on it.
+
+    Notifications don't (yet, as far as we know) say whose data changed, so
+    this re-syncs the notified dates for every connected Google Health user,
+    one after another in this same thread — never a thread per user, which
+    would bring back the 2026-08-23 burst. Each user is isolated: one user's
+    expired token is recorded against them and the loop carries on. The
+    per-user locks still make an overlapping delivery skip, not pile up."""
     label = ",".join(sorted(data_types)) if data_types else kind
+    if kind not in ("exercise", "wellness"):
+        logger.info("Google Health webhook: kind=%s not handled by any sync path, ignoring", kind)
+        return
     try:
-        if kind == "exercise":
-            _run_google_health_exercise_sync(date_list[0], date_list[-1])
-        elif kind == "wellness":
-            _run_google_health_wellness_sync(date_list)
-        else:
-            logger.info("Google Health webhook: kind=%s not handled by any sync path, ignoring", kind)
+        users = _gh_connected_users()
     except Exception:
-        logger.exception("Google Health webhook: sync failed for kind=%s dataTypes=%s dates=%s-%s",
-                          kind, label, date_list[0], date_list[-1])
-        WebhookError.record(
-            source="google_health",
-            summary=f"kind={kind} dataTypes={label} dates={date_list[0]}–{date_list[-1]}",
-            detail=traceback.format_exc(),
-        )
+        logger.exception("Google Health webhook: couldn't list connected users")
+        WebhookError.record(source="google_health", summary=f"kind={kind}: couldn't list connected users",
+                            detail=traceback.format_exc())
+        return
+    for user in users:
+        try:
+            if kind == "exercise":
+                _run_google_health_exercise_sync(user, date_list[0], date_list[-1])
+            else:
+                _run_google_health_wellness_sync(user, date_list)
+        except Exception:
+            logger.exception("Google Health webhook: sync failed for user=%s kind=%s dataTypes=%s dates=%s-%s",
+                             user.pk, kind, label, date_list[0], date_list[-1])
+            WebhookError.record(
+                source="google_health",
+                user=user,
+                summary=f"kind={kind} dataTypes={label} dates={date_list[0]}–{date_list[-1]}",
+                detail=traceback.format_exc(),
+            )
+
+
+def _in_background(fn, *args, **kwargs):
+    """Thread target wrapper: the thread gets its own DB connection, closed when
+    it finishes instead of lingering until the thread is garbage-collected."""
+    from django.db import connection
+    try:
+        fn(*args, **kwargs)
+    finally:
+        connection.close()
 
 
 @csrf_exempt
@@ -2561,6 +2662,11 @@ def google_health_webhook(request):
             logger.warning("Google Health webhook: missing/incorrect Authorization header, rejecting")
             return HttpResponse(status=401)
 
+        try:
+            _capture_google_health_payload(payload)
+        except Exception:
+            logger.exception("Google Health webhook: payload capture failed")
+
         # Coalesce every item in this delivery by kind (wellness/exercise)
         # instead of spawning one thread per item. _run_google_health_wellness_sync
         # always fetches all 17 wellness endpoints regardless of which single
@@ -2611,15 +2717,15 @@ def google_health_webhook(request):
 
         if wellness_dates:
             threading.Thread(
-                target=_process_google_health_notification,
-                args=("wellness", sorted(wellness_dates)),
+                target=_in_background,
+                args=(_process_google_health_notification, "wellness", sorted(wellness_dates)),
                 kwargs={"data_types": wellness_types},
                 daemon=True,
             ).start()
         if exercise_dates:
             threading.Thread(
-                target=_process_google_health_notification,
-                args=("exercise", sorted(exercise_dates)),
+                target=_in_background,
+                args=(_process_google_health_notification, "exercise", sorted(exercise_dates)),
                 kwargs={"data_types": exercise_types},
                 daemon=True,
             ).start()
@@ -2640,23 +2746,33 @@ def google_health_webhook(request):
 # ---------------------------------------------------------------------------
 
 def sync_all_workouts(request):
-    return JsonResponse(_run_peloton_sync_all())
+    return JsonResponse(_run_peloton_sync_all(request.user))
 
 
 def sync_new_workouts(request):
     days = request.GET.get("days")
-    return JsonResponse(_run_peloton_sync_new(days=days))
+    return JsonResponse(_run_peloton_sync_new(request.user, days=days))
+
+
+def _garmin_forbidden():
+    return JsonResponse(_garmin_owner_only_result(), status=403)
 
 
 def sync_garmin_new(request):
-    return JsonResponse(_run_garmin_sync_new())
+    if not request.user.is_superuser:
+        return _garmin_forbidden()
+    return JsonResponse(_run_garmin_sync_new(request.user))
 
 
 def sync_garmin_all(request):
-    return JsonResponse(_run_garmin_sync_all())
+    if not request.user.is_superuser:
+        return _garmin_forbidden()
+    return JsonResponse(_run_garmin_sync_all(request.user))
 
 
 def sync_garmin_wellness(request):
+    if not request.user.is_superuser:
+        return _garmin_forbidden()
     days_param = request.GET.get("days")
     date_param = request.GET.get("date")
     today = date.today()
@@ -2670,16 +2786,15 @@ def sync_garmin_wellness(request):
             return JsonResponse({"error": "invalid date format, use YYYY-MM-DD"}, status=400)
     else:
         dates = [today]
-    return JsonResponse(_run_wellness_sync(dates))
+    return JsonResponse(_run_wellness_sync(request.user, dates))
 
 
 # ---------------------------------------------------------------------------
 # Withings body composition helpers
 # ---------------------------------------------------------------------------
 
-def _upsert_measurements(measurements: list[dict]) -> tuple[int, int]:
+def _upsert_measurements(user, measurements: list[dict]) -> tuple[int, int]:
     """Upsert normalized measurement dicts into BodyMeasurement. Returns (created, updated)."""
-    from django.db.models import Max
     created_count = 0
     updated_count = 0
     for m in measurements:
@@ -2702,7 +2817,7 @@ def _upsert_measurements(measurements: list[dict]) -> tuple[int, int]:
             "fat_ratio_pct": m.get("fat_ratio_pct"),
             "raw_data": m.get("raw", {}),
         }
-        _, created = BodyMeasurement.objects.update_or_create(
+        _, created = BodyMeasurement.objects.update_or_create(user=user,
             source="withings",
             withings_grpid=grpid,
             defaults=defaults,
@@ -2714,7 +2829,7 @@ def _upsert_measurements(measurements: list[dict]) -> tuple[int, int]:
     return created_count, updated_count
 
 
-def _update_daily_stats_for_dates(dates: list) -> None:
+def _update_daily_stats_for_dates(user, dates: list) -> None:
     """
     For each date, recompute DailyStats body composition fields from BodyMeasurement rows.
     Uses the earliest weigh-in of the day (first measurement by measured_at) for each metric.
@@ -2722,9 +2837,9 @@ def _update_daily_stats_for_dates(dates: list) -> None:
     """
     now = tz.now()
     for d in dates:
-        first = BodyMeasurement.objects.filter(date=d).order_by("measured_at").first()
-        count = BodyMeasurement.objects.filter(date=d).count()
-        stats, _ = DailyStats.objects.get_or_create(date=d)
+        first = BodyMeasurement.objects.for_user(user).filter(date=d).order_by("measured_at").first()
+        count = BodyMeasurement.objects.for_user(user).filter(date=d).count()
+        stats, _ = DailyStats.objects.get_or_create(user=user, date=d)
         if first:
             stats.weight_lb = first.weight_lb
             stats.fat_mass_lb = first.fat_mass_lb
@@ -2750,15 +2865,15 @@ def _update_daily_stats_for_dates(dates: list) -> None:
         ])
 
 
-def _run_withings_sync_new() -> dict:
+def _run_withings_sync_new(user) -> dict:
     """
     Pull measurements since last sync (lastupdate from max measured_at in DB,
     or 30 days ago if no rows exist). Returns summary dict.
     """
-    if not _integration_enabled("withings"):
+    if not _integration_enabled(user, "withings"):
         return {**_integration_disabled_result("withings"), "created": 0, "updated": 0}
     from django.db.models import Max
-    result = BodyMeasurement.objects.aggregate(max_date=Max("measured_at"))
+    result = BodyMeasurement.objects.for_user(user).aggregate(max_date=Max("measured_at"))
     if result["max_date"]:
         lastupdate = int(result["max_date"].timestamp())
     else:
@@ -2769,10 +2884,10 @@ def _run_withings_sync_new() -> dict:
         client = _withings_client()
         measurements = client.get_measurements(lastupdate=lastupdate)
         if measurements:
-            total_created, total_updated = _upsert_measurements(measurements)
+            total_created, total_updated = _upsert_measurements(user, measurements)
             dates = list({m["measured_at"].astimezone().date() for m in measurements})
-            _update_daily_stats_for_dates(dates)
-        Integration.objects.filter(key="withings").update(last_synced_at=tz.now())
+            _update_daily_stats_for_dates(user, dates)
+        Integration.objects.for_user(user).filter(key="withings").update(last_synced_at=tz.now())
         return {
             "done": True,
             "fetched": len(measurements),
@@ -2783,22 +2898,22 @@ def _run_withings_sync_new() -> dict:
         return {"error": str(e), "created": total_created, "updated": total_updated}
 
 
-def _run_withings_sync_all() -> dict:
+def _run_withings_sync_all(user) -> dict:
     """
     Pull ALL historical measurements via pagination. For first-time setup.
     Returns summary dict.
     """
-    if not _integration_enabled("withings"):
+    if not _integration_enabled(user, "withings"):
         return {**_integration_disabled_result("withings"), "created": 0, "updated": 0}
     total_created = total_updated = 0
     try:
         client = _withings_client()
         measurements = client.get_measurements()
         if measurements:
-            total_created, total_updated = _upsert_measurements(measurements)
+            total_created, total_updated = _upsert_measurements(user, measurements)
             dates = list({m["measured_at"].astimezone().date() for m in measurements})
-            _update_daily_stats_for_dates(dates)
-        Integration.objects.filter(key="withings").update(last_synced_at=tz.now())
+            _update_daily_stats_for_dates(user, dates)
+        Integration.objects.for_user(user).filter(key="withings").update(last_synced_at=tz.now())
         return {
             "done": True,
             "fetched": len(measurements),
@@ -2809,7 +2924,7 @@ def _run_withings_sync_all() -> dict:
         return {"error": str(e), "created": total_created, "updated": total_updated}
 
 
-def _run_withings_sync_range(start: date, end: date) -> dict:
+def _run_withings_sync_range(user, start: date, end: date) -> dict:
     """Pull measurements for a specific date range (inclusive). Returns summary dict."""
     total_created = total_updated = 0
     try:
@@ -2818,9 +2933,9 @@ def _run_withings_sync_range(start: date, end: date) -> dict:
         end_epoch   = int(datetime(end.year,   end.month,   end.day,   23, 59, 59, tzinfo=timezone.utc).timestamp())
         measurements = client.get_measurements(start_date=start_epoch, end_date=end_epoch)
         if measurements:
-            total_created, total_updated = _upsert_measurements(measurements)
+            total_created, total_updated = _upsert_measurements(user, measurements)
             dates = list({m["measured_at"].astimezone().date() for m in measurements})
-            _update_daily_stats_for_dates(dates)
+            _update_daily_stats_for_dates(user, dates)
         return {
             "done": True,
             "start": str(start),
@@ -2835,22 +2950,22 @@ def _run_withings_sync_range(start: date, end: date) -> dict:
 
 def sync_withings_new(request):
     """POST /api/sync/withings/new/"""
-    return JsonResponse(_run_withings_sync_new())
+    return JsonResponse(_run_withings_sync_new(request.user))
 
 
 def sync_withings_all(request):
     """POST /api/sync/withings/all/"""
-    return JsonResponse(_run_withings_sync_all())
+    return JsonResponse(_run_withings_sync_all(request.user))
 
 
 def sync_google_health_new(request):
     """POST /api/sync/google-health/new/"""
-    return JsonResponse(_run_google_health_sync_new())
+    return JsonResponse(_run_google_health_sync_new(request.user))
 
 
 def sync_google_health_all(request):
     """POST /api/sync/google-health/all/"""
-    return JsonResponse(_run_google_health_sync_all())
+    return JsonResponse(_run_google_health_sync_all(request.user))
 
 
 # ---------------------------------------------------------------------------
@@ -2873,23 +2988,22 @@ def withings_webhook(request):
     """
     from workouts.models import WithingsAuth
 
-    auth = WithingsAuth.get()
-    if not auth:
-        logger.error("Withings webhook received but no WithingsAuth row exists")
-        return HttpResponse(status=200)
-
     userid = request.POST.get("userid", "")
     appli = request.POST.get("appli", "")
     startdate = request.POST.get("startdate")
     enddate = request.POST.get("enddate")
 
-    if userid != auth.userid:
-        logger.warning(
-            "Withings webhook userid mismatch: got %s, expected %s", userid, auth.userid
-        )
+    # One callback URL serves every user — Withings' userid says whose scale it was.
+    auth = WithingsAuth.objects.filter(userid=userid).select_related("user").first() if userid else None
+    if not auth:
+        logger.warning("Withings webhook: no WithingsAuth for userid=%s", userid)
+        return HttpResponse(status=200)
+    user = auth.user
+    if not user.is_active or not _integration_enabled(user, "withings"):
+        logger.info("Withings webhook: integration disabled for user %s, ignoring", user.pk)
         return HttpResponse(status=200)
 
-    WithingsAuth.objects.filter(pk=1).update(
+    WithingsAuth.objects.filter(pk=auth.pk).update(
         last_webhook_received_at=tz.now(),
         webhook_subscription_active=True,
     )
@@ -2898,17 +3012,17 @@ def withings_webhook(request):
         if appli == "1":  # weight / body composition
             start = int(startdate) if startdate else None
             end = int(enddate) if enddate else None
-            client = WithingsClient()
+            client = WithingsClient(user)
             measurements = client.get_measurements(start_date=start, end_date=end)
             if measurements:
-                _upsert_measurements(measurements)
+                _upsert_measurements(user, measurements)
                 dates = list({m["measured_at"].astimezone().date() for m in measurements})
-                _update_daily_stats_for_dates(dates)
+                _update_daily_stats_for_dates(user, dates)
             logger.info(
                 "Withings webhook synced %d measurements for appli=%s",
                 len(measurements), appli,
             )
-            Integration.objects.filter(key="withings").update(last_synced_at=tz.now())
+            Integration.objects.for_user(user).filter(key="withings").update(last_synced_at=tz.now())
         else:
             logger.info("Withings webhook for appli=%s — not handled, ignoring", appli)
     except Exception:

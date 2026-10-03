@@ -14,7 +14,7 @@ import urllib.parse
 from django.contrib import messages
 from django.db.models import Avg, Count, Max, Min, Q
 from django.db.models.functions import TruncWeek
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -71,18 +71,27 @@ DISCIPLINE_LABELS = {
 # Dashboard
 # ---------------------------------------------------------------------------
 
+def _peloton_client_or_none(user):
+    """A Peloton client for live perf-graph fallbacks, or None when this user
+    hasn't connected Peloton — detail pages render from cached data then."""
+    try:
+        return _client(user)
+    except Exception:
+        return None
+
+
 def dashboard(request):
     try:
-        client = _client()
+        client = _client(request.user)
         overview = client.get_overview()
     except Exception:
         overview = {}
 
-    total_cached = CachedWorkout.objects.count()
+    total_cached = CachedWorkout.objects.for_user(request.user).count()
     discipline_counts = [
         (slug, DISCIPLINE_LABELS.get(slug, slug.replace("_", " ").title()), count, DISCIPLINE_COLORS.get(slug, "#888888"))
         for slug, count in (
-            CachedWorkout.objects
+            CachedWorkout.objects.for_user(request.user)
             .values_list("discipline")
             .annotate(count=Count("id"))
             .order_by("-count")
@@ -100,7 +109,7 @@ def dashboard(request):
 # ---------------------------------------------------------------------------
 
 def history(request):
-    qs = CachedWorkout.objects.all()
+    qs = CachedWorkout.objects.for_user(request.user).all()
 
     discipline  = request.GET.get("discipline", "")
     instructor  = request.GET.get("instructor", "")
@@ -155,7 +164,7 @@ def history(request):
     has_next = (offset + per_page) < total
 
     disc_slugs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .values_list("discipline", flat=True)
         .distinct().order_by("discipline")
     )
@@ -169,13 +178,13 @@ def history(request):
     ]
     durations = sorted(set(
         d // 60
-        for d in CachedWorkout.objects
+        for d in CachedWorkout.objects.for_user(request.user)
         .exclude(duration_seconds__isnull=True)
         .values_list("duration_seconds", flat=True)
     ))
 
     instructors = list(
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .exclude(instructor_name__isnull=True).exclude(instructor_name="")
         .values_list("instructor_name", flat=True)
         .distinct().order_by("instructor_name")
@@ -213,7 +222,7 @@ def history(request):
 # ---------------------------------------------------------------------------
 
 def workout_detail(request, workout_id):
-    workout = get_object_or_404(CachedWorkout, workout_id=workout_id)
+    workout = get_object_or_404(CachedWorkout.objects.for_user(request.user), workout_id=workout_id)
     if workout.is_run:
         return _run_detail(request, workout)
     elif workout.is_walking:
@@ -252,7 +261,7 @@ def _get_perf_dict(workout, client):
     would just fail on every single page view."""
     if workout.performance_graph_json:
         return workout.performance_graph_json
-    if workout.source == "peloton":
+    if workout.source == "peloton" and client is not None:
         try:
             return client.get_parsed_performance(workout.workout_id, every_n=5)
         except Exception:
@@ -317,7 +326,7 @@ def _manual_movement_context(workout):
     if show:
         # History up to this workout: on a logged row that's "next time", on an
         # unlogged plan row it's the suggestion for today.
-        recs = recommendations(until=workout.created_at)
+        recs = recommendations(workout.user, until=workout.created_at)
         rows = [{**r, "rec": recs.get(exercise_key(r.get("name")))} for r in rows]
     return {
         "class_plan": workout.class_plan_json or [],
@@ -330,7 +339,7 @@ def _manual_movement_context(workout):
 
 
 def _run_detail(request, workout):
-    client = _client()
+    client = _peloton_client_or_none(request.user)
     perf = _get_perf_dict(workout, client)
     gh_hr_zones = _google_health_hr_zones(workout)
 
@@ -357,7 +366,7 @@ def _run_detail(request, workout):
     split_keys = [key for key in split_col_labels if any(s.get(key) is not None for s in splits)]
 
     sibling_qs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .filter(discipline=workout.discipline)
         .exclude(workout_id=workout.workout_id)
     )
@@ -427,7 +436,7 @@ def _run_detail(request, workout):
 
 
 def _walking_detail(request, workout):
-    client = _client()
+    client = _peloton_client_or_none(request.user)
     perf = _get_perf_dict(workout, client)
     gh_hr_zones = _google_health_hr_zones(workout)
 
@@ -439,7 +448,7 @@ def _walking_detail(request, workout):
     split_keys = [key for key in split_col_labels if any(s.get(key) is not None for s in splits)]
 
     sibling_qs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .filter(discipline=workout.discipline)
         .exclude(workout_id=workout.workout_id)
     )
@@ -488,12 +497,12 @@ def _walking_detail(request, workout):
 
 
 def _cycling_detail(request, workout):
-    client = _client()
+    client = _peloton_client_or_none(request.user)
     perf = _get_perf_dict(workout, client)
     gh_hr_zones = _google_health_hr_zones(workout)
 
     sibling_qs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .filter(discipline=workout.discipline)
         .exclude(workout_id=workout.workout_id)
     )
@@ -550,7 +559,7 @@ def _strength_detail(request, workout):
         perf = workout.performance_graph_json
     elif workout.source != "garmin":
         try:
-            perf = _client().get_parsed_performance(workout.workout_id, every_n=5)
+            perf = _client(request.user).get_parsed_performance(workout.workout_id, every_n=5)
         except Exception:
             perf = {}
     else:
@@ -569,7 +578,7 @@ def _strength_detail(request, workout):
     } if total_hr_zone_secs > 0 else None
 
     sibling_qs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .filter(discipline="strength")
         .exclude(workout_id=workout.workout_id)
     )
@@ -614,7 +623,7 @@ def _strength_detail(request, workout):
 
 
 def _generic_detail(request, workout):
-    perf = _get_perf_dict(workout, _client())
+    perf = _get_perf_dict(workout, _peloton_client_or_none(request.user))
     gh_hr_zones = _google_health_hr_zones(workout)
 
     total_hr_zone_secs = sum(filter(None, [
@@ -649,14 +658,14 @@ def _class_history_sidebar(workout):
     """Return the last 5 prior instances of this class/activity (for the detail page sidebar)."""
     if workout.ride_id:
         return (
-            CachedWorkout.objects
+            CachedWorkout.objects.for_user(workout.user)
             .filter(ride_id=workout.ride_id)
             .exclude(workout_id=workout.workout_id)
             .order_by("-created_at")[:5]
         )
     if workout.source == "garmin" and workout.discipline:
         qs = (
-            CachedWorkout.objects
+            CachedWorkout.objects.for_user(workout.user)
             .filter(source="garmin", discipline=workout.discipline)
             .exclude(workout_id=workout.workout_id)
         )
@@ -684,7 +693,7 @@ def _garmin_activity_url(workout):
 # ---------------------------------------------------------------------------
 
 def class_history(request, ride_id):
-    workouts = list(CachedWorkout.objects.filter(ride_id=ride_id).order_by("created_at"))
+    workouts = list(CachedWorkout.objects.for_user(request.user).filter(ride_id=ride_id).order_by("created_at"))
 
     if not workouts:
         return render(request, "workouts/class_history.html", {
@@ -809,11 +818,13 @@ def class_history(request, ride_id):
 
 
 def garmin_activity_history(request, discipline):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden("Garmin is owner-only.")
     title = request.GET.get("title", "").strip()
     from_date = request.GET.get("from_date", "").strip()
     to_date = request.GET.get("to_date", "").strip()
 
-    base_qs = CachedWorkout.objects.filter(source="garmin", discipline=discipline)
+    base_qs = CachedWorkout.objects.for_user(request.user).filter(source="garmin", discipline=discipline)
 
     grouped_by_title = False
     if title and base_qs.filter(title=title).count() >= 2:
@@ -963,14 +974,14 @@ def garmin_activity_history(request, discipline):
 def compare(request):
     ids_param  = request.GET.get("ids", "")
     workout_ids = [i.strip() for i in ids_param.split(",") if i.strip()][:4]
-    workouts   = list(CachedWorkout.objects.filter(workout_id__in=workout_ids))
+    workouts   = list(CachedWorkout.objects.for_user(request.user).filter(workout_id__in=workout_ids))
 
     perf_data = {}
-    client = _client()
+    client = _peloton_client_or_none(request.user)
     for w in workouts:
         if w.performance_graph_json:
             perf_data[w.workout_id] = w.performance_graph_json
-        elif w.source == "garmin":
+        elif w.source == "garmin" or client is None:
             perf_data[w.workout_id] = {}
         else:
             try:
@@ -1073,7 +1084,7 @@ def analytics_page(request):
 
     # Weekly volume — last 16 weeks, stacked by discipline
     weekly_qs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .filter(created_at__gte=cutoff_16w)
         .annotate(week=TruncWeek("created_at"))
         .values("week", "discipline")
@@ -1124,7 +1135,7 @@ def analytics_page(request):
 
     # Discipline mix — last 90 days
     mix_qs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .filter(created_at__gte=cutoff_90d)
         .values("discipline")
         .annotate(count=Count("id"))
@@ -1142,7 +1153,7 @@ def analytics_page(request):
 
     # Performance trends — last 365 days, extracted from performance_graph_json
     perf_qs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(request.user)
         .filter(created_at__gte=cutoff_365d, performance_graph_json__isnull=False)
         .order_by("created_at")
         .values("created_at", "discipline", "title", "workout_id", "performance_graph_json")
@@ -1187,7 +1198,7 @@ def analytics_page(request):
 
     # Cached AI insights — auto-submit a fresh batch if stale
     import os
-    settings_obj = UserSettings.get()
+    settings_obj = UserSettings.for_user(request.user)
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     INSIGHTS_AUTO_REFRESH_DAYS = 7
     if (
@@ -1200,7 +1211,7 @@ def analytics_page(request):
     ):
         try:
             from .ai import _submit_insights_batch
-            batch_id = _submit_insights_batch(api_key)
+            batch_id = _submit_insights_batch(request.user)
             settings_obj.ai_insights_batch_id = batch_id
             settings_obj.save(update_fields=["ai_insights_batch_id"])
         except Exception as e:
@@ -1223,8 +1234,8 @@ def analytics_page(request):
 # ---------------------------------------------------------------------------
 
 def settings_page(request):
-    settings_obj = UserSettings.get()
-    athlete = AthleteProfile.get()
+    settings_obj = UserSettings.for_user(request.user)
+    athlete = AthleteProfile.for_user(request.user)
     return render(request, "workouts/settings.html", {
         "current_ftp": settings_obj.ftp,
         "ftp_updated_at": settings_obj.updated_at,
@@ -1238,24 +1249,39 @@ def settings_page(request):
 
 def integrations_settings_page(request):
     from .models import GoogleHealthAuth, Integration, PelotonAuth, WebhookError
+    Integration.ensure_for_user(request.user)
+    integrations = Integration.objects.for_user(request.user)
+    if not request.user.is_superuser:
+        integrations = integrations.exclude(key="garmin")
     return render(request, "workouts/integrations_settings.html", {
-        "integrations": Integration.objects.all(),
-        "peloton_auth": PelotonAuth.get(),
-        "webhook_error_count": WebhookError.objects.count(),
+        "integrations": integrations,
+        "peloton_auth": PelotonAuth.for_user(request.user),
+        "webhook_error_count": _webhook_errors_for(request.user).count(),
         "webhook_retention_days": WebhookError.RETENTION_DAYS,
-        "google_health_auth": GoogleHealthAuth.get(),
+        "google_health_auth": GoogleHealthAuth.for_user(request.user),
     })
+
+
+def _webhook_errors_for(user):
+    """Superusers see every webhook error (including ones with no user);
+    everyone else sees only their own."""
+    from .models import WebhookError
+    if user.is_superuser:
+        return WebhookError.objects.all()
+    return WebhookError.objects.for_user(user)
 
 
 @require_POST
 def integration_toggle(request, key):
     from .models import GoogleHealthAuth, Integration
-    integration = get_object_or_404(Integration, key=key)
+    if key == "garmin" and not request.user.is_superuser:
+        return HttpResponseForbidden("Garmin is owner-only.")
+    integration = get_object_or_404(Integration.objects.for_user(request.user), key=key)
     integration.is_enabled = not integration.is_enabled
     integration.save(update_fields=["is_enabled"])
     return render(request, "workouts/partials/integration_row.html", {
         "integration": integration,
-        "google_health_auth": GoogleHealthAuth.get(),
+        "google_health_auth": GoogleHealthAuth.for_user(request.user),
     })
 
 
@@ -1332,10 +1358,10 @@ def google_health_oauth_callback(request):
             return redirect("integrations_settings")
 
         redirect_uri = request.build_absolute_uri(reverse("google_health_oauth_callback"))
-        client = GoogleHealthClient()
+        client = GoogleHealthClient(request.user)
         client.exchange_code(code, redirect_uri=redirect_uri)
 
-        Integration.objects.filter(key="google_health").update(is_authenticated=True)
+        Integration.objects.for_user(request.user).filter(key="google_health").update(is_authenticated=True)
         messages.success(request, "Google Health reconnected successfully.")
     except Exception as e:
         logger.exception("Google Health OAuth callback failed")
@@ -1348,7 +1374,7 @@ def webhook_errors_page(request):
     from .models import WebhookError
     WebhookError.prune()
     return render(request, "workouts/webhook_errors.html", {
-        "errors": WebhookError.objects.all(),
+        "errors": _webhook_errors_for(request.user),
         "webhook_retention_days": WebhookError.RETENTION_DAYS,
     })
 
@@ -1374,7 +1400,7 @@ def save_manual_movements(request, workout_id):
     an empty log clears it."""
     from .strength import EFFORT_LABELS
 
-    workout = get_object_or_404(CachedWorkout, workout_id=workout_id)
+    workout = get_object_or_404(CachedWorkout.objects.for_user(request.user), workout_id=workout_id)
     names = request.POST.getlist("name")
     sets = request.POST.getlist("sets")
     reps = request.POST.getlist("reps")
@@ -1415,8 +1441,8 @@ def strength_trends(request):
     exercise log, plus total logged volume per workout."""
     from .strength import EFFORT_LABELS, dumbbells, exercise_history, recommend
 
-    rack = dumbbells()
-    history = exercise_history()
+    rack = dumbbells(request.user)
+    history = exercise_history(request.user)
     exercises = []
     for key, e in history.items():
         sessions = e["sessions"]
@@ -1438,7 +1464,7 @@ def strength_trends(request):
     weighted = sorted((x for x in exercises if x["current_lb"]), key=lambda x: x["last_date"], reverse=True)
     unweighted = sorted((x for x in exercises if not x["current_lb"]), key=lambda x: x["name"].lower())
 
-    workouts = (CachedWorkout.objects.exclude(manual_movements_json=[])
+    workouts = (CachedWorkout.objects.for_user(request.user).exclude(manual_movements_json=[])
                 .order_by("created_at").only("workout_id", "title", "created_at", "manual_movements_json"))
     volume_series = [{"date": w.created_at.strftime("%b %-d"), "title": w.title,
                       "volume": w.manual_log_summary["volume_lb"]} for w in workouts]
@@ -1463,8 +1489,8 @@ def set_peloton_auth(request):
         messages.error(request, "Both session ID and user ID are required.")
     else:
         PelotonAuth.objects.update_or_create(
-            pk=1,
-            defaults={"session_id": session_id, "user_id": user_id, "notes": notes},
+            user=request.user,
+            defaults={"session_id": session_id, "peloton_user_id": user_id, "notes": notes},
         )
         messages.success(request, "Peloton credentials updated.")
     return redirect("integrations_settings")
@@ -1472,7 +1498,7 @@ def set_peloton_auth(request):
 
 @require_POST
 def set_athlete_profile(request):
-    athlete = AthleteProfile.get()
+    athlete = AthleteProfile.for_user(request.user)
     athlete.running_experience  = request.POST.get("running_experience", "")
     athlete.cycling_experience  = request.POST.get("cycling_experience", "")
     athlete.strength_experience = request.POST.get("strength_experience", "")
@@ -1503,7 +1529,7 @@ def set_dumbbells(request):
     if bad or not weights:
         messages.error(request, f"Couldn't read: {', '.join(bad)}" if bad else "Enter at least one weight.")
     else:
-        settings_obj = UserSettings.get()
+        settings_obj = UserSettings.for_user(request.user)
         settings_obj.dumbbells_lb = sorted(weights)
         settings_obj.save(update_fields=["dumbbells_lb", "updated_at"])
         messages.success(request, f"Saved {len(weights)} dumbbell weight{'s' if len(weights) != 1 else ''}.")
@@ -1513,7 +1539,7 @@ def set_dumbbells(request):
 @require_POST
 def set_ftp(request):
     ftp_val = request.POST.get("ftp", "").strip()
-    settings_obj = UserSettings.get()
+    settings_obj = UserSettings.for_user(request.user)
     if ftp_val:
         try:
             settings_obj.ftp = max(1, int(ftp_val))
@@ -1544,7 +1570,7 @@ def calendar_view(request, year=None, month=None):
     next_month_first = month_end + datetime.timedelta(days=1)
 
     # Query with a one-day buffer on each side to catch workouts that straddle midnight UTC.
-    workouts_qs = CachedWorkout.objects.filter(
+    workouts_qs = CachedWorkout.objects.for_user(request.user).filter(
         created_at__date__gte=first_of_month - datetime.timedelta(days=1),
         created_at__date__lte=month_end + datetime.timedelta(days=1),
     ).values("workout_id", "discipline", "created_at", "duration_seconds", "title")
@@ -1557,13 +1583,13 @@ def calendar_view(request, year=None, month=None):
 
     stats_by_date = {
         s.date: s
-        for s in DailyStats.objects.filter(date__gte=first_of_month, date__lte=month_end)
+        for s in DailyStats.objects.for_user(request.user).filter(date__gte=first_of_month, date__lte=month_end)
     }
 
     # Nutrition status per day (for calendar dots)
     from .nutrition import compute_macro_targets
-    nutrition_profile = NutritionProfile.objects.filter(pk=1).first()
-    nutrition_targets = compute_macro_targets(nutrition_profile) if nutrition_profile else None
+    nutrition_profile = NutritionProfile.objects.filter(user=request.user).first()
+    nutrition_targets = compute_macro_targets(request.user, nutrition_profile) if nutrition_profile else None
     cal_t = nutrition_targets.get("calories") if nutrition_targets else None
     prot_t = nutrition_targets.get("protein_g") if nutrition_targets else None
     fiber_t = nutrition_targets.get("fiber_g") if nutrition_targets else None
@@ -1604,7 +1630,7 @@ def calendar_view(request, year=None, month=None):
     used_disciplines = {w["discipline"] for ws in workouts_by_date.values() for w in ws}
     legend_colors = {d: c for d, c in DISCIPLINE_COLORS.items() if d in used_disciplines}
 
-    today_stats, _ = DailyStats.objects.get_or_create(date=today)
+    today_stats, _ = DailyStats.objects.get_or_create(user=request.user, date=today)
     next_workout_rec = today_stats.ai_next_workout or None
 
     return render(request, "workouts/calendar.html", {
@@ -1635,16 +1661,16 @@ def day_view(request, date_str):
         raise Http404
 
     workouts = list(
-        CachedWorkout.objects.filter(created_at__date=day).order_by("created_at")
+        CachedWorkout.objects.for_user(request.user).filter(created_at__date=day).order_by("created_at")
     )
 
-    stats, created = DailyStats.objects.get_or_create(date=day)
+    stats, created = DailyStats.objects.get_or_create(user=request.user, date=day)
     is_today = (day == datetime.date.today())
     stale = (
         stats.synced_at is None or
         (is_today and (timezone.now() - stats.synced_at).total_seconds() > 7200)
     )
-    if (created or stale) and _integration_enabled("garmin"):
+    if (created or stale) and request.user.is_superuser and _integration_enabled(request.user, "garmin"):
         try:
             client = _garmin_client()
             data = client.get_wellness_data(date_str)
@@ -1655,7 +1681,7 @@ def day_view(request, date_str):
         except Exception as e:
             logger.warning("Day view wellness sync failed for %s: %s", date_str, e)
 
-    ai_analysis = _get_or_generate_day_analysis(day, workouts, stats)
+    ai_analysis = _get_or_generate_day_analysis(request.user, day, workouts, stats)
 
     today = datetime.date.today()
     prev_day = day - datetime.timedelta(days=1)
@@ -1663,9 +1689,9 @@ def day_view(request, date_str):
 
     # Nutrition for this day
     from .nutrition import compute_macro_targets
-    nutrition_entries = list(FoodEntry.objects.filter(date=day).order_by("logged_at"))
-    nutrition_profile = NutritionProfile.objects.filter(pk=1).first()
-    nutrition_targets = compute_macro_targets(nutrition_profile) if nutrition_profile else None
+    nutrition_entries = list(FoodEntry.objects.for_user(request.user).filter(date=day).order_by("logged_at"))
+    nutrition_profile = NutritionProfile.objects.filter(user=request.user).first()
+    nutrition_targets = compute_macro_targets(request.user, nutrition_profile) if nutrition_profile else None
     nutrition_totals = None
     if nutrition_entries:
         nutrition_totals = {
@@ -1709,7 +1735,7 @@ def interventions_list(request):
             try:
                 start = datetime.date.fromisoformat(start_str)
                 end   = datetime.date.fromisoformat(end_str) if end_str else None
-                iv = Intervention.objects.create(
+                iv = Intervention.objects.create(user=request.user,
                     name=name, category=category,
                     start_date=start, end_date=end,
                     notes=notes, expected_effects=effects,
@@ -1725,7 +1751,7 @@ def interventions_list(request):
                 pass
         return redirect("interventions")
 
-    all_ivs  = Intervention.objects.all()
+    all_ivs  = Intervention.objects.for_user(request.user).all()
     active   = [iv for iv in all_ivs if iv.is_active]
     ended    = [iv for iv in all_ivs if not iv.is_active]
     return render(request, "workouts/interventions.html", {
@@ -1736,7 +1762,7 @@ def interventions_list(request):
 
 
 def intervention_edit(request, pk):
-    iv = get_object_or_404(Intervention, pk=pk)
+    iv = get_object_or_404(Intervention.objects.for_user(request.user), pk=pk)
     if request.method == "POST":
         iv.name     = request.POST.get("name", iv.name).strip()
         iv.category = request.POST.get("category", iv.category)
@@ -1761,7 +1787,7 @@ def intervention_edit(request, pk):
 def intervention_end(request, pk):
     if request.method != "POST":
         return redirect("interventions")
-    iv = get_object_or_404(Intervention, pk=pk)
+    iv = get_object_or_404(Intervention.objects.for_user(request.user), pk=pk)
     if iv.end_date is None:
         iv.end_date = datetime.date.today()
     else:
@@ -1773,14 +1799,14 @@ def intervention_end(request, pk):
 def intervention_delete(request, pk):
     if request.method != "POST":
         return redirect("interventions")
-    iv = get_object_or_404(Intervention, pk=pk)
+    iv = get_object_or_404(Intervention.objects.for_user(request.user), pk=pk)
     iv.delete()
     return redirect("interventions")
 
 
 def intervention_detail(request, pk):
     from .models import DoseChange
-    intervention = get_object_or_404(Intervention, pk=pk)
+    intervention = get_object_or_404(Intervention.objects.for_user(request.user), pk=pk)
     dose_changes = intervention.dose_changes.order_by("-start_date")
 
     if request.method == "POST":
@@ -1861,7 +1887,7 @@ def intervention_detail(request, pk):
 def intervention_quick_dose(request, pk):
     """POST: add a new dose change, auto-end previous. Returns redirect to list."""
     from .models import DoseChange
-    intervention = get_object_or_404(Intervention, pk=pk)
+    intervention = get_object_or_404(Intervention.objects.for_user(request.user), pk=pk)
     if request.method == "POST":
         dose = request.POST.get("dose", "").strip()
         start_str = request.POST.get("start_date", str(datetime.date.today()))
@@ -1900,7 +1926,7 @@ def body_view(request):
     today   = datetime.date.today()
     cutoff  = today - datetime.timedelta(days=range_days)
     stats_qs = list(
-        DailyStats.objects.filter(date__gte=cutoff, date__lte=today)
+        DailyStats.objects.for_user(request.user).filter(date__gte=cutoff, date__lte=today)
         .order_by("date")
     )
 
@@ -1943,7 +1969,7 @@ def body_view(request):
 
     # Intervention annotations within range
     from django.db.models import Q as DQ
-    ivs_in_range = Intervention.objects.filter(
+    ivs_in_range = Intervention.objects.for_user(request.user).filter(
         start_date__gte=cutoff,
         start_date__lte=today,
     ).order_by("start_date")
@@ -1968,7 +1994,7 @@ def body_view(request):
     # Dose-change annotations within range
     from .models import DoseChange
     dose_annotations = []
-    for iv in Intervention.objects.filter(
+    for iv in Intervention.objects.for_user(request.user).filter(
         start_date__lte=today
     ).filter(
         DQ(end_date__gte=cutoff) | DQ(end_date__isnull=True)
@@ -1985,7 +2011,7 @@ def body_view(request):
     dose_annotations_json = json.dumps(dose_annotations)
 
     # Active interventions for sidebar
-    active_ivs = [iv for iv in Intervention.objects.all() if iv.is_active]
+    active_ivs = [iv for iv in Intervention.objects.for_user(request.user).all() if iv.is_active]
 
     # Current stats (latest available)
     current_weight  = next((s.weight_lb for s in reversed(stats_qs) if s.weight_lb), None)
@@ -2006,11 +2032,11 @@ def body_view(request):
 
     # Recent symptoms (last 3 days)
     three_days_ago = today - datetime.timedelta(days=2)
-    recent_symptoms = list(SideEffectLog.objects.filter(date__gte=three_days_ago).order_by("-timestamp")[:10])
+    recent_symptoms = list(SideEffectLog.objects.for_user(request.user).filter(date__gte=three_days_ago).order_by("-timestamp")[:10])
 
     # Pattern insight headline — extract the "Highest-confidence pattern" from cached insights
     pattern_insight_headline = None
-    _ps = UserSettings.get()
+    _ps = UserSettings.for_user(request.user)
     if _ps.ai_pattern_insights:
         for line in _ps.ai_pattern_insights.splitlines():
             line = line.strip()
@@ -2021,15 +2047,15 @@ def body_view(request):
                 break
 
     # Body commentary
-    commentary = _get_or_generate_body_commentary()
+    commentary = _get_or_generate_body_commentary(request.user)
 
     # Nutrition 7-day summary for body page card
     from .nutrition import compute_macro_targets
-    nutrition_profile = NutritionProfile.objects.filter(pk=1).first()
-    nutrition_targets = compute_macro_targets(nutrition_profile) if nutrition_profile else None
+    nutrition_profile = NutritionProfile.objects.filter(user=request.user).first()
+    nutrition_targets = compute_macro_targets(request.user, nutrition_profile) if nutrition_profile else None
     week_ago_date = today - datetime.timedelta(days=6)
     nutrition_week = list(
-        DailyStats.objects.filter(date__gte=week_ago_date, date__lte=today)
+        DailyStats.objects.for_user(request.user).filter(date__gte=week_ago_date, date__lte=today)
         .exclude(cal_total__isnull=True)
         .values("date", "cal_total", "protein_g_total", "fiber_g_total")
     )
@@ -2066,7 +2092,7 @@ def body_view(request):
 
 
 def intervention_analysis_view(request):
-    all_interventions = Intervention.objects.all().order_by("-start_date")
+    all_interventions = Intervention.objects.for_user(request.user).all().order_by("-start_date")
     interventions_data = []
     for iv in all_interventions:
         doses = list(iv.dose_changes.order_by("start_date").values("id", "dose", "start_date", "end_date"))
@@ -2085,7 +2111,7 @@ def intervention_analysis_view(request):
                 for d in doses
             ],
         })
-    saved_analyses = SavedAnalysis.objects.all().order_by("-created_at")[:20]
+    saved_analyses = SavedAnalysis.objects.for_user(request.user).all().order_by("-created_at")[:20]
     return render(request, "workouts/intervention_analysis.html", {
         "interventions": all_interventions,
         "interventions_data": json.dumps(interventions_data),
@@ -2127,6 +2153,7 @@ def run_analysis_api(request):
     from .analysis import run_intervention_analysis
     from .nutrition import get_nutrition_gap
     result = run_intervention_analysis(
+        request.user,
         before_start=before_start,
         before_end=before_end,
         after_start=after_start,
@@ -2137,8 +2164,8 @@ def run_analysis_api(request):
 
     # Nutrition data gap warning
     result["nutrition_gaps"] = {
-        "before": get_nutrition_gap(before_start, before_end),
-        "after": get_nutrition_gap(after_start, after_end),
+        "before": get_nutrition_gap(request.user, before_start, before_end),
+        "after": get_nutrition_gap(request.user, after_start, after_end),
     }
 
     # Convert dates to strings for JSON serialisation
@@ -2185,7 +2212,7 @@ def save_analysis_api(request):
     intervention = None
     if iv_id:
         try:
-            intervention = Intervention.objects.get(pk=int(iv_id))
+            intervention = Intervention.objects.for_user(request.user).get(pk=int(iv_id))
         except (Intervention.DoesNotExist, ValueError):
             pass
 
@@ -2195,6 +2222,7 @@ def save_analysis_api(request):
 
     if before_start and before_end and after_start and after_end:
         analysis_result = run_intervention_analysis(
+            request.user,
             before_start=before_start,
             before_end=before_end,
             after_start=after_start,
@@ -2206,13 +2234,14 @@ def save_analysis_api(request):
         analysis_result["after_start"]  = after_start
         analysis_result["after_end"]    = after_end
 
-        iv_ctx = _interventions_context(before_start, after_end) if before_start and after_end else ""
+        iv_ctx = _interventions_context(request.user, before_start, after_end) if before_start and after_end else ""
         from .nutrition import get_nutrition_gap
         n_gaps = {
-            "before": get_nutrition_gap(before_start, before_end),
-            "after": get_nutrition_gap(after_start, after_end),
+            "before": get_nutrition_gap(request.user, before_start, before_end),
+            "after": get_nutrition_gap(request.user, after_start, after_end),
         }
         ai_text = _generate_intervention_interpretation(
+            request.user,
             analysis_result,
             intervention=intervention,
             interventions_context_str=iv_ctx,
@@ -2221,7 +2250,7 @@ def save_analysis_api(request):
     else:
         ai_text = ""
 
-    sa = SavedAnalysis.objects.create(
+    sa = SavedAnalysis.objects.create(user=request.user,
         label=label,
         intervention=intervention,
         before_start=before_start or datetime.date.today(),
@@ -2238,12 +2267,12 @@ def save_analysis_api(request):
 
 
 def saved_analysis_detail(request, pk):
-    sa = get_object_or_404(SavedAnalysis, pk=pk)
+    sa = get_object_or_404(SavedAnalysis.objects.for_user(request.user), pk=pk)
     return render(request, "workouts/saved_analysis_detail.html", {"sa": sa})
 
 
 def saved_analysis_delete(request, pk):
-    sa = get_object_or_404(SavedAnalysis, pk=pk)
+    sa = get_object_or_404(SavedAnalysis.objects.for_user(request.user), pk=pk)
     if request.method == "POST":
         sa.delete()
     return redirect("body")
@@ -2264,11 +2293,11 @@ def nutrition_page(request):
         page_date = datetime.date.today()
 
     today = datetime.date.today()
-    profile = NutritionProfile.objects.filter(pk=1).first()
-    targets = compute_macro_targets(profile) if profile else None
+    profile = NutritionProfile.objects.filter(user=request.user).first()
+    targets = compute_macro_targets(request.user, profile) if profile else None
 
-    entries = list(FoodEntry.objects.filter(date=page_date))
-    totals = FoodEntry.objects.filter(date=page_date).aggregate(
+    entries = list(FoodEntry.objects.for_user(request.user).filter(date=page_date))
+    totals = FoodEntry.objects.for_user(request.user).filter(date=page_date).aggregate(
         cal=Sum("calories"),
         prot=Sum("protein_g"),
         carbs=Sum("carbs_g"),
@@ -2276,19 +2305,19 @@ def nutrition_page(request):
         fiber=Sum("fiber_g"),
     )
 
-    saved_meals = list(SavedMeal.objects.all()[:25])
-    satisfying_meals = get_satisfying_meals(min_occurrences=3, top_n=5)
+    saved_meals = list(SavedMeal.objects.for_user(request.user).all()[:25])
+    satisfying_meals = get_satisfying_meals(request.user, min_occurrences=3, top_n=5)
 
     # Streaks (today-relative only)
-    streaks = compute_streaks(reference_date=today) if page_date == today else None
+    streaks = compute_streaks(request.user, reference_date=today) if page_date == today else None
 
     # Weekly summary
-    weekly = get_weekly_stats(page_date, targets=targets)
+    weekly = get_weekly_stats(request.user, page_date, targets=targets)
 
     # Yesterday recap — shown only when today has no entries yet
     yesterday_recap = None
     if page_date == today and not entries:
-        yesterday_recap = get_yesterday_recap(today, targets=targets)
+        yesterday_recap = get_yesterday_recap(request.user, today, targets=targets)
 
     def _rem(target_key, total_key):
         t = targets.get(target_key) if targets else None
@@ -2327,7 +2356,7 @@ def nutrition_page(request):
 def nutrition_targets_page(request):
     from .nutrition import compute_macro_targets
 
-    profile = NutritionProfile.get()
+    profile = NutritionProfile.for_user(request.user)
 
     if request.method == "POST":
         def _float(key, default=None):
@@ -2359,15 +2388,15 @@ def nutrition_targets_page(request):
         profile.save()
         return redirect("nutrition_targets")
 
-    targets = compute_macro_targets(profile)
+    targets = compute_macro_targets(request.user, profile)
 
     from .nutrition import evaluate_target_fit
     try:
-        fit = evaluate_target_fit()
+        fit = evaluate_target_fit(request.user)
     except Exception:
         fit = None
 
-    adjustments = TargetAdjustment.objects.order_by("-timestamp")[:10]
+    adjustments = TargetAdjustment.objects.for_user(request.user).order_by("-timestamp")[:10]
 
     activ_choices = [
         ("sedentary",   "Sedentary (desk job, little exercise)"),
@@ -2435,10 +2464,10 @@ def nutrition_parse_api(request):
         })
 
     saved_meals_data = list(
-        SavedMeal.objects.values("name", "calories", "protein_g", "carbs_g", "fat_g", "fiber_g")
+        SavedMeal.objects.for_user(request.user).values("name", "calories", "protein_g", "carbs_g", "fat_g", "fiber_g")
     )
     result = parse_food_text(
-        raw_text, meal,
+        request.user, raw_text, meal,
         saved_meals=saved_meals_data,
         image_b64=image_b64,
         image_media_type=image_media_type,
@@ -2498,7 +2527,7 @@ def nutrition_log_api(request):
     if not items:
         return redirect(f"/nutrition/?date={entry_date.isoformat()}")
 
-    entry = FoodEntry.objects.create(
+    entry = FoodEntry.objects.create(user=request.user,
         date=entry_date,
         meal=request.POST.get("meal", ""),
         raw_text=request.POST.get("raw_text", ""),
@@ -2512,7 +2541,7 @@ def nutrition_log_api(request):
         ai_confidence=request.POST.get("ai_confidence", ""),
         edited_by_user=request.POST.get("edited_by_user", "") == "1",
     )
-    recompute_daily_nutrition(entry_date)
+    recompute_daily_nutrition(request.user, entry_date)
 
     from .sync import _push_food_entry_to_google_health
     _push_food_entry_to_google_health(entry)
@@ -2528,13 +2557,13 @@ def nutrition_delete_api(request, pk):
 
     from .nutrition import recompute_daily_nutrition
 
-    entry = get_object_or_404(FoodEntry, pk=pk)
+    entry = get_object_or_404(FoodEntry.objects.for_user(request.user), pk=pk)
     entry_date = entry.date
     if entry.google_health_nutrition_log_name:
         from .sync import _delete_food_entry_from_google_health
-        _delete_food_entry_from_google_health(entry.google_health_nutrition_log_name)
+        _delete_food_entry_from_google_health(request.user, entry.google_health_nutrition_log_name)
     entry.delete()
-    recompute_daily_nutrition(entry_date)
+    recompute_daily_nutrition(request.user, entry_date)
 
     return redirect(f"/nutrition/?date={entry_date.isoformat()}")
 
@@ -2552,8 +2581,8 @@ def nutrition_suggest_api(request):
     except ValueError:
         page_date = datetime.date.today()
 
-    profile = NutritionProfile.objects.filter(pk=1).first()
-    targets = compute_macro_targets(profile) if profile else None
+    profile = NutritionProfile.objects.filter(user=request.user).first()
+    targets = compute_macro_targets(request.user, profile) if profile else None
 
     if not targets:
         return render(request, "workouts/partials/nutrition_suggestions.html", {
@@ -2561,7 +2590,7 @@ def nutrition_suggest_api(request):
             "page_date": page_date,
         })
 
-    totals = FoodEntry.objects.filter(date=page_date).aggregate(
+    totals = FoodEntry.objects.for_user(request.user).filter(date=page_date).aggregate(
         cal=Sum("calories"),
         prot=Sum("protein_g"),
         carbs=Sum("carbs_g"),
@@ -2578,7 +2607,7 @@ def nutrition_suggest_api(request):
     remaining_fat    = _rem("fat_g",     "fat")
     remaining_fiber  = _rem("fiber_g",   "fiber")
 
-    meals_today = list(FoodEntry.objects.filter(date=page_date).values_list("meal", flat=True))
+    meals_today = list(FoodEntry.objects.for_user(request.user).filter(date=page_date).values_list("meal", flat=True))
     meal_summary = ", ".join(m or "log" for m in meals_today) if meals_today else "none"
 
     now_hour = dt_mod.datetime.now().hour
@@ -2596,7 +2625,7 @@ def nutrition_suggest_api(request):
     # Recent meals (last 3 days) to avoid repeat suggestions
     recent_3d = page_date - datetime.timedelta(days=3)
     recent_meal_names = list(
-        FoodEntry.objects.filter(date__gte=recent_3d, date__lte=page_date)
+        FoodEntry.objects.for_user(request.user).filter(date__gte=recent_3d, date__lte=page_date)
         .exclude(raw_text="")
         .order_by("-logged_at")
         .values_list("raw_text", flat=True)[:10]
@@ -2605,24 +2634,24 @@ def nutrition_suggest_api(request):
     # Top foods from last 30 days for familiarity context
     from .nutrition import get_top_foods as _get_top_foods
     top_foods_data = _get_top_foods(
-        page_date - datetime.timedelta(days=30), page_date, top_n=8
+        request.user, page_date - datetime.timedelta(days=30), page_date, top_n=8
     )
 
     # Most recent hunger check within 4 hours
     from .models import HungerCheck, SideEffectLog
     hunger_cutoff = dt_mod.datetime.now() - dt_mod.timedelta(hours=4)
-    recent_hunger = HungerCheck.objects.filter(timestamp__gte=hunger_cutoff).order_by("-timestamp").first()
+    recent_hunger = HungerCheck.objects.for_user(request.user).filter(timestamp__gte=hunger_cutoff).order_by("-timestamp").first()
     current_hunger = recent_hunger.hunger_level if recent_hunger else None
 
     # GI symptoms (nausea or bloating) in last 24 hours
     gi_cutoff = dt_mod.datetime.now() - dt_mod.timedelta(hours=24)
-    gi_symptoms = SideEffectLog.objects.filter(
+    gi_symptoms = SideEffectLog.objects.for_user(request.user).filter(
         timestamp__gte=gi_cutoff,
         symptom__in=["nausea", "bloating"],
     ).exists()
 
     result = suggest_meals(
-        remaining_cal, remaining_prot, remaining_carbs, remaining_fat, remaining_fiber,
+        request.user, remaining_cal, remaining_prot, remaining_carbs, remaining_fat, remaining_fiber,
         meal_summary, time_of_day,
         recent_meals=recent_meal_names,
         top_foods=top_foods_data,
@@ -2644,10 +2673,10 @@ def nutrition_save_meal_api(request, pk):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 
-    entry = get_object_or_404(FoodEntry, pk=pk)
+    entry = get_object_or_404(FoodEntry.objects.for_user(request.user), pk=pk)
     name = request.POST.get("name", "").strip() or entry.raw_text[:100]
 
-    sm, _ = SavedMeal.objects.get_or_create(
+    sm, _ = SavedMeal.objects.get_or_create(user=request.user,
         name=name,
         defaults=dict(
             meal=entry.meal,
@@ -2660,7 +2689,7 @@ def nutrition_save_meal_api(request, pk):
         ),
     )
     from django.db.models import Q
-    FoodEntry.objects.filter(
+    FoodEntry.objects.for_user(request.user).filter(
         Q(pk=entry.pk) | Q(source_saved_meal=sm) | Q(raw_text=sm.name)
     ).update(is_favorite=True, source_saved_meal=sm)
     return redirect(f"/nutrition/?date={entry.date.isoformat()}")
@@ -2674,7 +2703,7 @@ def nutrition_relog_api(request, pk):
 
     from .nutrition import recompute_daily_nutrition
 
-    saved = get_object_or_404(SavedMeal, pk=pk)
+    saved = get_object_or_404(SavedMeal.objects.for_user(request.user), pk=pk)
     date_str = request.POST.get("date", "")
     try:
         entry_date = datetime.date.fromisoformat(date_str) if date_str else datetime.date.today()
@@ -2698,7 +2727,7 @@ def nutrition_relog_api(request, pk):
 
     raw_text = saved.name if portion == 1.0 else f"{saved.name} ({portion * 100:.0f}% serving)"
 
-    entry = FoodEntry.objects.create(
+    entry = FoodEntry.objects.create(user=request.user,
         date=entry_date,
         meal=saved.meal,
         raw_text=raw_text,
@@ -2713,7 +2742,7 @@ def nutrition_relog_api(request, pk):
     )
     saved.times_logged = (saved.times_logged or 0) + 1
     saved.save(update_fields=["times_logged"])
-    recompute_daily_nutrition(entry_date)
+    recompute_daily_nutrition(request.user, entry_date)
 
     from .sync import _push_food_entry_to_google_health
     _push_food_entry_to_google_health(entry)
@@ -2726,8 +2755,8 @@ def nutrition_delete_meal_api(request, pk):
     from django.http import HttpResponseNotAllowed
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    meal = get_object_or_404(SavedMeal, pk=pk)
-    FoodEntry.objects.filter(source_saved_meal=meal).update(is_favorite=False, source_saved_meal=None)
+    meal = get_object_or_404(SavedMeal.objects.for_user(request.user), pk=pk)
+    FoodEntry.objects.for_user(request.user).filter(source_saved_meal=meal).update(is_favorite=False, source_saved_meal=None)
     meal.delete()
     return redirect("nutrition")
 
@@ -2747,7 +2776,7 @@ def nutrition_save_suggestion_api(request):
         except (TypeError, ValueError):
             return 0.0
 
-    SavedMeal.objects.get_or_create(
+    SavedMeal.objects.get_or_create(user=request.user,
         name=name,
         defaults={
             "calories": _f("calories"),
@@ -2762,14 +2791,14 @@ def nutrition_save_suggestion_api(request):
 
 def nutrition_entry_row_api(request, pk):
     """GET — return the read-only table row partial for a FoodEntry (used by edit cancel)."""
-    entry = get_object_or_404(FoodEntry, pk=pk)
+    entry = get_object_or_404(FoodEntry.objects.for_user(request.user), pk=pk)
     return render(request, "workouts/partials/nutrition_entry_row.html", {"entry": entry})
 
 
 def nutrition_edit_api(request, pk):
     """GET — return edit row partial; POST — save edits and redirect."""
     from .nutrition import recompute_daily_nutrition
-    entry = get_object_or_404(FoodEntry, pk=pk)
+    entry = get_object_or_404(FoodEntry.objects.for_user(request.user), pk=pk)
 
     if request.method == "POST":
         entry.meal = request.POST.get("meal", "")
@@ -2783,7 +2812,7 @@ def nutrition_edit_api(request, pk):
         entry.fiber_g = _safe_float(request.POST.get("fiber_g"))
         entry.edited_by_user = True
         entry.save()
-        recompute_daily_nutrition(entry.date)
+        recompute_daily_nutrition(request.user, entry.date)
         return redirect(f"/nutrition/?date={entry.date.isoformat()}")
 
     return render(request, "workouts/partials/nutrition_edit_row.html", {
@@ -2815,8 +2844,8 @@ def nutrition_analytics_page(request):
     today = datetime.date.today()
     start = today - datetime.timedelta(days=range_days - 1)
 
-    profile = NutritionProfile.objects.filter(pk=1).first()
-    targets = compute_macro_targets(profile) if profile else None
+    profile = NutritionProfile.objects.filter(user=request.user).first()
+    targets = compute_macro_targets(request.user, profile) if profile else None
 
     cal_t = targets.get("calories") if targets else None
     prot_t = targets.get("protein_g") if targets else None
@@ -2824,7 +2853,7 @@ def nutrition_analytics_page(request):
 
     # All logged DailyStats in range
     stats_qs = list(
-        DailyStats.objects.filter(date__gte=start, date__lte=today, cal_total__isnull=False)
+        DailyStats.objects.for_user(request.user).filter(date__gte=start, date__lte=today, cal_total__isnull=False)
         .order_by("date")
     )
     total_days = range_days
@@ -2869,14 +2898,14 @@ def nutrition_analytics_page(request):
     ]
 
     # Day of week patterns
-    dow_stats = get_day_of_week_stats(start, today)
+    dow_stats = get_day_of_week_stats(request.user, start, today)
 
     # Top foods
-    top_foods = get_top_foods(start, today, top_n=15)
+    top_foods = get_top_foods(request.user, start, today, top_n=15)
 
     # Hunger trend data
     hunger_qs = (
-        HungerCheck.objects.filter(date__gte=start, date__lte=today)
+        HungerCheck.objects.for_user(request.user).filter(date__gte=start, date__lte=today)
         .values("date", "context", "hunger_level", "fullness_level")
         .order_by("date")
     )
@@ -2906,7 +2935,7 @@ def nutrition_analytics_page(request):
 
     # Symptom summary
     symptom_summary = list(
-        SideEffectLog.objects.filter(date__gte=start, date__lte=today)
+        SideEffectLog.objects.for_user(request.user).filter(date__gte=start, date__lte=today)
         .values("symptom")
         .annotate(count=Count("id"), avg_sev=Avg("severity"))
         .order_by("-count")
@@ -2915,7 +2944,7 @@ def nutrition_analytics_page(request):
     # AI insights — auto-submit batch if cache is stale and no batch already pending
     import os as _os
     from .ai import _submit_nutrition_insights_batch
-    _s = UserSettings.get()
+    _s = UserSettings.for_user(request.user)
     _api_key = _os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if _api_key and not _s.ai_nutrition_insights_batch_id:
         _stale = (
@@ -2924,7 +2953,7 @@ def nutrition_analytics_page(request):
         )
         if _stale:
             try:
-                _submit_nutrition_insights_batch(range_days=range_days)
+                _submit_nutrition_insights_batch(request.user, range_days=range_days)
                 _s.refresh_from_db()
             except Exception as _e:
                 logger.warning("Auto nutrition insights batch submit failed: %s", _e)
@@ -2968,6 +2997,15 @@ def nutrition_analytics_page(request):
 # Hunger logging (Part 1)
 # ---------------------------------------------------------------------------
 
+def _owned_or_none(model, user, pk):
+    """The user's row with this pk (from a POST body), or None if the pk is
+    blank, malformed, or belongs to someone else."""
+    try:
+        return model.objects.for_user(user).filter(pk=int(pk)).first() if pk else None
+    except (TypeError, ValueError):
+        return None
+
+
 def hunger_log_api(request):
     """POST — log a HungerCheck. Returns JSON {ok, id, avg_morning}."""
     if request.method != "POST":
@@ -2982,20 +3020,23 @@ def hunger_log_api(request):
         fullness = request.POST.get("fullness_level", "")
         notes = request.POST.get("notes", "").strip()
         meal_pk = request.POST.get("related_meal_id", "")
+        related_meal = _owned_or_none(FoodEntry, request.user, meal_pk)
+        if meal_pk and related_meal is None:
+            return JsonResponse({"ok": False, "error": "unknown meal"}, status=400)
 
         today = datetime.date.today()
-        hc = HungerCheck.objects.create(
+        hc = HungerCheck.objects.create(user=request.user,
             date=today,
             context=context,
             hunger_level=level,
             fullness_level=int(fullness) if fullness else None,
-            related_meal_id=int(meal_pk) if meal_pk else None,
+            related_meal=related_meal,
             notes=notes,
         )
 
         # 7-day avg morning hunger for the widget summary line
         week_ago = today - datetime.timedelta(days=6)
-        morning_checks = HungerCheck.objects.filter(
+        morning_checks = HungerCheck.objects.for_user(request.user).filter(
             date__gte=week_ago, date__lte=today, context="morning"
         )
         avg_morning = None
@@ -3029,16 +3070,20 @@ def symptoms_page(request):
 
             if not symptom or severity not in (1, 2, 3):
                 return JsonResponse({"ok": False, "error": "symptom and severity required"}, status=400)
+            related_meal = _owned_or_none(FoodEntry, request.user, meal_pk)
+            related_intervention = _owned_or_none(Intervention, request.user, iv_pk)
+            if (meal_pk and related_meal is None) or (iv_pk and related_intervention is None):
+                return JsonResponse({"ok": False, "error": "unknown meal or intervention"}, status=400)
 
             today = datetime.date.today()
-            SideEffectLog.objects.create(
+            SideEffectLog.objects.create(user=request.user,
                 date=today,
                 symptom=symptom,
                 other_label=other_label if symptom == "other" else "",
                 severity=severity,
                 notes=notes,
-                related_meal_id=int(meal_pk) if meal_pk else None,
-                related_intervention_id=int(iv_pk) if iv_pk else None,
+                related_meal=related_meal,
+                related_intervention=related_intervention,
             )
             return JsonResponse({"ok": True})
         except Exception as e:
@@ -3047,12 +3092,12 @@ def symptoms_page(request):
 
     # GET — show page
     cutoff_30 = datetime.date.today() - datetime.timedelta(days=29)
-    recent = list(SideEffectLog.objects.filter(date__gte=cutoff_30).order_by("-timestamp")[:50])
+    recent = list(SideEffectLog.objects.for_user(request.user).filter(date__gte=cutoff_30).order_by("-timestamp")[:50])
 
     # Summary: counts by symptom last 30 days
     from django.db.models import Count as _Count
     summary = (
-        SideEffectLog.objects.filter(date__gte=cutoff_30)
+        SideEffectLog.objects.for_user(request.user).filter(date__gte=cutoff_30)
         .values("symptom")
         .annotate(count=_Count("id"), avg_sev=Avg("severity"))
         .order_by("-count")
@@ -3060,9 +3105,9 @@ def symptoms_page(request):
 
     # Recent meals for the dropdown (last 24 hours)
     day_ago = datetime.datetime.now() - datetime.timedelta(hours=24)
-    recent_meals = FoodEntry.objects.filter(logged_at__gte=day_ago).order_by("-logged_at")[:10]
+    recent_meals = FoodEntry.objects.for_user(request.user).filter(logged_at__gte=day_ago).order_by("-logged_at")[:10]
 
-    active_interventions = Intervention.objects.filter(
+    active_interventions = Intervention.objects.for_user(request.user).filter(
         Q(end_date__isnull=True) | Q(end_date__gte=datetime.date.today())
     ).order_by("name")
 
@@ -3083,7 +3128,7 @@ def insights_page(request):
     """GET — display Sonnet pattern insights. On load, submit batch if cache expired."""
     import os as _os
     from .ai import _submit_pattern_insights_batch
-    settings = UserSettings.get()
+    settings = UserSettings.for_user(request.user)
     _api_key = _os.environ.get("ANTHROPIC_API_KEY", "").strip()
 
     if _api_key and not settings.ai_pattern_insights_batch_id:
@@ -3093,7 +3138,7 @@ def insights_page(request):
         )
         if _stale:
             try:
-                _submit_pattern_insights_batch()
+                _submit_pattern_insights_batch(request.user)
                 settings.refresh_from_db()
             except Exception as e:
                 logger.warning("insights_page: pattern batch submit failed: %s", e)
@@ -3121,13 +3166,13 @@ def target_accept_api(request):
         if not new_cal:
             return JsonResponse({"ok": False, "error": "new_calories required"}, status=400)
 
-        profile = NutritionProfile.get()
+        profile = NutritionProfile.for_user(request.user)
         previous = profile.manual_calories or 0
 
         profile.manual_calories = new_cal
         profile.save(update_fields=["manual_calories", "updated_at"])
 
-        TargetAdjustment.objects.create(
+        TargetAdjustment.objects.create(user=request.user,
             previous_calories=previous,
             new_calories=new_cal,
             reason=reason,
@@ -3150,28 +3195,28 @@ def today_page(request):
     yesterday = today_date - datetime.timedelta(days=1)
 
     # Wellness — try today, fall back to yesterday if today hasn't synced yet
-    daily = DailyStats.objects.filter(date=today_date).first()
+    daily = DailyStats.objects.for_user(request.user).filter(date=today_date).first()
     wellness_is_yesterday = False
     if not daily or not (daily.hrv_last_night or daily.body_battery_start):
-        fallback = DailyStats.objects.filter(date=yesterday).first()
+        fallback = DailyStats.objects.for_user(request.user).filter(date=yesterday).first()
         if fallback and (fallback.hrv_last_night or fallback.body_battery_start):
             daily = fallback
             wellness_is_yesterday = True
 
     # Today's workouts
     todays_workouts = list(
-        CachedWorkout.objects.filter(created_at__date=today_date).order_by("-created_at")
+        CachedWorkout.objects.for_user(request.user).filter(created_at__date=today_date).order_by("-created_at")
     )
 
     # Nutrition progress
     nutrition_targets = None
     nutrition_progress = None
     try:
-        nutrition_targets = compute_macro_targets()
+        nutrition_targets = compute_macro_targets(request.user)
     except Exception:
         pass
 
-    today_food = FoodEntry.objects.filter(date=today_date).aggregate(
+    today_food = FoodEntry.objects.for_user(request.user).filter(date=today_date).aggregate(
         cal=Sum("calories"),
         protein=Sum("protein_g"),
         carbs=Sum("carbs_g"),
@@ -3191,15 +3236,15 @@ def today_page(request):
             v["pct"] = min(round((v["now"] / t) * 100), 100) if t else 0
 
     # Active interventions
-    active_interventions = [i for i in Intervention.objects.all() if i.is_active]
+    active_interventions = [i for i in Intervention.objects.for_user(request.user).all() if i.is_active]
 
     # AI: day analysis (requires DailyStats + workouts) + next workout rec
     day_analysis_text = None
     next_workout_text = None
-    today_stats = DailyStats.objects.filter(date=today_date).first()
+    today_stats = DailyStats.objects.for_user(request.user).filter(date=today_date).first()
     if today_stats:
         try:
-            day_analysis_text = _get_or_generate_day_analysis(today_date, todays_workouts, today_stats)
+            day_analysis_text = _get_or_generate_day_analysis(request.user, today_date, todays_workouts, today_stats)
         except Exception:
             pass
         next_workout_text = today_stats.ai_next_workout or None
@@ -3230,10 +3275,10 @@ def weekly_review_page(request):
         last_monday = today - datetime.timedelta(days=days_since_monday + 7)
 
     force = request.GET.get("refresh") == "1"
-    current_review = _get_or_generate_weekly_review(last_monday, force=force)
+    current_review = _get_or_generate_weekly_review(request.user, last_monday, force=force)
 
     archive = list(
-        WeeklyReview.objects.exclude(week_start=last_monday)
+        WeeklyReview.objects.for_user(request.user).exclude(week_start=last_monday)
         .filter(batch_id__isnull=True)
         .exclude(content="")
         .order_by("-week_start")[:12]
@@ -3316,7 +3361,7 @@ def chat_message_api(request):
     history = request.session.get(session_key, [])
 
     try:
-        answer, updated_history = run_stats_chat(context, history, user_message)
+        answer, updated_history = run_stats_chat(request.user, context, history, user_message)
     except Exception as e:
         logger.warning("Stats chat failed: %s", e)
         return render(request, "workouts/partials/chat_error.html", {

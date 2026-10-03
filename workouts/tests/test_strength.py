@@ -6,14 +6,20 @@ from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from workouts.models import CachedWorkout, UserSettings
+from workouts.models import DEFAULT_DUMBBELLS_LB, CachedWorkout, UserSettings
 from workouts.programs import _workout_exercise_loads
 from workouts.strength import (
     dumbbells, exercise_history, next_dumbbell, prev_dumbbell, recommend, recommendations,
 )
 
 BASE = datetime(2026, 9, 1, 17, 0, tzinfo=dt_tz.utc)
+RACK = list(DEFAULT_DUMBBELLS_LB)
 _n = 0
+
+
+def owner():
+    return get_user_model().objects.get_or_create(
+        username="owner", defaults={"is_superuser": True, "is_staff": True})[0]
 
 
 def session(weight, effort="", timed=False):
@@ -24,7 +30,7 @@ def logged(day, *rows, discipline="circuit"):
     global _n
     _n += 1
     return CachedWorkout.objects.create(
-        workout_id=f"s{_n}", title="45 min Upper Body Pull + Run", discipline=discipline,
+        user=owner(), workout_id=f"s{_n}", title="45 min Upper Body Pull + Run", discipline=discipline,
         created_at=BASE + timedelta(days=day), duration_seconds=2700, manual_movements_json=list(rows),
     )
 
@@ -38,7 +44,7 @@ def row(name, weight, effort="", sets=3, reps=8, notes=""):
 
 class DumbbellStepTests(TestCase):
     def test_steps_through_the_rack(self):
-        rack = dumbbells()   # default rack
+        rack = dumbbells(owner())   # default rack
         self.assertEqual(next_dumbbell(5, rack), 7)
         self.assertEqual(next_dumbbell(12, rack), 15)
         self.assertEqual(next_dumbbell(22, rack), 25)    # off-rack weight rounds to the next real one
@@ -47,18 +53,19 @@ class DumbbellStepTests(TestCase):
         self.assertIsNone(prev_dumbbell(2, rack))
 
     def test_recommendations_follow_the_rack_in_settings(self):
-        UserSettings.objects.update_or_create(pk=1, defaults={"dumbbells_lb": [10, 12.5, 15, 50]})
-        self.assertEqual(recommend([session(12.5, "easy")])["weight"], 15)
-        self.assertEqual(recommend([session(15, "easy")])["weight"], 50)
+        UserSettings.objects.update_or_create(user=owner(), defaults={"dumbbells_lb": [10, 12.5, 15, 50]})
+        rack = dumbbells(owner())
+        self.assertEqual(recommend([session(12.5, "easy")], rack)["weight"], 15)
+        self.assertEqual(recommend([session(15, "easy")], rack)["weight"], 50)
 
 
 class SetDumbbellsTests(TestCase):
     def post(self, value):
         from workouts.views import set_dumbbells
         req = RequestFactory().post("/settings/dumbbells/", {"dumbbells": value})
-        req.session, req._messages = {}, _NoMessages()
+        req.user, req.session, req._messages = owner(), {}, _NoMessages()
         set_dumbbells(req)
-        return UserSettings.get().dumbbells_lb
+        return UserSettings.for_user(owner()).dumbbells_lb
 
     def test_parses_sorts_and_dedupes(self):
         self.assertEqual(self.post("15, 5 10lb 12.5, 5"), [5, 10, 12.5, 15])
@@ -72,46 +79,46 @@ class SetDumbbellsTests(TestCase):
 
 class RecommendTests(TestCase):
     def test_easy_moves_up_one_dumbbell(self):
-        self.assertEqual(recommend([session(12, "easy")]), {
+        self.assertEqual(recommend([session(12, "easy")], RACK), {
             "action": "up", "weight": 15, "current": 12, "reason": "Felt easy"})
 
     def test_just_right_needs_two_in_a_row_at_the_same_weight(self):
-        self.assertEqual(recommend([session(30, "right")])["action"], "hold")
-        self.assertEqual(recommend([session(30, "right"), session(30, "right")])["weight"], 35)
+        self.assertEqual(recommend([session(30, "right")], RACK)["action"], "hold")
+        self.assertEqual(recommend([session(30, "right"), session(30, "right")], RACK)["weight"], 35)
         # a lighter session before doesn't count toward the streak
-        self.assertEqual(recommend([session(25, "right"), session(30, "right")])["action"], "hold")
+        self.assertEqual(recommend([session(25, "right"), session(30, "right")], RACK)["action"], "hold")
 
     def test_hard_holds_and_fail_drops(self):
-        self.assertEqual(recommend([session(30, "hard")])["weight"], 30)
-        rec = recommend([session(30, "fail")])
+        self.assertEqual(recommend([session(30, "hard")], RACK)["weight"], 30)
+        rec = recommend([session(30, "fail")], RACK)
         self.assertEqual((rec["action"], rec["weight"]), ("down", 25))
 
     def test_unrated_moves_up_after_two_sessions_unless_one_was_hard(self):
-        self.assertEqual(recommend([session(20)])["action"], "hold")
-        self.assertEqual(recommend([session(20), session(20)])["weight"], 25)
-        self.assertEqual(recommend([session(20, "hard"), session(20)])["action"], "hold")
+        self.assertEqual(recommend([session(20)], RACK)["action"], "hold")
+        self.assertEqual(recommend([session(20), session(20)], RACK)["weight"], 25)
+        self.assertEqual(recommend([session(20, "hard"), session(20)], RACK)["action"], "hold")
 
     def test_heaviest_dumbbell_is_maxed(self):
-        self.assertEqual(recommend([session(45, "easy")])["action"], "max")
+        self.assertEqual(recommend([session(45, "easy")], RACK)["action"], "max")
 
     def test_bodyweight_gets_nothing_but_weighted_timed_work_does(self):
-        self.assertIsNone(recommend([session(0, "easy")]))
-        self.assertEqual(recommend([session(35, "easy", timed=True)])["weight"], 40)
+        self.assertIsNone(recommend([session(0, "easy")], RACK))
+        self.assertEqual(recommend([session(35, "easy", timed=True)], RACK)["weight"], 40)
 
 
 class HistoryTests(TestCase):
     def test_history_groups_by_name_and_respects_until(self):
         logged(0, row("Bent Over Row", 25, "right"))
         later = logged(7, row("bent over  row", 25, "right"))
-        hist = exercise_history()
+        hist = exercise_history(owner())
         self.assertEqual([s["weight_lb"] for s in hist["bent over row"]["sessions"]], [25, 25])
-        self.assertEqual(recommendations()["bent over row"]["weight"], 30)
-        self.assertEqual(recommendations(until=later.created_at - timedelta(days=1))["bent over row"]["action"], "hold")
+        self.assertEqual(recommendations(owner())["bent over row"]["weight"], 30)
+        self.assertEqual(recommendations(owner(), until=later.created_at - timedelta(days=1))["bent over row"]["action"], "hold")
 
 
 class CardAndSaveTests(TestCase):
     def setUp(self):
-        self.user = get_user_model().objects.create_user("t", password="x")
+        self.user = owner()
 
     def test_save_keeps_effort_and_a_row_with_only_effort(self):
         from workouts.views import save_manual_movements
@@ -140,7 +147,9 @@ class CardAndSaveTests(TestCase):
         from workouts.views import strength_trends
         logged(0, row("Reverse Fly", 12, "easy"), row("Bear Crawl", 0, sets=3, reps=45, notes="seconds"))
         with patch("workouts.views.render", return_value=HttpResponse()) as render:
-            strength_trends(RequestFactory().get("/strength/"))
+            req = RequestFactory().get("/strength/")
+            req.user = owner()
+            strength_trends(req)
         ctx = render.call_args.args[2]
         self.assertEqual([x["name"] for x in ctx["weighted"]], ["Reverse Fly"])
         self.assertEqual([x["name"] for x in ctx["unweighted"]], ["Bear Crawl"])

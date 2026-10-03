@@ -6,6 +6,7 @@ from django.utils.text import slugify
 
 from workouts import programs as P
 from workouts.models import CachedWorkout, Program, ProgramWorkout, RunWeek
+from workouts.management.user_arg import add_user_argument, resolve_user
 
 
 class Command(BaseCommand):
@@ -17,10 +18,12 @@ class Command(BaseCommand):
                             help="Delete existing ProgramWorkout rows first (per --program if given)")
         parser.add_argument("--suggest", action="store_true",
                             help="Print title-suffix plans not yet tracked, don't associate")
+        add_user_argument(parser)
 
     def handle(self, *args, **o):
+        user = resolve_user(o)
         if o["rebuild"]:
-            qs = ProgramWorkout.objects.all()
+            qs = ProgramWorkout.objects.filter(run_week__run__program__user=user)
             if o["program"]:
                 qs = qs.filter(run_week__run__program__slug=o["program"])
             n = qs.count(); qs.delete()
@@ -30,7 +33,8 @@ class Command(BaseCommand):
             # number) is seeded up front and stays even with zero completions — keep
             # it. Everything else that's now empty (extra repeat passes, and every
             # RunWeek for a split, which are always created dynamically) is stale.
-            empty = RunWeek.objects.annotate(n=Count("entries")).filter(n=0).select_related("run__program")
+            empty = (RunWeek.objects.filter(run__program__user=user)
+                     .annotate(n=Count("entries")).filter(n=0).select_related("run__program"))
             if o["program"]:
                 empty = empty.filter(run__program__slug=o["program"])
             removable = [rw.pk for rw in empty
@@ -40,7 +44,7 @@ class Command(BaseCommand):
 
         # date order is essential for fill-or-append to reconstruct weeks correctly
         workouts = sorted(
-            CachedWorkout.objects.all(),
+            CachedWorkout.objects.for_user(user),
             key=lambda w: (P.workout_local_date(w) or date.min),
         )
 
@@ -50,7 +54,7 @@ class Command(BaseCommand):
                 m = P.TITLE_SUFFIX_RE.search(w.title or "")
                 if m and m.group("plan").strip().lower() not in seen:
                     plan = m.group("plan").strip()
-                    if not Program.objects.filter(slug=slugify(plan)).exists():
+                    if not Program.objects.for_user(user).filter(slug=slugify(plan)).exists():
                         seen.add(plan.lower())
                         self.stdout.write(f"  suggested plan: {plan!r}")
             self.stdout.write(self.style.SUCCESS(f"{len(seen)} untracked plan(s) seen"))

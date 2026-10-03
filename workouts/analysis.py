@@ -92,6 +92,7 @@ def _pct_change(before, after):
 
 
 def run_intervention_analysis(
+    user,
     before_start,
     before_end,
     after_start,
@@ -136,8 +137,8 @@ def run_intervention_analysis(
     if after_end > today:
         after_end = today
 
-    before_qs = DailyStats.objects.filter(date__gte=before_start, date__lte=before_end)
-    after_qs  = DailyStats.objects.filter(date__gte=after_start,  date__lte=after_end)
+    before_qs = DailyStats.objects.for_user(user).filter(date__gte=before_start, date__lte=before_end)
+    after_qs  = DailyStats.objects.for_user(user).filter(date__gte=after_start,  date__lte=after_end)
 
     before_n = before_qs.count()
     after_n  = after_qs.count()

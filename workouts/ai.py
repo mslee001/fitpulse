@@ -25,7 +25,7 @@ from django.utils import timezone as tz
 from . import llm
 from .models import CachedWorkout, DailyStats, UserSettings, Intervention
 from .prompt_formats import HEADLINE_BULLETS_FORMAT, INTENSITY_ACTIVITY_REASON_FORMAT
-from .services.chat_tools import CHAT_TOOLS, TOOL_DISPATCH
+from .services.chat_tools import CHAT_TOOLS, build_tool_dispatch
 
 # Stricter headline guidance for the day-analysis prompt only.
 # compare_analysis keeps the looser HEADLINE_BULLETS_FORMAT because a comparison
@@ -68,10 +68,10 @@ def _render_poll_partial(request, template_name, context, status=200):
     return render(request, template_name, context, status=status)
 
 
-def _interventions_context(start_date, end_date) -> str:
+def _interventions_context(user, start_date, end_date) -> str:
     """Human-readable summary of interventions and dose changes overlapping the given date range."""
     from django.db.models import Q
-    overlapping = Intervention.objects.filter(
+    overlapping = Intervention.objects.for_user(user).filter(
         start_date__lte=end_date
     ).filter(
         Q(end_date__gte=start_date) | Q(end_date__isnull=True)
@@ -98,7 +98,7 @@ def _interventions_context(start_date, end_date) -> str:
     return "\n".join(lines)
 
 
-def build_persona_block(date_range=None, *, include_interventions=True) -> str:
+def build_persona_block(user, date_range=None, *, include_interventions=True) -> str:
     """
     One paragraph about the user, built ONLY from data they entered.
     date_range: optional (start_date, end_date) tuple to scope intervention listing.
@@ -106,7 +106,7 @@ def build_persona_block(date_range=None, *, include_interventions=True) -> str:
     work fine without it.
     """
     from .models import AthleteProfile
-    profile = AthleteProfile.get()
+    profile = AthleteProfile.for_user(user)
 
     parts = []
 
@@ -132,17 +132,17 @@ def build_persona_block(date_range=None, *, include_interventions=True) -> str:
     elif include_interventions:
         today = tz.localdate()
         start, end = date_range if date_range else (today, today)
-        iv_ctx = _interventions_context(start, end)
+        iv_ctx = _interventions_context(user, start, end)
         if iv_ctx and "No tracked interventions" not in iv_ctx:
             parts.append("Active interventions/medications affecting this user:\n" + iv_ctx)
 
     return "\n\n".join(parts)
 
 
-def coaching_tone_instruction() -> str:
+def coaching_tone_instruction(user) -> str:
     """Return a short directive matching the user's tone preference."""
     from .models import AthleteProfile
-    tone = AthleteProfile.get().coaching_tone
+    tone = AthleteProfile.for_user(user).coaching_tone
     return {
         "encouraging": "Be encouraging and constructive while staying honest about the data.",
         "direct":      "Be direct and concise. Skip pleasantries.",
@@ -150,10 +150,10 @@ def coaching_tone_instruction() -> str:
     }.get(tone, "")
 
 
-def rehab_flag_for(title: str) -> str:
+def rehab_flag_for(user, title: str) -> str:
     """Return ' [PT/REHAB — not a training session]' if title matches a configured rehab keyword."""
     from .models import AthleteProfile
-    keywords = AthleteProfile.get().rehab_keywords or []
+    keywords = AthleteProfile.for_user(user).rehab_keywords or []
     if not keywords:
         return ""
     lower = (title or "").lower()
@@ -229,9 +229,9 @@ def _delta(new, old, decimals=1):
 # Generic cache wrappers for AI text fields
 # ---------------------------------------------------------------------------
 
-def cached_settings_field(field_name, ttl_hours, generator, *, force=False, extra_save=None):
+def cached_settings_field(user, field_name, ttl_hours, generator, *, force=False, extra_save=None):
     """Read-through cache for UserSettings-backed AI text fields."""
-    settings = UserSettings.get()
+    settings = UserSettings.for_user(user)
     cached = getattr(settings, field_name)
     stamp  = getattr(settings, f"{field_name}_generated_at")
     if not force and cached and stamp:
@@ -323,7 +323,7 @@ def _build_running_section(pace_list, first_p, second_p, avg_incline, avg_dist, 
     } if (pace_list or form_qs) else None
 
 
-def _build_insights_summary():
+def _build_insights_summary(user):
     """Aggregate workout stats into a compact dict for the LLM prompt."""
     import datetime
     from django.db.models import Avg, Count
@@ -338,13 +338,13 @@ def _build_insights_summary():
     cutoff_14d  = now - datetime.timedelta(days=14)
     cutoff_28d  = now - datetime.timedelta(days=28)
 
-    total_all  = CachedWorkout.objects.count()
-    total_365d = CachedWorkout.objects.filter(created_at__gte=cutoff_365d).count()
-    total_90d  = CachedWorkout.objects.filter(created_at__gte=cutoff_90d).count()
+    total_all  = CachedWorkout.objects.for_user(user).count()
+    total_365d = CachedWorkout.objects.for_user(user).filter(created_at__gte=cutoff_365d).count()
+    total_90d  = CachedWorkout.objects.for_user(user).filter(created_at__gte=cutoff_90d).count()
 
     # Discipline breakdown: count + avg duration over the last 90 days
     disc_rows = list(
-        CachedWorkout.objects.filter(created_at__gte=cutoff_90d)
+        CachedWorkout.objects.for_user(user).filter(created_at__gte=cutoff_90d)
         .values("discipline")
         .annotate(count=Count("id"), avg_dur=Avg("duration_seconds"))
         .order_by("-count")
@@ -352,7 +352,7 @@ def _build_insights_summary():
 
     # Running form metrics (populated by Garmin augmentation)
     run_form_qs = list(
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(user)
         .filter(created_at__gte=cutoff_365d, discipline="running")
         .exclude(stride_length_avg__isnull=True)
         .order_by("created_at")
@@ -369,7 +369,7 @@ def _build_insights_summary():
     run_incline_list = []
     run_dist_list    = []
     perf_qs = (
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(user)
         .filter(created_at__gte=cutoff_365d, performance_graph_json__isnull=False)
         .order_by("created_at")
         .values("discipline", "created_at", "duration_seconds", "performance_graph_json")
@@ -410,7 +410,7 @@ def _build_insights_summary():
     cyc_first_cad, cyc_second_cad = _halves(cyc_cadence_list)
     run_first_p, run_second_p     = _halves(run_pace_list)
 
-    ftp = UserSettings.get().ftp
+    ftp = UserSettings.for_user(user).ftp
     avg_pct_ftp = (
         round(sum(cyc_watts_list) / len(cyc_watts_list) / ftp * 100)
         if cyc_watts_list and ftp else None
@@ -421,7 +421,7 @@ def _build_insights_summary():
 
     # Strength — combines Peloton movement tracker + Garmin exercise sets
     str_qs = list(
-        CachedWorkout.objects
+        CachedWorkout.objects.for_user(user)
         .filter(created_at__gte=cutoff_365d, discipline="strength")
         .values("created_at", "source", "exercise_sets_json", "movements", "movement_summary")
         .order_by("created_at")
@@ -529,10 +529,10 @@ def _build_insights_summary():
 
     # Active training days: multiple workouts on one day = one training session
     all_timestamps_90d = list(
-        CachedWorkout.objects.filter(created_at__gte=cutoff_90d).values_list("created_at", flat=True)
+        CachedWorkout.objects.for_user(user).filter(created_at__gte=cutoff_90d).values_list("created_at", flat=True)
     )
     all_timestamps_30d = list(
-        CachedWorkout.objects.filter(created_at__gte=cutoff_30d).values_list("created_at", flat=True)
+        CachedWorkout.objects.for_user(user).filter(created_at__gte=cutoff_30d).values_list("created_at", flat=True)
     )
     active_days_90d = len(set(dt.date() for dt in all_timestamps_90d))
     active_days_30d = len(set(dt.date() for dt in all_timestamps_30d))
@@ -557,7 +557,7 @@ def _build_insights_summary():
     }
 
     disc_rows_30d = list(
-        CachedWorkout.objects.filter(created_at__gte=cutoff_30d)
+        CachedWorkout.objects.for_user(user).filter(created_at__gte=cutoff_30d)
         .values("discipline")
         .annotate(count=Count("id"), avg_dur=Avg("duration_seconds"))
         .order_by("-count")
@@ -571,8 +571,8 @@ def _build_insights_summary():
     }
 
     # Last 7d vs prior 7d workout comparison
-    ts_7d    = list(CachedWorkout.objects.filter(created_at__gte=cutoff_7d).values("created_at", "discipline"))
-    ts_prior = list(CachedWorkout.objects.filter(created_at__gte=cutoff_14d, created_at__lt=cutoff_7d).values("created_at", "discipline"))
+    ts_7d    = list(CachedWorkout.objects.for_user(user).filter(created_at__gte=cutoff_7d).values("created_at", "discipline"))
+    ts_prior = list(CachedWorkout.objects.for_user(user).filter(created_at__gte=cutoff_14d, created_at__lt=cutoff_7d).values("created_at", "discipline"))
     active_days_7d    = len(set(r["created_at"].date() for r in ts_7d))
     active_days_prior = len(set(r["created_at"].date() for r in ts_prior))
 
@@ -606,11 +606,11 @@ def _build_insights_summary():
     # stamp and Google Health's), so filter on the two underlying timestamps directly.
     _has_wellness = Q(synced_at__isnull=False) | Q(google_health_synced_at__isnull=False)
     recent_stats = list(
-        DailyStats.objects.filter(_has_wellness, date__gte=today - datetime.timedelta(days=14))
+        DailyStats.objects.for_user(user).filter(_has_wellness, date__gte=today - datetime.timedelta(days=14))
         .order_by("date")
     )
     prior_stats = list(
-        DailyStats.objects.filter(
+        DailyStats.objects.for_user(user).filter(
             _has_wellness,
             date__gte=today - datetime.timedelta(days=28),
             date__lt=today - datetime.timedelta(days=14),
@@ -651,13 +651,13 @@ def _build_insights_summary():
 
     # Nutrition adherence: last 30 days
     nutrition_stats = list(
-        DailyStats.objects.filter(date__gte=today - datetime.timedelta(days=30))
+        DailyStats.objects.for_user(user).filter(date__gte=today - datetime.timedelta(days=30))
         .values("date", "cal_total", "protein_g_total", "fiber_g_total")
         .order_by("date")
     )
     from workouts.nutrition import compute_macro_targets
     try:
-        targets = compute_macro_targets()
+        targets = compute_macro_targets(user)
         cal_target     = targets.get("calories")
         protein_target = targets.get("protein_g")
         fiber_target   = targets.get("fiber_g")
@@ -728,10 +728,10 @@ def _build_insights_summary():
 
 
 # System prompt and user prompt suffix for the insights batch job.
-def build_insights_system() -> str:
+def build_insights_system(user) -> str:
     """Build the analytics batch system prompt, personalised from AthleteProfile."""
     from .models import AthleteProfile
-    profile = AthleteProfile.get()
+    profile = AthleteProfile.for_user(user)
 
     parts = [
         "You are a fitness coach analyzing workout data for a Peloton and Garmin Connect user. "
@@ -857,7 +857,7 @@ def build_insights_system() -> str:
         "Respond using ## section headers with paragraph text — no bullet points, no intro paragraph."
     )
 
-    tone = coaching_tone_instruction()
+    tone = coaching_tone_instruction(user)
     if tone:
         parts.append(tone)
 
@@ -878,28 +878,29 @@ INSIGHTS_PROMPT_SUFFIX = (
 )
 
 
-def _submit_insights_batch():
+def _submit_insights_batch(user):
     """Submit a new Anthropic batch for insights. Returns the batch ID."""
-    summary = _build_insights_summary()
+    summary = _build_insights_summary(user)
     prompt = (
         "Here is my workout data from Peloton and Garmin Connect for the past year:\n\n"
         + json.dumps(summary, indent=2)
         + INSIGHTS_PROMPT_SUFFIX
     )
-    return llm.submit_batch("peloton-insights", prompt, model=llm.SONNET, max_tokens=2000, system=build_insights_system())
+    return llm.submit_batch("peloton-insights", prompt, model=llm.SONNET, max_tokens=2000, system=build_insights_system(user))
 
 
 def analytics_generate_insights(request):
+    user = request.user
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return render_insights_partial(request, {
             "error": "ANTHROPIC_API_KEY is not set. Add it to your .env file and restart the server."
         })
     try:
-        batch_id = _submit_insights_batch()
+        batch_id = _submit_insights_batch(user)
     except Exception as e:
         return render_insights_partial(request, {"error": f"Failed to submit batch: {e}"})
-    settings_obj = UserSettings.get()
+    settings_obj = UserSettings.for_user(user)
     settings_obj.ai_insights_batch_id = batch_id
     settings_obj.save(update_fields=["ai_insights_batch_id"])
     return render_insights_partial(request, {"pending": True})
@@ -907,8 +908,9 @@ def analytics_generate_insights(request):
 
 def analytics_check_insights(request):
     """Poll the Anthropic Batch API for insight results. Called via HTMX every 30s."""
+    user = request.user
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    settings_obj = UserSettings.get()
+    settings_obj = UserSettings.for_user(user)
     batch_id = settings_obj.ai_insights_batch_id
 
     if not batch_id:
@@ -969,7 +971,7 @@ def render_insights_partial(request, context, status=200):
 # Day analysis — synchronous (Claude Haiku, cached 7 days)
 # ---------------------------------------------------------------------------
 
-def _get_or_generate_day_analysis(day, workouts, stats):
+def _get_or_generate_day_analysis(user, day, workouts, stats):
     """Return a cached day analysis or generate a fresh one synchronously."""
     if not workouts:
         return None
@@ -1039,8 +1041,8 @@ def _get_or_generate_day_analysis(day, workouts, stats):
             from .nutrition import compute_macro_targets
             from .models import NutritionProfile, FoodEntry
             try:
-                profile = NutritionProfile.objects.filter(pk=1).first()
-                targets = compute_macro_targets(profile) if profile else None
+                profile = NutritionProfile.objects.filter(user=user).first()
+                targets = compute_macro_targets(user, profile) if profile else None
                 cal_t = targets.get("calories") if targets else None
                 prot_t = targets.get("protein_g") if targets else None
                 fiber_t = targets.get("fiber_g") if targets else None
@@ -1060,7 +1062,7 @@ def _get_or_generate_day_analysis(day, workouts, stats):
                         fiber_str += f" (target {fiber_t}g)"
                     nutrition_parts.append(f"Fiber: {fiber_str}")
                 # Brief meal summary
-                meals = list(FoodEntry.objects.filter(date=day).values_list("meal", "raw_text").order_by("logged_at"))
+                meals = list(FoodEntry.objects.for_user(user).filter(date=day).values_list("meal", "raw_text").order_by("logged_at"))
                 if meals:
                     meal_strs = [f"{m or 'log'}: {t[:40]}" for m, t in meals[:4]]
                     nutrition_parts.append("Meals: " + "; ".join(meal_strs))
@@ -1071,7 +1073,7 @@ def _get_or_generate_day_analysis(day, workouts, stats):
         if nutrition_parts:
             nutrition_section = "\n\nNUTRITION FOR THIS DAY\n" + "\n".join(nutrition_parts)
 
-        intervention_context = _interventions_context(day, day)
+        intervention_context = _interventions_context(user, day, day)
         intervention_section = ""
         if intervention_context and "No tracked interventions" not in intervention_context:
             intervention_section = f"\n\nACTIVE INTERVENTIONS\n{intervention_context}"
@@ -1080,11 +1082,11 @@ def _get_or_generate_day_analysis(day, workouts, stats):
         prior_start = day - timedelta(days=7)
         prior_end = day - timedelta(days=1)
         prior_stats_qs = list(
-            DailyStats.objects.filter(date__gte=prior_start, date__lte=prior_end)
+            DailyStats.objects.for_user(user).filter(date__gte=prior_start, date__lte=prior_end)
             .order_by("date")
         )
         prior_workout_rows = list(
-            CachedWorkout.objects.filter(
+            CachedWorkout.objects.for_user(user).filter(
                 created_at__date__gte=prior_start,
                 created_at__date__lte=prior_end,
             ).order_by("created_at")
@@ -1134,7 +1136,7 @@ def _get_or_generate_day_analysis(day, workouts, stats):
             prior_section = "\n\nPRIOR 7 DAYS\n" + "\n".join(prior_lines)
 
         today_note = " Do not comment on missing body battery end-of-day value — it is only recorded after sleep and is not available for the current day." if is_today else ""
-        persona = build_persona_block(date_range=(day, day))
+        persona = build_persona_block(user, date_range=(day, day))
         persona_section = f"\n\nABOUT THIS PERSON\n{persona}" if persona else ""
         # Omit the whole section (don't even mention "recovery"/"wellness")
         # rather than a "no data" placeholder — a present-but-empty section,
@@ -1192,31 +1194,32 @@ ANALYSIS RULES
 
 def next_workout_refresh(request):
     """Clear the cached next-workout recommendation and regenerate it immediately."""
+    user = request.user
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    today_stats, _ = DailyStats.objects.get_or_create(date=date.today())
+    today_stats, _ = DailyStats.objects.get_or_create(user=user, date=date.today())
     if today_stats.readiness_score is None:
         # No readiness signal yet (Garmin or Google Health) — nothing to base a rec on.
         return redirect("calendar")
     today_stats.ai_next_workout = None
     today_stats.ai_next_workout_generated_at = None
     today_stats.save(update_fields=["ai_next_workout", "ai_next_workout_generated_at"])
-    _get_or_generate_next_workout(today_stats)
+    _get_or_generate_next_workout(user, today_stats)
     return redirect("calendar")
 
 
-def _get_or_generate_next_workout(today_stats):
+def _get_or_generate_next_workout(user, today_stats):
     """Return a cached next-workout recommendation or generate a fresh one."""
     def _gen():
         today_local = tz.localdate()
         cutoff = today_local - timedelta(days=14)
         recent_workouts = list(
-            CachedWorkout.objects.filter(created_at__date__gte=cutoff)
+            CachedWorkout.objects.for_user(user).filter(created_at__date__gte=cutoff)
             .order_by("-created_at")
         )
 
         recent_stats = list(
-            DailyStats.objects.filter(date__gte=today_local - timedelta(days=7))
+            DailyStats.objects.for_user(user).filter(date__gte=today_local - timedelta(days=7))
             .order_by("-date")
         )
 
@@ -1232,7 +1235,7 @@ def _get_or_generate_next_workout(today_stats):
             title = w.title or w.discipline
 
             # Flag PT/rehab sessions so the AI doesn't treat them as training load
-            pt_flag = rehab_flag_for(title)
+            pt_flag = rehab_flag_for(user, title)
             is_pt = bool(pt_flag)
 
             # Muscles: bucket 3 = high, 2 = moderate; skip bucket 1 (light)
@@ -1328,7 +1331,7 @@ def _get_or_generate_next_workout(today_stats):
         today_signals_section = f"\n\nTODAY'S RECOVERY SIGNALS\n{today_context}" if today_context else ""
         wellness_trend_section = f"\n\nDAILY WELLNESS TREND (last 7 days)\n{chr(10).join(stat_lines)}" if stat_lines else ""
 
-        persona = build_persona_block()
+        persona = build_persona_block(user)
         prompt = f"""Today is {date.today().strftime('%A, %B %-d, %Y')}.
 {today_workout_note}{today_signals_section}
 
@@ -1369,8 +1372,9 @@ STRENGTH GUIDANCE: When recommending strength:
 
 def compare_analysis(request):
     """HTMX endpoint — returns an HTML snippet comparing 2–4 workouts."""
+    user = request.user
     ids = [i.strip() for i in request.GET.get("ids", "").split(",") if i.strip()][:4]
-    workouts = list(CachedWorkout.objects.filter(workout_id__in=ids).order_by("created_at"))
+    workouts = list(CachedWorkout.objects.for_user(user).filter(workout_id__in=ids).order_by("created_at"))
     if len(workouts) < 2:
         return _render_compare_analysis_html(None)
 
@@ -1482,7 +1486,7 @@ def compare_analysis(request):
         return "\n".join(lines)
 
     workout_blocks = "\n\n".join(f"WORKOUT {i+1}:\n{_stat(w)}" for i, w in enumerate(workouts))
-    persona = build_persona_block()
+    persona = build_persona_block(user)
     persona_rule = f"\n8. {persona}" if persona else ""
 
     prompt = f"""You are analyzing {len(workouts)} Peloton and/or Garmin workouts being compared side by side.
@@ -1539,7 +1543,7 @@ def _render_compare_analysis_html(text, ids_param=""):
 # Body commentary — synchronous (Claude Haiku, cached 24h)
 # ---------------------------------------------------------------------------
 
-def _get_or_generate_body_commentary(force=False) -> str:
+def _get_or_generate_body_commentary(user, force=False) -> str:
     """Daily Haiku commentary on body composition trends. Cached 24h in UserSettings."""
     def _gen():
         from datetime import date as date_cls
@@ -1548,7 +1552,7 @@ def _get_or_generate_body_commentary(force=False) -> str:
         cutoff_7d  = today - timedelta(days=7)
 
         stats_30d = list(
-            DailyStats.objects.filter(date__gte=cutoff_30d, date__lte=today)
+            DailyStats.objects.for_user(user).filter(date__gte=cutoff_30d, date__lte=today)
             .order_by("date")
         )
         stats_7d = [s for s in stats_30d if s.date >= cutoff_7d]
@@ -1599,15 +1603,15 @@ def _get_or_generate_body_commentary(force=False) -> str:
         recovery_section = f"\n\n7-DAY RECOVERY AVERAGES\n{' | '.join(recovery_parts)}" if recovery_parts else ""
 
         # Interventions context
-        iv_ctx = _interventions_context(cutoff_30d, today)
+        iv_ctx = _interventions_context(user, cutoff_30d, today)
 
         # Nutrition 7-day context
         nutrition_section = ""
         try:
             from .nutrition import compute_macro_targets
             from .models import NutritionProfile
-            profile = NutritionProfile.objects.filter(pk=1).first()
-            targets = compute_macro_targets(profile) if profile else None
+            profile = NutritionProfile.objects.filter(user=user).first()
+            targets = compute_macro_targets(user, profile) if profile else None
             nutr_7d = [s for s in stats_7d if s.cal_total is not None]
             if len(nutr_7d) >= 3:
                 n_days = len(nutr_7d)
@@ -1665,15 +1669,16 @@ The single most objective signal worth noting — a continued trend, a stall, or
 
         return llm.call(prompt, model=llm.HAIKU, max_tokens=500)
 
-    return cached_settings_field("ai_body_commentary", 24, _gen, force=force)
+    return cached_settings_field(user, "ai_body_commentary", 24, _gen, force=force)
 
 
 def body_commentary_refresh(request):
     """POST /api/body/commentary/refresh/ — force-regenerate body commentary."""
+    user = request.user
     from django.http import JsonResponse
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
-    _get_or_generate_body_commentary(force=True)
+    _get_or_generate_body_commentary(user, force=True)
     return JsonResponse({"ok": True})
 
 
@@ -1873,6 +1878,7 @@ def _match_saved_meals(raw_text: str, saved_meals: list) -> list:
 
 
 def parse_food_text(
+    user,
     raw_text: str,
     meal: str = "",
     saved_meals: list | None = None,
@@ -2056,7 +2062,7 @@ Rules:
         return {"ok": False, "error": str(e), "items": [], "confidence": "low", "note": "", "model": model}
 
 
-def parse_plan_skeleton(raw_text: str = "", image_b64: str | None = None, image_media_type: str = "image/jpeg") -> dict:
+def parse_plan_skeleton(user, raw_text: str = "", image_b64: str | None = None, image_media_type: str = "image/jpeg") -> dict:
     """
     Parse a multi-week workout-plan schedule — pasted text (optionally containing
     class links) and/or a screenshot of a plan tracker page/PDF — into a
@@ -2132,6 +2138,7 @@ SOURCE TEXT:
 
 
 def suggest_meals(
+    user,
     remaining_cal: float,
     remaining_protein: float,
     remaining_carbs: float,
@@ -2185,11 +2192,11 @@ def suggest_meals(
 
     from .nutrition import compute_macro_targets
     from .models import NutritionProfile
-    _profile = NutritionProfile.objects.filter(pk=1).first()
-    _targets = compute_macro_targets(_profile) if _profile else None
+    _profile = NutritionProfile.objects.filter(user=user).first()
+    _targets = compute_macro_targets(user, _profile) if _profile else None
     top_gap = _macro_priority_hint(remaining_protein, remaining_carbs, remaining_fiber, _targets)
 
-    persona = build_persona_block()
+    persona = build_persona_block(user)
     persona_line = f"\n{persona}" if persona else ""
 
     prompt = f"""You are a meal suggestion assistant.{persona_line}
@@ -2237,7 +2244,7 @@ Respond with ONLY valid JSON, no markdown:
 # Nutrition analytics insights — synchronous (Claude Sonnet, weekly cache)
 # ---------------------------------------------------------------------------
 
-def _build_nutrition_insights_prompt(range_days: int = 30) -> str | None:
+def _build_nutrition_insights_prompt(user, range_days: int = 30) -> str | None:
     """Build the nutrition insights prompt. Returns None if no data logged."""
     from datetime import date as date_cls
     from .nutrition import compute_macro_targets, get_top_foods
@@ -2246,11 +2253,11 @@ def _build_nutrition_insights_prompt(range_days: int = 30) -> str | None:
     today = date_cls.today()
     start = today - timedelta(days=range_days - 1)
 
-    profile = NutritionProfile.objects.filter(pk=1).first()
-    targets = compute_macro_targets(profile) if profile else None
+    profile = NutritionProfile.objects.filter(user=user).first()
+    targets = compute_macro_targets(user, profile) if profile else None
 
     stats_qs = list(
-        DailyStats.objects.filter(date__gte=start, date__lte=today, cal_total__isnull=False)
+        DailyStats.objects.for_user(user).filter(date__gte=start, date__lte=today, cal_total__isnull=False)
         .order_by("date")
     )
     total_days = range_days
@@ -2298,7 +2305,7 @@ def _build_nutrition_insights_prompt(range_days: int = 30) -> str | None:
     wd_fiber, we_fiber = _wd_we_avg("fiber_g_total")
 
     weight_stats = list(
-        DailyStats.objects.filter(date__gte=start, date__lte=today, weight_lb__isnull=False)
+        DailyStats.objects.for_user(user).filter(date__gte=start, date__lte=today, weight_lb__isnull=False)
         .order_by("date")
     )
     weight_start = weight_stats[0].weight_lb if weight_stats else None
@@ -2309,13 +2316,13 @@ def _build_nutrition_insights_prompt(range_days: int = 30) -> str | None:
     else:
         trend_desc = "No weight data"
 
-    top_foods = get_top_foods(start, today, top_n=5)
+    top_foods = get_top_foods(user, start, today, top_n=5)
     top_food_lines = "\n".join(
         f"  - {f['name']} (logged {f['count']}x, avg {f['avg_calories']:.0f} kcal, {f['avg_protein_g']:.0f}g P)"
         for f in top_foods
     ) if top_foods else "  No data"
 
-    iv_ctx = _interventions_context(start, today)
+    iv_ctx = _interventions_context(user, start, today)
 
     targets_section = ""
     if targets:
@@ -2328,8 +2335,8 @@ def _build_nutrition_insights_prompt(range_days: int = 30) -> str | None:
 
 """
 
-    persona = build_persona_block(date_range=(start, today))
-    tone = coaching_tone_instruction()
+    persona = build_persona_block(user, date_range=(start, today))
+    tone = coaching_tone_instruction(user)
     persona_section = f"\n{persona}" if persona else ""
     tone_section = f"\n{tone}" if tone else ""
 
@@ -2376,13 +2383,13 @@ Write the analysis in exactly this structure. Write each section as 2-3 sentence
 Avoid: generic wellness advice, recommending specific diets, being judgmental, ignoring that they're on medications, any commentary about meal timing or eating windows (food is logged retroactively, so log timestamps do not reflect actual eating times)."""
 
 
-def _submit_nutrition_insights_batch(range_days: int = 30) -> str:
+def _submit_nutrition_insights_batch(user, range_days: int = 30) -> str:
     """Submit nutrition insights to Batch API. Saves batch_id to UserSettings. Returns batch_id."""
-    prompt = _build_nutrition_insights_prompt(range_days)
+    prompt = _build_nutrition_insights_prompt(user, range_days)
     if not prompt:
         raise ValueError("No nutrition data logged for the selected period")
     batch_id = llm.submit_batch("nutrition_insights", prompt, model=llm.SONNET, max_tokens=1800)
-    settings = UserSettings.get()
+    settings = UserSettings.for_user(user)
     settings.ai_nutrition_insights_batch_id = batch_id
     settings.ai_nutrition_insights_range = range_days
     settings.save(update_fields=["ai_nutrition_insights_batch_id", "ai_nutrition_insights_range"])
@@ -2395,8 +2402,9 @@ def render_nutrition_insights_partial(request, context, status=200):
 
 def nutrition_insights_check(request):
     """HTMX poll — check nutrition insights batch status, return rendered HTML partial."""
+    user = request.user
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    settings = UserSettings.get()
+    settings = UserSettings.for_user(user)
     batch_id = settings.ai_nutrition_insights_batch_id
 
     if not batch_id:
@@ -2449,12 +2457,13 @@ def nutrition_insights_check(request):
 
 def nutrition_insights_refresh(request):
     """POST /api/nutrition/insights/refresh/ — submit new batch, return pending partial."""
+    user = request.user
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     range_param = request.GET.get("range", "30d")
     range_days = {"7d": 7, "30d": 30, "90d": 90, "1y": 365}.get(range_param, 30)
     try:
-        _submit_nutrition_insights_batch(range_days=range_days)
+        _submit_nutrition_insights_batch(user, range_days=range_days)
     except Exception as e:
         return render_nutrition_insights_partial(request, {"error": f"Failed to submit batch: {e}"})
     return render_nutrition_insights_partial(request, {"pending": True})
@@ -2465,6 +2474,7 @@ def nutrition_insights_refresh(request):
 # ---------------------------------------------------------------------------
 
 def _generate_intervention_interpretation(
+    user,
     analysis_result: dict,
     intervention=None,
     interventions_context_str: str = "",
@@ -2584,7 +2594,7 @@ Be specific and data-driven. Avoid generic advice."""
 # Pattern insights — weekly Sonnet deep analysis (Phase 3)
 # ---------------------------------------------------------------------------
 
-def _build_pattern_insights_prompt() -> str:
+def _build_pattern_insights_prompt(user) -> str:
     """Build the pattern insights prompt from the last 60 days of data."""
     from datetime import date as date_cls, datetime as datetime_cls
     today = date_cls.today()
@@ -2594,7 +2604,7 @@ def _build_pattern_insights_prompt() -> str:
         return v.date() if isinstance(v, datetime_cls) else v
 
     weight_rows = list(
-        DailyStats.objects.filter(date__gte=cutoff_60, date__lte=today, weight_lb__isnull=False)
+        DailyStats.objects.for_user(user).filter(date__gte=cutoff_60, date__lte=today, weight_lb__isnull=False)
         .order_by("date").values_list("date", "weight_lb", "fat_ratio_pct", "muscle_mass_lb")
     )
     weight_lines = [
@@ -2605,7 +2615,7 @@ def _build_pattern_insights_prompt() -> str:
     ]
 
     recovery_rows = list(
-        DailyStats.objects.filter(date__gte=cutoff_60, date__lte=today)
+        DailyStats.objects.for_user(user).filter(date__gte=cutoff_60, date__lte=today)
         .annotate(week=TruncWeek("date"))
         .values("week")
         .annotate(
@@ -2632,7 +2642,7 @@ def _build_pattern_insights_prompt() -> str:
         recovery_full.append(" ".join(parts))
 
     nutr_rows = list(
-        DailyStats.objects.filter(
+        DailyStats.objects.for_user(user).filter(
             date__gte=cutoff_60, date__lte=today, cal_total__isnull=False
         ).order_by("date").values_list("date", "cal_total", "protein_g_total", "fiber_g_total")
     )
@@ -2645,7 +2655,7 @@ def _build_pattern_insights_prompt() -> str:
     from .models import HungerCheck
     hunger_lines = []
     hunger_rows = list(
-        HungerCheck.objects.filter(date__gte=cutoff_60, context="morning")
+        HungerCheck.objects.for_user(user).filter(date__gte=cutoff_60, context="morning")
         .annotate(week=TruncWeek("date"))
         .values("week")
         .annotate(avg_hunger=Avg("hunger_level"))
@@ -2657,7 +2667,7 @@ def _build_pattern_insights_prompt() -> str:
     from .models import SideEffectLog
     symptom_lines = []
     symptom_rows = list(
-        SideEffectLog.objects.filter(date__gte=cutoff_60)
+        SideEffectLog.objects.for_user(user).filter(date__gte=cutoff_60)
         .annotate(week=TruncWeek("date"))
         .values("week", "symptom", "other_label")
         .annotate(count=Count("id"), avg_severity=Avg("severity"))
@@ -2676,7 +2686,7 @@ def _build_pattern_insights_prompt() -> str:
 
     from .models import CachedWorkout
     workout_rows = list(
-        CachedWorkout.objects.filter(
+        CachedWorkout.objects.for_user(user).filter(
             created_at__date__gte=cutoff_60,
             created_at__date__lte=today,
         )
@@ -2687,7 +2697,7 @@ def _build_pattern_insights_prompt() -> str:
     )
     workout_lines = [f"  Week of {_as_date(r['week'])}: {r['count']} workouts" for r in workout_rows]
 
-    iv_context = _interventions_context(today - timedelta(days=60), today)
+    iv_context = _interventions_context(user, today - timedelta(days=60), today)
 
     sections = [
         "WEIGHT & BODY COMPOSITION (last 60 days — daily)",
@@ -2711,7 +2721,7 @@ def _build_pattern_insights_prompt() -> str:
         sections += ["INTERVENTIONS & MEDICATIONS", iv_context, ""]
 
     data_block = "\n".join(sections)
-    persona = build_persona_block(date_range=(today - timedelta(days=60), today))
+    persona = build_persona_block(user, date_range=(today - timedelta(days=60), today))
     persona_section = f"\n{persona}" if persona else ""
 
     return f"""You are analyzing up to 60 days of integrated health data. Find non-obvious patterns the user might miss.{persona_section}
@@ -2744,11 +2754,11 @@ One hypothesis they could actively test in the next 2 weeks.
 Be specific and data-driven. Avoid generic advice. Do not recommend medical decisions. 3–5 patterns only — quality over quantity."""
 
 
-def _submit_pattern_insights_batch() -> str:
+def _submit_pattern_insights_batch(user) -> str:
     """Submit pattern insights to Batch API. Saves batch_id to UserSettings. Returns batch_id."""
-    prompt = _build_pattern_insights_prompt()
+    prompt = _build_pattern_insights_prompt(user)
     batch_id = llm.submit_batch("pattern_insights", prompt, model=llm.SONNET, max_tokens=2400)
-    settings = UserSettings.get()
+    settings = UserSettings.for_user(user)
     settings.ai_pattern_insights_batch_id = batch_id
     settings.save(update_fields=["ai_pattern_insights_batch_id"])
     return batch_id
@@ -2760,8 +2770,9 @@ def render_pattern_insights_partial(request, context, status=200):
 
 def pattern_insights_check(request):
     """HTMX poll — check pattern insights batch status, return rendered HTML partial."""
+    user = request.user
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    settings = UserSettings.get()
+    settings = UserSettings.for_user(user)
     batch_id = settings.ai_pattern_insights_batch_id
 
     if not batch_id:
@@ -2814,10 +2825,11 @@ def pattern_insights_check(request):
 
 def pattern_insights_refresh(request):
     """POST — submit new pattern insights batch; returns pending HTML fragment."""
+    user = request.user
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     try:
-        _submit_pattern_insights_batch()
+        _submit_pattern_insights_batch(user)
     except Exception as e:
         return render_pattern_insights_partial(request, {"error": f"Failed to submit batch: {e}"})
     return render_pattern_insights_partial(request, {"pending": True})
@@ -2827,20 +2839,20 @@ def pattern_insights_refresh(request):
 # Weekly review — Claude Sonnet, cached per calendar week
 # ---------------------------------------------------------------------------
 
-def _build_weekly_review_prompt(week_start) -> str:
+def _build_weekly_review_prompt(user, week_start) -> str:
     """Build the weekly review prompt for the given Monday week_start."""
     from datetime import timedelta
     from .models import WeeklyReview, CachedWorkout, DailyStats, HungerCheck, SideEffectLog
 
     week_end = week_start + timedelta(days=6)
 
-    daily_qs = DailyStats.objects.filter(date__gte=week_start, date__lte=week_end)
+    daily_qs = DailyStats.objects.for_user(user).filter(date__gte=week_start, date__lte=week_end)
     weights = [(d.date.isoformat(), round(d.weight_lb, 1)) for d in daily_qs if d.weight_lb]
     weight_lines = "\n".join(f"  {d}: {w} lb" for d, w in weights) if weights else "  (no data)"
 
     prior_end = week_start - timedelta(days=1)
     prior_start = week_start - timedelta(days=7)
-    prior_weights = list(DailyStats.objects.filter(
+    prior_weights = list(DailyStats.objects.for_user(user).filter(
         date__gte=prior_start, date__lte=prior_end, weight_lb__isnull=False
     ).values_list("weight_lb", flat=True))
     prior_avg = sum(prior_weights) / len(prior_weights) if prior_weights else None
@@ -2865,8 +2877,8 @@ def _build_weekly_review_prompt(week_start) -> str:
     try:
         from .models import NutritionProfile
         from .nutrition import compute_macro_targets
-        profile = NutritionProfile.objects.filter(pk=1).first()
-        targets = compute_macro_targets(profile) if profile else None
+        profile = NutritionProfile.objects.filter(user=user).first()
+        targets = compute_macro_targets(user, profile) if profile else None
         if targets:
             cal_t = targets.get("calories")
             prot_t = targets.get("protein_g")
@@ -2894,7 +2906,7 @@ def _build_weekly_review_prompt(week_start) -> str:
     except Exception:
         target_str = "  (targets unavailable)"
 
-    workouts = list(CachedWorkout.objects.filter(
+    workouts = list(CachedWorkout.objects.for_user(user).filter(
         created_at__date__gte=week_start, created_at__date__lte=week_end
     ).order_by("created_at"))
     workout_lines = []
@@ -2921,14 +2933,14 @@ def _build_weekly_review_prompt(week_start) -> str:
         recovery_bits.append(f"avg RHR: {sum(rhr_vals)/len(rhr_vals):.0f} bpm")
     recovery_str = "  " + ", ".join(recovery_bits) if recovery_bits else "  (no recovery data logged this week)"
 
-    hunger_qs = HungerCheck.objects.filter(date__gte=week_start, date__lte=week_end)
+    hunger_qs = HungerCheck.objects.for_user(user).filter(date__gte=week_start, date__lte=week_end)
     morning_hunger = [h.hunger_level for h in hunger_qs if h.context == "morning"]
     hunger_str = (
         f"  Morning hunger avg: {sum(morning_hunger)/len(morning_hunger):.1f}/10"
         if morning_hunger else "  Morning hunger: (not tracked)"
     )
 
-    symptoms_qs = SideEffectLog.objects.filter(date__gte=week_start, date__lte=week_end)
+    symptoms_qs = SideEffectLog.objects.for_user(user).filter(date__gte=week_start, date__lte=week_end)
     symptom_counts: dict = {}
     for s in symptoms_qs:
         key = s.display_name
@@ -2938,9 +2950,9 @@ def _build_weekly_review_prompt(week_start) -> str:
         if symptom_counts else "  (none logged)"
     )
 
-    interventions_ctx = _interventions_context(week_start, week_end)
+    interventions_ctx = _interventions_context(user, week_start, week_end)
 
-    persona = build_persona_block(date_range=(week_start, week_end))
+    persona = build_persona_block(user, date_range=(week_start, week_end))
     persona_section = f"\n{persona}" if persona else ""
 
     return f"""You are reviewing someone's health and fitness week ({week_start} to {week_end}).{persona_section}
@@ -2990,12 +3002,12 @@ One specific, actionable thing to improve next week.
 Use **bold** for emphasis. Be direct, specific, and data-driven. Skip sections where there's no data. Keep the whole review under 500 words."""
 
 
-def _submit_weekly_review_batch(week_start):
+def _submit_weekly_review_batch(user, week_start):
     """Submit weekly review to Batch API. Creates/updates WeeklyReview with batch_id. Returns instance."""
     from .models import WeeklyReview
-    prompt = _build_weekly_review_prompt(week_start)
+    prompt = _build_weekly_review_prompt(user, week_start)
     batch_id = llm.submit_batch("weekly_review", prompt, model=llm.SONNET, max_tokens=1600)
-    review, _ = WeeklyReview.objects.update_or_create(
+    review, _ = WeeklyReview.objects.update_or_create(user=user,
         week_start=week_start,
         defaults={"content": "", "ai_model": llm.SONNET, "batch_id": batch_id},
     )
@@ -3008,6 +3020,7 @@ def render_weekly_review_partial(request, context, status=200):
 
 def weekly_review_check(request):
     """HTMX poll — check weekly review batch status, return rendered HTML."""
+    user = request.user
     import datetime as _dt
     from .models import WeeklyReview
 
@@ -3016,7 +3029,7 @@ def weekly_review_check(request):
     week_str = request.GET.get("week", "")
     try:
         week_start = _dt.date.fromisoformat(week_str)
-        review = WeeklyReview.objects.get(week_start=week_start)
+        review = WeeklyReview.objects.for_user(user).get(week_start=week_start)
     except (ValueError, WeeklyReview.DoesNotExist):
         # Not in the four listed terminal states, but equally unresolvable —
         # a bad/missing week param can never turn into a live batch, so
@@ -3032,7 +3045,7 @@ def weekly_review_check(request):
         return render_weekly_review_partial(request, {"review": review}, status=286)
 
     if not api_key:
-        WeeklyReview.objects.filter(week_start=week_start).update(batch_id=None)
+        WeeklyReview.objects.for_user(user).filter(week_start=week_start).update(batch_id=None)
         return render_weekly_review_partial(request, {
             "error": "ANTHROPIC_API_KEY is not set.", "week_start": week_start,
         }, status=286)
@@ -3056,17 +3069,17 @@ def weekly_review_check(request):
         return _pending()
 
     if not content:
-        WeeklyReview.objects.filter(week_start=week_start).update(batch_id=None)
+        WeeklyReview.objects.for_user(user).filter(week_start=week_start).update(batch_id=None)
         return render_weekly_review_partial(request, {
             "error": "Batch completed but no result found.", "week_start": week_start,
         }, status=286)
 
-    WeeklyReview.objects.filter(week_start=week_start).update(content=content, batch_id=None)
+    WeeklyReview.objects.for_user(user).filter(week_start=week_start).update(content=content, batch_id=None)
     review.refresh_from_db()
     return render_weekly_review_partial(request, {"review": review}, status=286)
 
 
-def _get_or_generate_weekly_review(week_start, force: bool = False):
+def _get_or_generate_weekly_review(user, week_start, force: bool = False):
     """
     Return a WeeklyReview for the given Monday week_start.
     If missing (or force), submits a batch and returns a pending WeeklyReview.
@@ -3076,18 +3089,18 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
 
     if not force:
         try:
-            existing = WeeklyReview.objects.get(week_start=week_start)
+            existing = WeeklyReview.objects.for_user(user).get(week_start=week_start)
             if existing.content or existing.batch_id:
                 return existing
         except WeeklyReview.DoesNotExist:
             pass
 
     try:
-        return _submit_weekly_review_batch(week_start)
+        return _submit_weekly_review_batch(user, week_start)
     except Exception as e:
         logger.warning("Weekly review batch submit failed: %s", e)
         try:
-            return WeeklyReview.objects.get(week_start=week_start)
+            return WeeklyReview.objects.for_user(user).get(week_start=week_start)
         except WeeklyReview.DoesNotExist:
             return None
 
@@ -3096,7 +3109,7 @@ def _get_or_generate_weekly_review(week_start, force: bool = False):
 # Program retrospective — Claude Sonnet, cached per ProgramRun
 # ---------------------------------------------------------------------------
 
-def _get_or_generate_retrospective(run, force: bool = False) -> str:
+def _get_or_generate_retrospective(user, run, force: bool = False) -> str:
     """
     Return the retrospective for this ProgramRun, generating (or regenerating) it
     with Sonnet if missing. Synchronous like intervention interpretation — a
@@ -3181,7 +3194,7 @@ _CHAT_PAGE_HINTS = {
 }
 
 
-def _build_chat_system_prompt(context):
+def _build_chat_system_prompt(user, context):
     template = _CHAT_PAGE_HINTS.get(context.get("page"))
     if template:
         page_hint = template.format(
@@ -3231,7 +3244,7 @@ def _chat_tools_with_cache():
     return tools
 
 
-def run_stats_chat(context, history, user_message):
+def run_stats_chat(user, context, history, user_message):
     """
     context: dict describing what page/range/intervention is in view
     history: list of prior {"role": ..., "content": ...} message dicts
@@ -3241,8 +3254,9 @@ def run_stats_chat(context, history, user_message):
 
     Returns: (answer_text: str, updated_history: list)
     """
-    system_prompt = _build_chat_system_prompt(context)
+    system_prompt = _build_chat_system_prompt(user, context)
     messages = history + [{"role": "user", "content": user_message}]
+    tool_dispatch = build_tool_dispatch(user)
 
     for _round in range(MAX_CHAT_TOOL_ROUNDS):
         body = {
@@ -3272,7 +3286,7 @@ def run_stats_chat(context, history, user_message):
         for block in data["content"]:
             if block["type"] != "tool_use":
                 continue
-            fn = TOOL_DISPATCH.get(block["name"])
+            fn = tool_dispatch.get(block["name"])
             try:
                 if fn is None:
                     raise ValueError(f"unknown tool {block['name']}")

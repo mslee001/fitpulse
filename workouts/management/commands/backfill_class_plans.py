@@ -18,6 +18,7 @@ from django.core.management.base import BaseCommand
 
 from workouts.models import CachedWorkout
 from workouts.sync import _CLASS_PLAN_DISCS
+from workouts.management.user_arg import add_user_argument, resolve_user
 
 
 class Command(BaseCommand):
@@ -26,9 +27,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true", help="Report what would be fetched without calling Peloton or writing.")
         parser.add_argument("--force", action="store_true", help="Refresh workouts that already have a stored plan.")
+        add_user_argument(parser)
 
     def handle(self, *args, **opts):
-        qs = CachedWorkout.objects.filter(
+        user = resolve_user(opts)
+        qs = CachedWorkout.objects.for_user(user).filter(
             source="peloton", discipline__in=_CLASS_PLAN_DISCS,
         ).exclude(ride_id="")
         if not opts["force"]:
@@ -43,7 +46,7 @@ class Command(BaseCommand):
             return
 
         from workouts.services.peloton_client import PelotonClient
-        client = PelotonClient()
+        client = PelotonClient(user)
         stored = empty = failed = 0
         for i, (ride_id, workouts) in enumerate(by_ride.items(), 1):
             try:

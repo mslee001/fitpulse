@@ -20,11 +20,15 @@ BASE = datetime(2026, 9, 22, 19, 0, tzinfo=dt_tz.utc)
 _n = 0
 
 
+def owner():
+    return get_user_model().objects.get_or_create(username="owner", defaults={"is_superuser": True})[0]
+
+
 def mk(offset_min, minutes, discipline, title, ride_id=""):
     global _n
     _n += 1
     return CachedWorkout.objects.create(
-        workout_id=f"c{_n}", ride_id=ride_id, title=title, discipline=discipline, source="peloton",
+        user=owner(), workout_id=f"c{_n}", ride_id=ride_id, title=title, discipline=discipline, source="peloton",
         created_at=BASE + timedelta(minutes=offset_min), duration_seconds=minutes * 60)
 
 
@@ -66,7 +70,7 @@ class ResolveSlotMatchTests(SimpleTestCase):
 
 class ProgramConfigBase(TestCase):
     def setUp(self):
-        self.program = Program.objects.create(name="Split", slug="split", kind="split", match_strategy="ride_ids")
+        self.program = Program.objects.create(user=owner(), name="Split", slug="split", kind="split", match_strategy="ride_ids")
         self.week = ProgramWeek.objects.create(program=self.program, number=1)
         self.push = ProgramSlot.objects.create(week=self.week, title="Push", peloton_ride_id=RIDE_A, day=1,
                                                alt_ride_ids=[RIDE_B])
@@ -100,11 +104,11 @@ class DuplicateTests(ProgramConfigBase):
 
 class CreatePlanTests(TestCase):
     def test_kind_defaults_and_any_class_fields(self):
-        one = create_plan("One Week", "one-week", "", [{"number": 1, "slots": [
+        one = create_plan(owner(), "One Week", "one-week", "", [{"number": 1, "slots": [
             {"title": "Pilates (any class)", "match_discipline": "strength", "match_title_keyword": "pilates", "day": 3}]}])
-        two = create_plan("Two Weeks", "two-weeks", "", [{"number": 1, "slots": []}, {"number": 2, "slots": []}])
+        two = create_plan(owner(), "Two Weeks", "two-weeks", "", [{"number": 1, "slots": []}, {"number": 2, "slots": []}])
         self.assertEqual((one.kind, two.kind), ("split", "plan"))
-        self.assertEqual(create_plan("Forced", "forced", "", [{"number": 1, "slots": []}], kind="plan").kind, "plan")
+        self.assertEqual(create_plan(owner(), "Forced", "forced", "", [{"number": 1, "slots": []}], kind="plan").kind, "plan")
         slot = ProgramSlot.objects.get(week__program=one)
         self.assertEqual((slot.match_discipline, slot.match_title_keyword, slot.discipline), ("strength", "pilates", "strength"))
 
@@ -143,7 +147,7 @@ class RecoverySettingsTests(ProgramConfigBase):
 class EditViewTests(ProgramConfigBase):
     def setUp(self):
         super().setUp()
-        self.user = get_user_model().objects.create_user("t", password="x")
+        self.user = owner()
         self.client.force_login(self.user)
         self.url = reverse("program_edit", args=["split"])
 
@@ -275,7 +279,7 @@ class EditViewTests(ProgramConfigBase):
 class OtherViewTests(ProgramConfigBase):
     def setUp(self):
         super().setUp()
-        self.client.force_login(get_user_model().objects.create_user("t", password="x"))
+        self.client.force_login(owner())
 
     def test_duplicate_view_redirects_to_the_copys_editor(self):
         resp = self.client.post(reverse("program_duplicate", args=["split"]), {"name": "My Variant"}, SERVER_NAME="localhost")

@@ -2,8 +2,8 @@
 Peloton API client.
 
 Auth note: The old /auth/login endpoint is dead (403). This client uses the
-session cookie approach — credentials are stored in the PelotonAuth DB singleton
-(pk=1). Rotate via /settings/integrations/ when sync starts returning 403.
+session cookie approach — credentials are stored per user in the PelotonAuth
+table. Rotate via /settings/integrations/ when sync starts returning 403.
 """
 
 import requests
@@ -62,9 +62,10 @@ def parse_class_plan(ride_details: dict) -> list:
 class PelotonClient:
     BASE_URL = settings.PELOTON_API_BASE
 
-    def __init__(self):
+    def __init__(self, user):
         from workouts.models import PelotonAuth
-        auth = PelotonAuth.get()
+        self.user = user
+        auth = PelotonAuth.for_user(user)
         if not auth:
             raise PelotonAuthError(
                 "No PelotonAuth row in DB. "
@@ -74,7 +75,7 @@ class PelotonClient:
         self.session = requests.Session()
         self.session.cookies.set("peloton_session_id", auth.session_id)
         self.session.headers.update({"peloton-platform": "web"})
-        self.user_id = auth.user_id
+        self.user_id = auth.peloton_user_id
 
     def _get(self, path: str, params: dict = None) -> dict:
         url = f"{self.BASE_URL}{path}"

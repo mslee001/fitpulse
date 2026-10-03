@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone as dt_tz
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from workouts.models import (
@@ -16,12 +17,16 @@ BASE = datetime(2026, 9, 22, 19, 0, tzinfo=dt_tz.utc)   # 12:00 Pacific
 _n = 0
 
 
+def owner():
+    return get_user_model().objects.get_or_create(username="owner", defaults={"is_superuser": True})[0]
+
+
 def mk(offset_min, minutes, discipline, title, ride_id="", source="peloton"):
     """A CachedWorkout starting offset_min after BASE, lasting `minutes`."""
     global _n
     _n += 1
     return CachedWorkout.objects.create(
-        workout_id=f"w{_n}", ride_id=ride_id, title=title, discipline=discipline,
+        user=owner(), workout_id=f"w{_n}", ride_id=ride_id, title=title, discipline=discipline,
         source=source, created_at=BASE + timedelta(minutes=offset_min),
         duration_seconds=minutes * 60,
     )
@@ -29,7 +34,7 @@ def mk(offset_min, minutes, discipline, title, ride_id="", source="peloton"):
 
 class Base(TestCase):
     def setUp(self):
-        self.program = Program.objects.create(name="Split", slug="split", kind="split",
+        self.program = Program.objects.create(user=owner(), name="Split", slug="split", kind="split",
                                               match_strategy="ride_ids", track_recovery=True)
         self.week = ProgramWeek.objects.create(program=self.program, number=1)
         self.push = ProgramSlot.objects.create(week=self.week, title="Push", peloton_ride_id="ridePush", day=1)
@@ -185,6 +190,6 @@ class AnyClassSlotTests(Base):
         e = self.main()
         mk(46, 5, "walking", "walk")
         mk(60 * 24 * 2, 30, "strength", "30 min Pilates")
-        result = reconcile_program_extras()
+        result = reconcile_program_extras(owner())
         self.assertEqual(result, {"associated": 1, "recoveries": 1})
-        self.assertEqual(reconcile_program_extras(), {"associated": 0, "recoveries": 0})   # idempotent
+        self.assertEqual(reconcile_program_extras(owner()), {"associated": 0, "recoveries": 0})   # idempotent

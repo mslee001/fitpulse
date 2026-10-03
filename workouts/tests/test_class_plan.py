@@ -57,12 +57,12 @@ class ParseClassPlanTests(SimpleTestCase):
 class ManualMovementsTests(TestCase):
     def setUp(self):
         from django.utils import timezone
+        user = get_user_model().objects.create_user("t", password="x")
         self.w = CachedWorkout.objects.create(
-            workout_id="testworkout1", ride_id="r1", title="Circuit", discipline="circuit",
+            user=user, workout_id="testworkout1", ride_id="r1", title="Circuit", discipline="circuit",
             source="peloton", created_at=timezone.now(),
             class_plan_json=parse_class_plan(RIDE_DETAILS),
         )
-        user = get_user_model().objects.create_user("t", password="x")
         self.client.force_login(user)
         self.url = reverse("save_manual_movements", args=[self.w.workout_id])
 

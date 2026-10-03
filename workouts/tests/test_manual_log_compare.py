@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone as dt_tz
 
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
 
@@ -11,9 +12,13 @@ from workouts.models import CachedWorkout
 BASE = datetime(2026, 9, 26, 17, 0, tzinfo=dt_tz.utc)
 
 
+def owner():
+    return get_user_model().objects.get_or_create(username="owner", defaults={"is_superuser": True})[0]
+
+
 def mk(n, discipline, log):
     return CachedWorkout.objects.create(
-        workout_id=f"w{n}", title="45 min Lower Body + Run", discipline=discipline,
+        user=owner(), workout_id=f"w{n}", title="45 min Lower Body + Run", discipline=discipline,
         created_at=BASE + timedelta(days=n), duration_seconds=2700,
         performance_graph_json={"metrics_by_slug": {}}, manual_movements_json=log,
     )
@@ -53,6 +58,7 @@ class CompareManualLogTests(TestCase):
         a = mk(1, "circuit", [{"name": "Hip Bridge", "sets": 3, "reps": 8, "weight_lb": 25, "notes": ""}])
         b = mk(2, "strength", [{"name": "Hip Bridge", "sets": 3, "reps": 8, "weight_lb": 30, "notes": ""}])
         req = RequestFactory().get("/compare/", {"ids": f"{a.workout_id},{b.workout_id}"})
+        req.user = owner()
         with patch("workouts.views._client"), \
                 patch("workouts.views.render", return_value=HttpResponse()) as render:
             compare(req)

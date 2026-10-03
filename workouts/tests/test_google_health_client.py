@@ -26,7 +26,7 @@ def _resp(status_code, json_body=None):
 
 class RefreshOnceOn401Tests(SimpleTestCase):
     def setUp(self):
-        self.client_obj = GoogleHealthClient()
+        self.client_obj = GoogleHealthClient(user=None)
         self.client_obj._tokens = {
             "access_token": "stale-token",
             "refresh_token": "refresh-token",
@@ -164,7 +164,7 @@ class ListDateBoundingTests(SimpleTestCase):
     param rejected every date-range expression tried against it."""
 
     def setUp(self):
-        self.client_obj = GoogleHealthClient()
+        self.client_obj = GoogleHealthClient(user=None)
         self.client_obj._tokens = {
             "access_token": "token", "refresh_token": "refresh",
             "expires_at": int(time.time()) + 3600, "scopes": "",

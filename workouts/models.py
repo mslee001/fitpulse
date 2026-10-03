@@ -8,6 +8,13 @@ from django.utils import timezone
 from .users import UserOwnedManager
 
 
+def _require_user(user):
+    """Per-user rows need a real user. A lookup without one is a bug, never a
+    reason to fall back to the owner."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        raise ValueError("A logged-in user is required")
+
+
 class DailyStats(models.Model):
     """Garmin wellness data for a single calendar day."""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -316,7 +323,9 @@ def default_dumbbells():
 
 
 class UserSettings(models.Model):
-    """Singleton for user-level settings (FTP, preferences, etc.)."""
+    """One row per user: user-level settings (FTP, preferences, etc.)."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="fp_settings")
     ftp = models.IntegerField(null=True, blank=True, help_text="Functional Threshold Power in watts")
     updated_at = models.DateTimeField(auto_now=True)
     ai_insights = models.TextField(null=True, blank=True)
@@ -336,8 +345,10 @@ class UserSettings(models.Model):
     dumbbells_lb = models.JSONField(default=default_dumbbells, blank=True)
 
     @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
+    def for_user(cls, user):
+        """This user's row, created on first use."""
+        _require_user(user)
+        obj, _ = cls.objects.get_or_create(user=user)
         return obj
 
     def __str__(self):
@@ -907,7 +918,9 @@ class CachedWorkout(models.Model):
 # ---------------------------------------------------------------------------
 
 class NutritionProfile(models.Model):
-    """Singleton — stores inputs for the macro target calculator."""
+    """One row per user — stores inputs for the macro target calculator."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="nutrition_profile")
     height_cm = models.FloatField(null=True, blank=True)
     age = models.IntegerField(null=True, blank=True)
     biological_sex = models.CharField(max_length=10, default="female")
@@ -923,8 +936,10 @@ class NutritionProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
+    def for_user(cls, user):
+        """This user's row, created on first use."""
+        _require_user(user)
+        obj, _ = cls.objects.get_or_create(user=user)
         return obj
 
     def __str__(self):
@@ -932,7 +947,9 @@ class NutritionProfile(models.Model):
 
 
 class AthleteProfile(models.Model):
-    """Singleton (pk=1). Drives persona/coaching context for AI prompts."""
+    """One row per user. Drives persona/coaching context for AI prompts."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="athlete_profile")
     EXPERIENCE_CHOICES = [
         ("new",          "New to this discipline"),
         ("intermediate", "Intermediate"),
@@ -965,8 +982,10 @@ class AthleteProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
+    def for_user(cls, user):
+        """This user's row, created on first use."""
+        _require_user(user)
+        obj, _ = cls.objects.get_or_create(user=user)
         return obj
 
     def __str__(self):
@@ -1171,10 +1190,12 @@ class WeeklyReview(models.Model):
 
 class WithingsAuth(models.Model):
     """
-    Singleton (pk=1). Stores Withings OAuth credentials in Postgres so both
+    One row per user. Stores Withings OAuth credentials in Postgres so both
     laptop and hosted app can sync from the same source of truth.
     Replaces ~/.fitpulse/withings_tokens.json.
     """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="withings_auth")
     userid = models.CharField(max_length=64)
     access_token = models.TextField()
     refresh_token = models.TextField()
@@ -1190,25 +1211,35 @@ class WithingsAuth(models.Model):
     class Meta:
         verbose_name = "Withings Auth"
         verbose_name_plural = "Withings Auth"
+        constraints = [
+            # One Withings account can't feed two FitPulse users — webhooks route by userid.
+            models.UniqueConstraint(fields=["userid"], condition=~models.Q(userid=""),
+                                    name="uniq_withings_userid"),
+        ]
 
     def __str__(self):
         return f"WithingsAuth(userid={self.userid}, expires={self.token_expires_at})"
 
     @classmethod
-    def get(cls):
-        """Returns the singleton row, or None if not yet seeded."""
-        return cls.objects.filter(pk=1).first()
+    def for_user(cls, user):
+        """This user's row, or None if they haven't connected yet."""
+        _require_user(user)
+        return cls.objects.filter(user=user).first()
 
 
 class PelotonAuth(models.Model):
     """
-    Singleton (pk=1). Stores Peloton session credentials in Postgres so both
+    One row per user. Stores Peloton session credentials in Postgres so both
     laptop and hosted app can sync. Peloton has no OAuth — the session cookie
     is extracted manually from browser DevTools and pasted into /settings/integrations/.
     Cookies last weeks to months; rotate when sync starts returning 403.
     """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="peloton_auth")
     session_id = models.CharField(max_length=512, help_text="peloton_session_id cookie")
-    user_id = models.CharField(max_length=64, help_text="Peloton user ID")
+    # The Peloton account id (named peloton_user_id so it can't be confused
+    # with the Django `user` FK above, whose attribute is user_id).
+    peloton_user_id = models.CharField(max_length=64, help_text="Peloton user ID")
     last_updated = models.DateTimeField(auto_now=True)
     notes = models.CharField(
         max_length=500,
@@ -1221,11 +1252,13 @@ class PelotonAuth(models.Model):
         verbose_name_plural = "Peloton Auth"
 
     def __str__(self):
-        return f"PelotonAuth(user_id={self.user_id}, updated={self.last_updated})"
+        return f"PelotonAuth(peloton_user_id={self.peloton_user_id}, updated={self.last_updated})"
 
     @classmethod
-    def get(cls):
-        return cls.objects.filter(pk=1).first()
+    def for_user(cls, user):
+        """This user's row, or None if they haven't connected yet."""
+        _require_user(user)
+        return cls.objects.filter(user=user).first()
 
     @property
     def masked_session_id(self):
@@ -1236,12 +1269,14 @@ class PelotonAuth(models.Model):
 
 class GoogleHealthAuth(models.Model):
     """
-    Singleton (pk=1). Stores Google Health API OAuth2 credentials in Postgres,
+    One row per user. Stores Google Health API OAuth2 credentials in Postgres,
     same pattern as WithingsAuth. Populated by the `google_health_login`
     management command, or by the web reconnect flow at
     /auth/google-health/connect/ (see google_health_oauth_connect/
     google_health_oauth_callback in views.py).
     """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="google_health_auth")
     access_token = models.TextField()
     refresh_token = models.TextField()
     token_expires_at = models.DateTimeField()
@@ -1264,9 +1299,10 @@ class GoogleHealthAuth(models.Model):
         return f"GoogleHealthAuth(expires={self.token_expires_at})"
 
     @classmethod
-    def get(cls):
-        """Returns the singleton row, or None if not yet seeded."""
-        return cls.objects.filter(pk=1).first()
+    def for_user(cls, user):
+        """This user's row, or None if they haven't connected yet."""
+        _require_user(user)
+        return cls.objects.filter(user=user).first()
 
     @property
     def days_since_connected(self):
@@ -1362,10 +1398,11 @@ class WebhookError(models.Model):
         return f"WebhookError({self.source}, {self.created_at:%Y-%m-%d %H:%M})"
 
     @classmethod
-    def record(cls, source: str, summary: str, detail: str = "") -> None:
+    def record(cls, source: str, summary: str, detail: str = "", user=None) -> None:
         """Log a failure and prune anything past the retention window in
-        the same call — the self-cleaning half of this model's contract."""
-        cls.objects.create(source=source, summary=summary, detail=detail)
+        the same call — the self-cleaning half of this model's contract.
+        `user` is whose sync failed, when known."""
+        cls.objects.create(source=source, summary=summary, detail=detail, user=user)
         cls.prune()
 
     @classmethod

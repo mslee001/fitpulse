@@ -20,7 +20,7 @@ ACTIVITY_MULTIPLIERS = {
 CALORIE_FLOOR = {"female": 1200, "male": 1500}
 
 
-def compute_macro_targets(profile=None):
+def compute_macro_targets(user, profile=None):
     """
     Compute daily macro targets from NutritionProfile + latest Withings body comp data.
 
@@ -29,14 +29,13 @@ def compute_macro_targets(profile=None):
     Returns None if no profile exists.
     """
     if profile is None:
-        try:
-            profile = NutritionProfile.objects.get(pk=1)
-        except NutritionProfile.DoesNotExist:
+        profile = NutritionProfile.objects.filter(user=user).first()
+        if profile is None:
             return None
 
     # Latest weight and lean mass from DailyStats (Withings data)
     latest = (
-        DailyStats.objects.filter(weight_lb__isnull=False)
+        DailyStats.objects.for_user(user).filter(weight_lb__isnull=False)
         .order_by("-date")
         .first()
     )
@@ -151,12 +150,12 @@ def compute_macro_targets(profile=None):
     }
 
 
-def recompute_daily_nutrition(date_obj):
+def recompute_daily_nutrition(user, date_obj):
     """Recompute DailyStats nutrition rollup for a date from all FoodEntry rows."""
     from .models import FoodEntry
     from django.db.models import Sum
 
-    agg = FoodEntry.objects.filter(date=date_obj).aggregate(
+    agg = FoodEntry.objects.for_user(user).filter(date=date_obj).aggregate(
         cal=Sum("calories"),
         prot=Sum("protein_g"),
         carbs=Sum("carbs_g"),
@@ -164,7 +163,7 @@ def recompute_daily_nutrition(date_obj):
         fiber=Sum("fiber_g"),
     )
 
-    stats, _ = DailyStats.objects.get_or_create(date=date_obj)
+    stats, _ = DailyStats.objects.get_or_create(user=user, date=date_obj)
     stats.cal_total = agg["cal"]
     stats.protein_g_total = agg["prot"]
     stats.carbs_g_total = agg["carbs"]
@@ -179,7 +178,7 @@ def recompute_daily_nutrition(date_obj):
 # Streak computation
 # ---------------------------------------------------------------------------
 
-def compute_streaks(reference_date=None):
+def compute_streaks(user, reference_date=None):
     """
     Compute food-logging streak and protein-target streak.
 
@@ -195,7 +194,7 @@ def compute_streaks(reference_date=None):
     today = reference_date or date.today()
 
     logged_dates = set(
-        FoodEntry.objects.filter(date__lte=today).values_list("date", flat=True).distinct()
+        FoodEntry.objects.for_user(user).filter(date__lte=today).values_list("date", flat=True).distinct()
     )
 
     # Start from today if logged; fall back to yesterday
@@ -216,9 +215,9 @@ def compute_streaks(reference_date=None):
     protein_target = None
     protein_streak = 0
     try:
-        profile = NutritionProfile.objects.filter(pk=1).first()
+        profile = NutritionProfile.objects.filter(user=user).first()
         if profile:
-            t = compute_macro_targets(profile)
+            t = compute_macro_targets(user, profile)
             protein_target = t.get("protein_g") if t else None
     except Exception:
         pass
@@ -226,7 +225,7 @@ def compute_streaks(reference_date=None):
     if protein_target:
         protein_map = {
             row[0]: row[1]
-            for row in DailyStats.objects.filter(
+            for row in DailyStats.objects.for_user(user).filter(
                 date__lte=today,
                 protein_g_total__isnull=False,
             ).values_list("date", "protein_g_total")
@@ -251,7 +250,7 @@ def compute_streaks(reference_date=None):
 # Weekly summary
 # ---------------------------------------------------------------------------
 
-def get_weekly_stats(end_date, targets=None):
+def get_weekly_stats(user, end_date, targets=None):
     """
     Per-day nutrition for the 7 days ending on end_date (inclusive).
 
@@ -265,7 +264,7 @@ def get_weekly_stats(end_date, targets=None):
 
     stats_map = {
         s.date: s
-        for s in DailyStats.objects.filter(date__gte=days_list[0], date__lte=days_list[-1])
+        for s in DailyStats.objects.for_user(user).filter(date__gte=days_list[0], date__lte=days_list[-1])
     }
 
     cal_t = targets.get("calories") if targets else None
@@ -325,7 +324,7 @@ def get_weekly_stats(end_date, targets=None):
 # Yesterday recap
 # ---------------------------------------------------------------------------
 
-def get_yesterday_recap(today, targets=None):
+def get_yesterday_recap(user, today, targets=None):
     """
     Return a summary of yesterday's nutrition for the 'no entries today' nudge card.
     Returns None if yesterday has no logged data.
@@ -333,12 +332,12 @@ def get_yesterday_recap(today, targets=None):
     from .models import FoodEntry
 
     yesterday = today - timedelta(days=1)
-    stats = DailyStats.objects.filter(date=yesterday).first()
+    stats = DailyStats.objects.for_user(user).filter(date=yesterday).first()
     if not stats or stats.cal_total is None:
         return None
 
     entries = list(
-        FoodEntry.objects.filter(date=yesterday)
+        FoodEntry.objects.for_user(user).filter(date=yesterday)
         .order_by("-protein_g")
         .values("raw_text", "protein_g", "meal")
     )
@@ -376,7 +375,7 @@ def _normalize_name(name: str) -> str:
     return name.strip()
 
 
-def get_top_foods(start, end, top_n=15):
+def get_top_foods(user, start, end, top_n=15):
     """
     Aggregate items from FoodEntry.items_json for the date range.
     Fuzzy-groups similar names (≥0.80 similarity).
@@ -386,7 +385,7 @@ def get_top_foods(start, end, top_n=15):
     """
     from .models import FoodEntry
 
-    entries = FoodEntry.objects.filter(date__gte=start, date__lte=end).values_list("items_json", flat=True)
+    entries = FoodEntry.objects.for_user(user).filter(date__gte=start, date__lte=end).values_list("items_json", flat=True)
 
     all_items = []
     for items_json in entries:
@@ -438,7 +437,7 @@ def get_top_foods(start, end, top_n=15):
 # Meal timing analysis
 # ---------------------------------------------------------------------------
 
-def get_meal_timing_stats(days=30):
+def get_meal_timing_stats(user, days=30):
     """
     Analyze meal timing across FoodEntry records for the past N days.
 
@@ -456,7 +455,7 @@ def get_meal_timing_stats(days=30):
 
     cutoff = date.today() - timedelta(days=days)
     entries = list(
-        FoodEntry.objects.filter(date__gte=cutoff).values("meal", "logged_at", "date")
+        FoodEntry.objects.for_user(user).filter(date__gte=cutoff).values("meal", "logged_at", "date")
     )
 
     def _to_local_minutes(logged_at):
@@ -530,13 +529,13 @@ def get_meal_timing_stats(days=30):
 # Day-of-week patterns
 # ---------------------------------------------------------------------------
 
-def get_day_of_week_stats(start, end):
+def get_day_of_week_stats(user, start, end):
     """
     Average calories by day of week for logged days in the range.
 
     Returns list of 7 dicts: {day_name, avg_cal, count}
     """
-    stats_qs = DailyStats.objects.filter(
+    stats_qs = DailyStats.objects.for_user(user).filter(
         date__gte=start, date__lte=end, cal_total__isnull=False
     ).values_list("date", "cal_total")
 
@@ -560,14 +559,14 @@ def get_day_of_week_stats(start, end):
 # Nutrition data gap helper (for Trends page warning)
 # ---------------------------------------------------------------------------
 
-def get_nutrition_gap(start, end):
+def get_nutrition_gap(user, start, end):
     """
     Return logged vs. total days in the window.
 
     Returns {days_logged: int, total_days: int, pct: float}
     """
     total = (end - start).days + 1
-    logged = DailyStats.objects.filter(
+    logged = DailyStats.objects.for_user(user).filter(
         date__gte=start, date__lte=end, cal_total__isnull=False
     ).count()
     pct = round(logged / total * 100) if total else 0
@@ -578,7 +577,7 @@ def get_nutrition_gap(start, end):
 # Target fit evaluator (Part 4 — auto-tune)
 # ---------------------------------------------------------------------------
 
-def evaluate_target_fit():
+def evaluate_target_fit(user):
     """
     Compare actual 14-day weight trend to expected trend given current calorie target.
 
@@ -593,8 +592,8 @@ def evaluate_target_fit():
       logging_days: int
       current_calories: int | None
     """
-    profile = NutritionProfile.objects.filter(pk=1).first()
-    targets = compute_macro_targets(profile) if profile else None
+    profile = NutritionProfile.objects.filter(user=user).first()
+    targets = compute_macro_targets(user, profile) if profile else None
 
     current_calories = targets.get("calories") if targets else None
     goal = profile.goal if profile else "loss"
@@ -619,7 +618,7 @@ def evaluate_target_fit():
     start_14 = today - timedelta(days=13)
 
     # Require at least 10 logged days in the 14-day window
-    logging_days = DailyStats.objects.filter(
+    logging_days = DailyStats.objects.for_user(user).filter(
         date__gte=start_14, date__lte=today, cal_total__isnull=False
     ).count()
 
@@ -638,7 +637,7 @@ def evaluate_target_fit():
 
     # Get daily weights for rolling averages
     weights = list(
-        DailyStats.objects.filter(date__gte=start_14, date__lte=today, weight_lb__isnull=False)
+        DailyStats.objects.for_user(user).filter(date__gte=start_14, date__lte=today, weight_lb__isnull=False)
         .order_by("date")
         .values_list("date", "weight_lb")
     )
@@ -754,7 +753,7 @@ def evaluate_target_fit():
     }
 
 
-def get_satisfying_meals(min_occurrences: int = 3, top_n: int = 5) -> list[dict]:
+def get_satisfying_meals(user, min_occurrences: int = 3, top_n: int = 5) -> list[dict]:
     """
     Return SavedMeals that have been rated as satisfying (post-meal fullness >= 7)
     at least min_occurrences times via linked HungerCheck records.
@@ -768,7 +767,7 @@ def get_satisfying_meals(min_occurrences: int = 3, top_n: int = 5) -> list[dict]
 
     # HungerChecks with high fullness linked to a saved meal via FoodEntry
     qs = (
-        HungerCheck.objects
+        HungerCheck.objects.for_user(user)
         .filter(context="post_meal", fullness_level__gte=7, related_meal__source_saved_meal__isnull=False)
         .values("related_meal__source_saved_meal")
         .annotate(satisfying_count=Count("pk"))
@@ -780,7 +779,7 @@ def get_satisfying_meals(min_occurrences: int = 3, top_n: int = 5) -> list[dict]
     for row in qs:
         meal_pk = row["related_meal__source_saved_meal"]
         try:
-            sm = SavedMeal.objects.get(pk=meal_pk)
+            sm = SavedMeal.objects.for_user(user).get(pk=meal_pk)
         except SavedMeal.DoesNotExist:
             continue
         results.append({

@@ -14,6 +14,7 @@ from datetime import date, timedelta
 from django.core.management.base import BaseCommand
 
 from workouts.analysis import run_intervention_analysis, SECONDS_FIELDS
+from workouts.management.user_arg import add_user_argument, resolve_user
 
 
 def _fmt(val, decimals=1):
@@ -54,6 +55,7 @@ class Command(BaseCommand):
             default="loss",
             help="Weight goal direction: loss (lower=better), gain (higher=better), maintain (neutral)",
         )
+        add_user_argument(parser)
 
     def handle(self, *args, **options):
         try:
@@ -74,6 +76,7 @@ class Command(BaseCommand):
         days_elapsed = (today - start).days
 
         result = run_intervention_analysis(
+            resolve_user(options),
             before_start=before_start,
             before_end=before_end,
             after_start=after_start,

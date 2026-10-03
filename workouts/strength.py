@@ -20,9 +20,9 @@ def exercise_key(name):
     return " ".join((name or "").lower().split())
 
 
-def dumbbells():
-    """The dumbbells on the rack (Settings → Dumbbells) — "next weight up" steps through these."""
-    return sorted(UserSettings.get().dumbbells_lb or DEFAULT_DUMBBELLS_LB)
+def dumbbells(user):
+    """The dumbbells on the user's rack (Settings → Dumbbells) — "next weight up" steps through these."""
+    return sorted(UserSettings.for_user(user).dumbbells_lb or DEFAULT_DUMBBELLS_LB)
 
 
 def next_dumbbell(weight, rack):
@@ -33,11 +33,11 @@ def prev_dumbbell(weight, rack):
     return next((d for d in reversed(rack) if d < weight), None)
 
 
-def exercise_history(until=None):
-    """{key: {"name", "sessions": [...]}} over every workout with a manual log,
+def exercise_history(user, until=None):
+    """{key: {"name", "sessions": [...]}} over every one of the user's workouts with a manual log,
     oldest session first. `until` (a datetime) limits it to workouts up to then.
     Timed rows are flagged; they get recommendations when weighted (e.g. carries)."""
-    qs = CachedWorkout.objects.exclude(manual_movements_json=[]).order_by("created_at")
+    qs = CachedWorkout.objects.for_user(user).exclude(manual_movements_json=[]).order_by("created_at")
     if until is not None:
         qs = qs.filter(created_at__lte=until)
     history = {}
@@ -64,7 +64,7 @@ def exercise_history(until=None):
     return history
 
 
-def recommend(sessions, rack=None):
+def recommend(sessions, rack):
     """Next-session weight from an exercise's sessions (oldest first).
 
     Returns None for bodyweight work, else {"action", "weight", "current", "reason"}
@@ -76,7 +76,6 @@ def recommend(sessions, rack=None):
         this weight; otherwise one more session here.
       - No rating → up after two sessions at this weight, but say a rating would help.
     """
-    rack = rack if rack is not None else dumbbells()
     loaded = [s for s in sessions if s["weight_lb"]]   # timed work with a weight (carries) counts too
     if not loaded:
         return None
@@ -118,7 +117,7 @@ def recommend(sessions, rack=None):
     return hold("Rate how it felt next time to get a recommendation.")
 
 
-def recommendations(until=None):
-    """{exercise key: recommendation} for every logged exercise."""
-    rack = dumbbells()
-    return {k: rec for k, e in exercise_history(until).items() if (rec := recommend(e["sessions"], rack))}
+def recommendations(user, until=None):
+    """{exercise key: recommendation} for every exercise the user has logged."""
+    rack = dumbbells(user)
+    return {k: rec for k, e in exercise_history(user, until).items() if (rec := recommend(e["sessions"], rack))}

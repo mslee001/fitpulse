@@ -4,7 +4,7 @@ Run this once from the terminal to save tokens to ~/.fitpulse/withings_tokens.js
 After that, the sync views use the cached tokens automatically (auto-refresh on expiry).
 
 Usage:
-    python manage.py withings_login
+    python manage.py withings_login [--user USERNAME]
 
 Prerequisites (set in .env):
     WITHINGS_CLIENT_ID=...
@@ -15,14 +15,20 @@ import secrets
 import urllib.parse
 from django.core.management.base import BaseCommand
 
+from workouts.management.user_arg import add_user_argument, resolve_user
+
 
 class Command(BaseCommand):
     help = "Authenticate with Withings API and save OAuth tokens for sync views."
 
+    def add_arguments(self, parser):
+        add_user_argument(parser)
+
     def handle(self, *args, **options):
         from workouts.services.withings_client import WithingsClient
 
-        client = WithingsClient()
+        user = resolve_user(options)
+        client = WithingsClient(user)
 
         if not client.client_id:
             self.stderr.write(self.style.ERROR(
@@ -76,5 +82,5 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Success! Withings user ID: {tokens.get('userid', 'unknown')}"
         ))
-        self.stdout.write("Tokens saved to DB (WithingsAuth singleton).")
+        self.stdout.write(f"Tokens saved to DB (WithingsAuth for {user.username}).")
         self.stdout.write("You can now use Withings Sync from the nav dropdown.")

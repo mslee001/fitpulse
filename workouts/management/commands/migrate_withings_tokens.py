@@ -4,10 +4,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from django.core.management.base import BaseCommand
 from workouts.models import WithingsAuth
+from workouts.management.user_arg import add_user_argument, resolve_user
 
 
 class Command(BaseCommand):
     help = "One-shot: migrate ~/.fitpulse/withings_tokens.json to WithingsAuth DB row."
+
+    def add_arguments(self, parser):
+        add_user_argument(parser)
 
     def handle(self, *args, **opts):
         token_path = Path.home() / ".fitpulse" / "withings_tokens.json"
@@ -33,7 +37,7 @@ class Command(BaseCommand):
             raise ValueError(f"Could not parse expires_at: {expires_at_raw!r}")
 
         WithingsAuth.objects.update_or_create(
-            pk=1,
+            user=resolve_user(opts),
             defaults={
                 "userid": userid,
                 "access_token": access_token,
