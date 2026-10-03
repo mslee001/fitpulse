@@ -64,7 +64,9 @@ DATABASES = {
 }
 
 if os.environ.get("DATABASE_URL"):
-    DATABASES["default"]["OPTIONS"] = {"sslmode": "require"}
+    # Require SSL unless the URL sets its own sslmode (CI's throwaway Postgres
+    # uses ?sslmode=disable). Production URLs are unaffected.
+    DATABASES["default"].setdefault("OPTIONS", {}).setdefault("sslmode", "require")
 
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]

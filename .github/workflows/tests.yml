@@ -1,0 +1,72 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same PR cancels the older, now-irrelevant run.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    # This job name ("tests") is what you select as the required status check.
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      # Postgres, not SQLite: production runs on Postgres (Neon), and several
+      # queries use JSONField __contains lookups that SQLite doesn't support.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Throwaway values only. No real API keys live here: tests mock every
+      # external call (Anthropic, Peloton, Garmin, Withings, Google Health).
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      DJANGO_SECRET_KEY: ci-not-a-real-secret
+      DJANGO_DEBUG: "False"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"   # keep in step with runtime.txt
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Fail if a model change is missing its migration
+        run: python manage.py makemigrations --check --dry-run
+
+      # Templates use the manifest static storage, so tests that render pages
+      # need the manifest that collectstatic builds.
+      - name: Collect static files
+        run: python manage.py collectstatic --noinput -v 0
+
+      - name: Run tests
+        run: python manage.py test --verbosity 2
