@@ -297,24 +297,35 @@ def _manual_movement_context(workout):
     every plan exercise not yet logged (blank numbers, ready to fill in). Plan
     order is kept for the unlogged ones; saved rows come first so entered data
     doesn't jump around."""
-    saved = list(workout.manual_movements_json or [])
+    from .strength import EFFORT_CHOICES, exercise_key, recommendations
+
+    saved = workout.manual_log_rows
     saved_names = {(r.get("name") or "").strip().lower() for r in saved}
-    rows = [dict(r) for r in saved]
+    rows = list(saved)
     for seg in workout.class_plan_json or []:
         for ex in seg.get("exercises", []):
             if ex["name"].strip().lower() not in saved_names:
                 saved_names.add(ex["name"].strip().lower())
-                rows.append({"name": ex["name"], "sets": None, "reps": None, "weight_lb": None, "notes": ""})
+                rows.append({"name": ex["name"], "sets": None, "reps": None, "weight_lb": None,
+                             "notes": "", "effort": ""})
+    # Peloton's Movement Tracker data, when present, is the better record — this
+    # card is for classes it didn't track (e.g. circuit classes).
+    show = not workout.movements and bool(
+        workout.class_plan_json or saved
+        or (workout.source == "peloton" and workout.discipline in ("strength", "circuit"))
+    )
+    if show:
+        # History up to this workout: on a logged row that's "next time", on an
+        # unlogged plan row it's the suggestion for today.
+        recs = recommendations(until=workout.created_at)
+        rows = [{**r, "rec": recs.get(exercise_key(r.get("name")))} for r in rows]
     return {
         "class_plan": workout.class_plan_json or [],
         "manual_rows": rows,
         "has_manual_data": bool(saved),
-        # Peloton's Movement Tracker data, when present, is the better record — this
-        # card is for classes it didn't track (e.g. circuit classes).
-        "show_manual_card": not workout.movements and bool(
-            workout.class_plan_json or saved
-            or (workout.source == "peloton" and workout.discipline in ("strength", "circuit"))
-        ),
+        "manual_volume_lb": sum(r["volume_lb"] or 0 for r in saved),
+        "effort_choices": EFFORT_CHOICES,
+        "show_manual_card": show,
     }
 
 
@@ -970,7 +981,7 @@ def compare(request):
     disciplines = {w.discipline for w in workouts}
     if disciplines == {"running"}:
         compare_mode = "run"
-    elif disciplines == {"strength"}:
+    elif disciplines <= {"strength", "circuit"}:
         compare_mode = "strength"
     elif disciplines <= {"cycling", "bike_bootcamp"}:
         compare_mode = "cycling"
@@ -998,6 +1009,7 @@ def compare(request):
             "movement_summary": w.movement_summary,
             "achievements": w.achievements,
             "exercise_sets": w.exercise_sets_json or [],
+            "manual_log": w.manual_log_rows,
             "source": w.source,
         }
         for w in workouts
@@ -1033,6 +1045,7 @@ def compare(request):
             "total_reps": sum(s.get("reps") or 0 for s in (w.exercise_sets_json or [])),
             "total_sets": len([s for s in (w.exercise_sets_json or []) if s.get("reps") is not None or s.get("duration_seconds")]),
             "unique_exercises": len({s.get("exercise") for s in (w.exercise_sets_json or []) if s.get("exercise")}),
+            "manual_log": w.manual_log_summary,
         }
         for w in workouts
     }
@@ -1219,6 +1232,7 @@ def settings_page(request):
         "experience_choices": AthleteProfile.EXPERIENCE_CHOICES,
         "tone_choices": AthleteProfile.TONE_CHOICES,
         "last_daily_sync_at": settings_obj.last_daily_sync_at,
+        "dumbbells": sorted(settings_obj.dumbbells_lb or []),
     })
 
 
@@ -1358,12 +1372,15 @@ def save_manual_movements(request, workout_id):
     name but no numbers and no notes are dropped — the plan's pre-filled but
     untouched exercises shouldn't be stored as if they were logged. Submitting
     an empty log clears it."""
+    from .strength import EFFORT_LABELS
+
     workout = get_object_or_404(CachedWorkout, workout_id=workout_id)
     names = request.POST.getlist("name")
     sets = request.POST.getlist("sets")
     reps = request.POST.getlist("reps")
     weights = request.POST.getlist("weight_lb")
     notes = request.POST.getlist("notes")
+    efforts = request.POST.getlist("effort")
 
     rows = []
     for i, name in enumerate(names):
@@ -1375,14 +1392,65 @@ def save_manual_movements(request, workout_id):
             "weight_lb": _parse_manual_num(weights[i] if i < len(weights) else "", float),
             "notes": (notes[i] if i < len(notes) else "").strip()[:200],
         }
+        effort = efforts[i] if i < len(efforts) else ""
+        if effort in EFFORT_LABELS:
+            row["effort"] = effort
         if name and (row["sets"] is not None or row["reps"] is not None
-                     or row["weight_lb"] is not None or row["notes"]):
+                     or row["weight_lb"] is not None or row["notes"] or row.get("effort")):
             rows.append(row)
 
     workout.manual_movements_json = rows
     workout.save(update_fields=["manual_movements_json"])
-    messages.success(request, f"Saved {len(rows)} exercise{'s' if len(rows) != 1 else ''}." if rows else "Exercise log cleared.")
+    if rows:
+        volume = workout.manual_log_summary["volume_lb"]
+        msg = f"Saved {len(rows)} exercise{'s' if len(rows) != 1 else ''}"
+        messages.success(request, f"{msg} · {volume:,} lb total volume." if volume else f"{msg}.")
+    else:
+        messages.success(request, "Exercise log cleared.")
     return redirect("workout_detail", workout_id=workout.workout_id)
+
+
+def strength_trends(request):
+    """Per-exercise weight trends + next-weight recommendations from the manual
+    exercise log, plus total logged volume per workout."""
+    from .strength import EFFORT_LABELS, dumbbells, exercise_history, recommend
+
+    rack = dumbbells()
+    history = exercise_history()
+    exercises = []
+    for key, e in history.items():
+        sessions = e["sessions"]
+        loaded = [s for s in sessions if s["weight_lb"]]
+        last = sessions[-1]
+        exercises.append({
+            "key": key,
+            "name": e["name"],
+            "rec": recommend(sessions, rack),
+            "last_date": last["date"],
+            "count": len(sessions),
+            "first_lb": loaded[0]["weight_lb"] if loaded else None,
+            "current_lb": loaded[-1]["weight_lb"] if loaded else None,
+            "recent": [{**s, "effort_label": EFFORT_LABELS.get(s["effort"], "")} for s in reversed(sessions[-5:])],
+            "chart": [{"date": s["date"].strftime("%b %-d"), "weight": s["weight_lb"],
+                       "sets": s["sets"], "reps": s["reps"], "per_side": s["per_side"], "timed": s["timed"],
+                       "effort": EFFORT_LABELS.get(s["effort"], "not rated")} for s in loaded],
+        })
+    weighted = sorted((x for x in exercises if x["current_lb"]), key=lambda x: x["last_date"], reverse=True)
+    unweighted = sorted((x for x in exercises if not x["current_lb"]), key=lambda x: x["name"].lower())
+
+    workouts = (CachedWorkout.objects.exclude(manual_movements_json=[])
+                .order_by("created_at").only("workout_id", "title", "created_at", "manual_movements_json"))
+    volume_series = [{"date": w.created_at.strftime("%b %-d"), "title": w.title,
+                      "volume": w.manual_log_summary["volume_lb"]} for w in workouts]
+
+    return render(request, "workouts/strength_trends.html", {
+        "weighted": weighted,
+        "unweighted": unweighted,
+        "dumbbells": rack,
+        "move_up_count": sum(1 for x in weighted if x["rec"] and x["rec"]["action"] == "up"),
+        "volume_series": json.dumps(volume_series),
+        "charts": json.dumps({x["key"]: x["chart"] for x in weighted}),
+    })
 
 
 @require_POST
@@ -1414,6 +1482,31 @@ def set_athlete_profile(request):
     raw_keywords = request.POST.get("rehab_keywords", "")
     athlete.rehab_keywords = [k.strip().lower() for k in raw_keywords.split(",") if k.strip()]
     athlete.save()
+    return redirect("settings")
+
+
+@require_POST
+def set_dumbbells(request):
+    """Save the dumbbell rack from a comma/space-separated list of weights (lb)."""
+    raw = request.POST.get("dumbbells", "").replace(",", " ").split()
+    weights, bad = set(), []
+    for token in raw:
+        try:
+            w = float(token.lower().removesuffix("lb"))
+        except ValueError:
+            bad.append(token)
+            continue
+        if 0 < w <= 300:
+            weights.add(int(w) if w.is_integer() else w)
+        else:
+            bad.append(token)
+    if bad or not weights:
+        messages.error(request, f"Couldn't read: {', '.join(bad)}" if bad else "Enter at least one weight.")
+    else:
+        settings_obj = UserSettings.get()
+        settings_obj.dumbbells_lb = sorted(weights)
+        settings_obj.save(update_fields=["dumbbells_lb", "updated_at"])
+        messages.success(request, f"Saved {len(weights)} dumbbell weight{'s' if len(weights) != 1 else ''}.")
     return redirect("settings")
 
 

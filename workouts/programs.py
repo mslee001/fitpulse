@@ -679,6 +679,24 @@ def _workout_exercise_loads(workout):
     # reps_done is already the session total (not per-set). A movement can appear more
     # than once in a single workout (e.g. two supersets of the same exercise), so
     # aggregate by name before yielding.
+    # Classes Movement Tracker didn't record: fall back to the hand-entered log
+    # (per-dumbbell weight; volume/reps follow CachedWorkout.manual_log_rows'
+    # dumbbell + per-side rules). Timed rows have no load, so they're skipped.
+    if not (getattr(workout, "movements", None) or []):
+        per_ex = {}
+        for r in getattr(workout, "manual_log_rows", None) or []:
+            name = (r.get("name") or "").strip()
+            if not name or r["timed"]:
+                continue
+            reps = (r.get("sets") or 0) * (r.get("reps") or 0) * (2 if r["per_side"] else 1)
+            bucket = per_ex.setdefault(" ".join(name.lower().split()), {"name": name, "top": 0.0, "vol": 0.0, "reps": 0})
+            bucket["top"] = max(bucket["top"], r.get("weight_lb") or 0)
+            bucket["vol"] += r["volume_lb"] or 0
+            bucket["reps"] += reps
+        for key, agg in per_ex.items():
+            yield key, agg["name"], agg["top"], agg["vol"], agg["reps"]
+        return
+
     per_ex = {}
     for m in getattr(workout, "movements", None) or []:
         name = m.get("name")

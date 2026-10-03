@@ -36,11 +36,11 @@
   </div>
 </div>
 <p class="stat-sub" style="margin-top:0.75rem">
-  Only strength classes with tracked movements contribute. X-axis is each pass through a week.
+  Strength classes with tracked movements contribute, plus exercises you logged by hand on a class's Class Exercises card. Weight is per dumbbell. X-axis is each pass through a week.
   {% if data.hidden_count %}Showing the {{ data.series|length }} most-tracked exercises &mdash; {{ data.hidden_count }} tracked less often {{ data.hidden_count|pluralize:"is,are" }} hidden.{% endif %}
 </p>
 {% else %}
-<p class="stat-sub">No tracked-movement strength classes in this cycle yet.</p>
+<p class="stat-sub">No tracked or hand-logged weights in this cycle yet.</p>
 {% endif %}
 
 <script>

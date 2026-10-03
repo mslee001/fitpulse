@@ -317,6 +317,19 @@ function buildStatsTable() {
         })},
       );
     }
+    if (workoutIds.some(id => workoutStats[id]?.manual_log)) {
+      const manual = (id, key, fmt) => {
+        const v = workoutStats[id]?.manual_log?.[key];
+        return v ? { d: fmt(v), r: v } : { d: "—", r: null };
+      };
+      rows.push(
+        { label: "Volume (logged)", dir: "higher", vals: workoutIds.map(id => manual(id, "volume_lb", v => `${v.toLocaleString()} lb`)) },
+        { label: "Reps (logged)", dir: "higher", vals: workoutIds.map(id => manual(id, "total_reps", v => v.toLocaleString())) },
+        { label: "Sets (logged)", dir: "higher", vals: workoutIds.map(id => manual(id, "total_sets", v => v.toString())) },
+        { label: "Timed Work (logged)", dir: "higher", vals: workoutIds.map(id => manual(id, "timed_seconds", v => `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`)) },
+        { label: "Heaviest (logged)", dir: "higher", vals: workoutIds.map(id => manual(id, "heaviest_lb", v => `${v} lb`)) },
+      );
+    }
     if (hasPelotonMovements) {
       rows.push(
         { label: "Tracker Tier", dir: null, vals: workoutIds.map(id => {
@@ -655,6 +668,63 @@ function buildExerciseSetsTable() {
     </div>`);
 }
 
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Hand-entered exercise log comparison (classes Movement Tracker didn't record)
+function buildManualLogTable() {
+  if (compareMode !== "strength") return;
+  const container = document.getElementById("movementsCompare");
+  if (!container) return;
+
+  const exercises = new Map();  // lowercased name -> {name, byId}
+  workoutIds.forEach(id => {
+    (workoutDetailData[id]?.manual_log || []).forEach(r => {
+      const key = (r.name || "").trim().toLowerCase();
+      if (!key) return;
+      if (!exercises.has(key)) exercises.set(key, { name: r.name.trim(), byId: {} });
+      exercises.get(key).byId[id] = r;
+    });
+  });
+  if (!exercises.size) return;
+
+  const headers = workoutIds.map((id, i) =>
+    `<th style="border-top:2px solid ${COLORS[i]}">${workoutDates[i]}</th>`).join("");
+
+  let rows = "";
+  exercises.forEach(({ name, byId }) => {
+    // Highlight the heaviest weight when an exercise was done in 2+ workouts at different weights
+    const logged = workoutIds.filter(id => byId[id]).map(id => byId[id].weight_lb || 0);
+    const best = logged.length >= 2 && Math.max(...logged) > Math.min(...logged) ? Math.max(...logged) : null;
+    const cells = workoutIds.map(id => {
+      const r = byId[id];
+      if (!r) return `<td class="muted">—</td>`;
+      const unit = r.timed ? "s" : "";
+      const side = r.per_side ? "/side" : "";
+      const volume = `${r.sets ?? "?"}×${r.reps ?? "?"}${unit}${side}`;
+      const wt = r.weight_lb ? ` · ${r.dumbbells === 2 ? "2×" : ""}${r.weight_lb} lb` : "";
+      const isBest = best !== null && (r.weight_lb || 0) === best;
+      const notes = r.notes && !r.timed && !r.per_side ? `<br><span style="font-size:0.7rem;color:var(--text-dim)">${esc(r.notes)}</span>` : "";
+      return `<td class="mono${isBest ? " cell-best" : ""}" style="font-size:0.8rem">${volume}${wt}${notes}</td>`;
+    }).join("");
+    rows += `<tr><td style="font-size:0.82rem;white-space:nowrap">${esc(name)}</td>${cells}</tr>`;
+  });
+
+  container.insertAdjacentHTML("beforeend", `
+    <div class="chart-card" style="margin-top:1rem">
+      <div class="chart-header">
+        <h3 class="chart-title">LOGGED EXERCISES</h3>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Exercise</th>${headers}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const defaultMetric = compareMode === "run" ? "pace"
     : compareMode === "strength" ? "heart_rate"
@@ -663,6 +733,7 @@ document.addEventListener("DOMContentLoaded", () => {
   buildSplitsTable();
   buildMovementsTable();
   buildExerciseSetsTable();
+  buildManualLogTable();
   buildStatsTable();
 
   document.querySelectorAll(".chart-toggle").forEach(btn => {

@@ -134,3 +134,23 @@ class ManualMovementsTests(TestCase):
         html = resp.content.decode()
         self.assertIn("CLASS EXERCISES", html)
         self.assertIn("Single Leg Hip Bridge", html)
+
+    def test_form_rows_carry_volume_and_total(self):
+        self.w.manual_movements_json = [
+            {"name": "Bent Over Row", "sets": 3, "reps": 6, "weight_lb": 30.0, "notes": "per side"},
+            {"name": "Reverse Fly", "sets": 3, "reps": 8, "weight_lb": 12.0, "notes": ""},
+            {"name": "Dead Bug", "sets": 3, "reps": 90, "weight_lb": 20.0, "notes": "seconds"},
+        ]
+        ctx = _manual_movement_context(self.w)
+        vols = {r["name"]: r.get("volume_lb") for r in ctx["manual_rows"]}
+        self.assertEqual(vols["Bent Over Row"], 1080)   # 3×6×2 sides × 30 × 1 dumbbell
+        self.assertEqual(vols["Reverse Fly"], 576)      # 3×8 × 12 × 2 dumbbells
+        self.assertIsNone(vols["Dead Bug"])             # timed
+        self.assertIsNone(vols["Hip Bridge"])           # unlogged plan row
+        self.assertEqual(ctx["manual_volume_lb"], 1656)
+
+    def test_save_message_includes_total_volume(self):
+        from django.contrib.messages import get_messages
+        resp = self._post(name=["Reverse Fly"], sets=["3"], reps=["8"], weight_lb=["12"], notes=[""])
+        self.assertEqual([str(m) for m in get_messages(resp.wsgi_request)],
+                         ["Saved 1 exercise · 576 lb total volume."])

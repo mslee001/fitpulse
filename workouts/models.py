@@ -1,3 +1,5 @@
+import re
+
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
@@ -291,6 +293,13 @@ class BodyMeasurement(models.Model):
         return f"BodyMeasurement {self.date} {self.weight_lb}lb"
 
 
+DEFAULT_DUMBBELLS_LB = [2, 5, 7, 10, 12, 15, 20, 25, 30, 35, 40, 45]
+
+
+def default_dumbbells():
+    return list(DEFAULT_DUMBBELLS_LB)
+
+
 class UserSettings(models.Model):
     """Singleton for user-level settings (FTP, preferences, etc.)."""
     ftp = models.IntegerField(null=True, blank=True, help_text="Functional Threshold Power in watts")
@@ -308,6 +317,8 @@ class UserSettings(models.Model):
     ai_pattern_insights_generated_at = models.DateTimeField(null=True, blank=True)
     ai_pattern_insights_batch_id = models.CharField(max_length=128, null=True, blank=True)
     last_daily_sync_at = models.DateTimeField(null=True, blank=True)
+    # Dumbbell weights on hand (lb, ascending) — weight recommendations step through these.
+    dumbbells_lb = models.JSONField(default=default_dumbbells, blank=True)
 
     @classmethod
     def get(cls):
@@ -644,6 +655,58 @@ class CachedWorkout(models.Model):
         pg = self.performance_graph_json or {}
         m = (pg.get("metrics_by_slug") or {}).get("heart_rate") or {}
         return m.get("average_value")
+
+    @property
+    def manual_log_rows(self):
+        """manual_movements_json rows annotated for comparison: `timed` when the
+        notes say the reps are seconds, `per_side` when they're per side (counted
+        twice in rep/volume totals), and `dumbbells` — how many of the entered
+        (per-dumbbell) weight were lifted: 1 for per-side moves, 2 otherwise,
+        unless the notes say e.g. "single dumbbell" or "two dumbbells"."""
+        rows = []
+        for r in self.manual_movements_json or []:
+            notes = (r.get("notes") or "").lower()
+            per_side = "per side" in notes or "each side" in notes
+            if re.search(r"\b(single|one|1)\s*(dumbbell|db|kettlebell|kb)\b", notes):
+                dumbbells = 1
+            elif re.search(r"\b(two|both|2)\s*(dumbbells|dbs|kettlebells|kbs)\b", notes):
+                dumbbells = 2
+            else:
+                dumbbells = 1 if per_side else 2
+            timed = "sec" in notes
+            # sets × reps (both sides for per-side moves) × weight × dumbbells;
+            # None for timed rows or rows without a weight and full rep count
+            sets, reps, weight = r.get("sets"), r.get("reps"), r.get("weight_lb")
+            volume = None
+            if not timed and sets and reps and weight:
+                volume = round(sets * reps * (2 if per_side else 1) * weight * dumbbells)
+            rows.append({**r, "timed": timed, "per_side": per_side, "dumbbells": dumbbells,
+                         "volume_lb": volume})
+        return rows
+
+    @property
+    def manual_log_summary(self):
+        """Totals over the hand-entered exercise log, or None if there isn't one.
+        Volume = sets × reps × weight × dumbbells over weighted rep-based rows."""
+        rows = self.manual_log_rows
+        if not rows:
+            return None
+        total_sets = total_reps = timed_seconds = 0
+        for r in rows:
+            sets, reps = r.get("sets") or 0, r.get("reps") or 0
+            total_sets += sets
+            if r["timed"]:
+                timed_seconds += sets * reps
+            else:
+                total_reps += sets * reps * (2 if r["per_side"] else 1)
+        return {
+            "exercises": len(rows),
+            "total_sets": total_sets,
+            "total_reps": total_reps,
+            "timed_seconds": timed_seconds,
+            "volume_lb": sum(r["volume_lb"] or 0 for r in rows),
+            "heaviest_lb": max((r.get("weight_lb") or 0 for r in rows), default=0),
+        }
 
     @property
     def leaderboard_pct(self):

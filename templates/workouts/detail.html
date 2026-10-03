@@ -322,7 +322,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const pct = total > 0 ? ((secs / total) * 100).toFixed(1) : 0;
       const m = Math.floor(secs / 60), s = secs % 60;
       const row = document.createElement("div");
-      row.className = "hr-zone-row";
+      row.className = "hr-zone-row hr-zone-row--pct";
       row.innerHTML = `
         <div class="hr-zone-label" style="color:${ZONE_COLORS[i]}">${ZONE_NAMES[i]}</div>
         <div class="hr-zone-bar-wrap">

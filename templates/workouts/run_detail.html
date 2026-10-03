@@ -347,7 +347,6 @@ const metrics = perf.metrics_by_slug || {};
 const everyN = perf.every_n || 5;
 
 const recentRuns = {{ recent_runs|safe }};
-const currentWorkoutId = "{{ workout.workout_id }}";
 const typeStats = perf._typeStats || {};
 
 // Pace time-series values come from the API as min/mi (e.g. 9.75 = 9:45/mi)
@@ -825,22 +824,6 @@ function buildChart() {
   buildVsAverages();
 
   // Compare bar
-  function updateCompareBar() {
-    const checked = [...document.querySelectorAll(".compare-check:checked")].map(cb => cb.value);
-    const bar = document.getElementById("compareBar");
-    const link = document.getElementById("compareBarLink");
-    const count = document.getElementById("compareBarCount");
-    if (checked.length > 0) {
-      bar.style.display = "";
-      link.href = `/compare/?ids=${[currentWorkoutId, ...checked].join(",")}`;
-      count.textContent = `${checked.length} workout${checked.length > 1 ? "s" : ""} selected`;
-    } else {
-      bar.style.display = "none";
-    }
-  }
-  document.addEventListener("change", e => {
-    if (e.target.classList.contains("compare-check")) updateCompareBar();
-  });
 
   // HR zone range labels (below chart)
   const hrZonesEl = document.getElementById("hrZoneRanges");
