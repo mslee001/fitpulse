@@ -229,26 +229,28 @@
       style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.75rem;font-family:'Barlow',sans-serif;font-size:0.95rem;resize:vertical;margin-bottom:0.75rem"
     ></textarea>
 
-    <!-- Label image upload area -->
+    <!-- Food photo area: nutrition label or meal (the AI decides which) -->
     <div id="label-upload-area" style="margin-bottom:0.75rem">
       <input type="file" name="label_image" id="label-image-input" accept="image/*" style="display:none">
-      <div id="label-upload-btn-row" style="display:flex;align-items:center;gap:0.5rem">
-        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('label-image-input').click()">
-          Upload nutrition label
-        </button>
-        <span style="font-size:0.8rem;color:var(--text-dim)">optional — attach a photo of a nutrition facts panel</span>
+      <input type="file" id="photo-capture-input" accept="image/*" capture="environment" style="display:none">
+      <div id="label-upload-btn-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+        <button type="button" id="take-photo-btn" class="btn btn-ghost btn-sm" style="display:none"
+                onclick="document.getElementById('photo-capture-input').click()">Take photo</button>
+        <button type="button" class="btn btn-ghost btn-sm"
+                onclick="document.getElementById('label-image-input').click()">Upload photo</button>
+        <span style="font-size:0.8rem;color:var(--text-dim)">optional — a nutrition label or your plate</span>
       </div>
       <div id="label-preview-row" style="display:none;margin-top:0.6rem;align-items:flex-start;gap:1rem;flex-wrap:wrap">
         <div style="position:relative;flex-shrink:0">
-          <img id="label-preview-img" src="" alt="Label preview"
+          <img id="label-preview-img" src="" alt="Photo preview"
             style="max-height:120px;max-width:160px;border-radius:var(--r);border:1px solid var(--border);object-fit:contain">
           <button type="button" onclick="clearLabelImage()"
             style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--accent-red);color:#fff;border:none;cursor:pointer;font-size:0.7rem;line-height:1;display:flex;align-items:center;justify-content:center">✕</button>
         </div>
         <div style="flex:1;min-width:180px">
-          <label class="form-label" style="font-size:0.75rem;margin-bottom:0.35rem;display:block">How much did you have?</label>
+          <label class="form-label" style="font-size:0.75rem;margin-bottom:0.35rem;display:block">Portion notes (optional)</label>
           <input type="text" name="serving_note" id="serving-note-input"
-            placeholder='e.g. "I had the whole bag" or "half a serving"'
+            placeholder='e.g. "the whole bag", "half", "about 1 cup rice"'
             style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.65rem;font-family:'Barlow',sans-serif;font-size:0.875rem">
           <div style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.3rem" id="serving-chips">
             <button type="button" class="serving-chip" onclick="setServingNote('1 serving')">1 serving</button>
@@ -293,19 +295,76 @@
 </style>
 
 <script>
+const PHOTO_MAX_EDGE = 1568;
+
+// Returns a JPEG File no larger than PHOTO_MAX_EDGE on the long edge.
+// Falls back to the original file if the browser can't decode it (e.g. HEIC on
+// desktop Chrome) so the server's type check can return a clear error.
+async function downscaleImage(file) {
+  if (!file || !file.type.startsWith('image/')) return file;
+  let bmp;
+  try {
+    bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch (e) {
+    return file;
+  }
+  const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(bmp.width, bmp.height));
+  if (scale === 1 && file.type === 'image/jpeg' && file.size < 1.5 * 1024 * 1024) {
+    bmp.close && bmp.close();
+    return file;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * scale);
+  canvas.height = Math.round(bmp.height * scale);
+  canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  bmp.close && bmp.close();
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  if (!blob) return file;
+  const base = (file.name || 'photo').replace(/\.[^.]+$/, '');
+  return new File([blob], base + '.jpg', { type: 'image/jpeg' });
+}
+
+// Single entry point for every image source (camera, upload, paste).
+async function setFoodImage(file) {
+  const submitBtn = document.querySelector('#label-upload-area').closest('form').querySelector('button[type=submit]');
+  const original = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Preparing photo…';
+  try {
+    const processed = await downscaleImage(file);
+    const dt = new DataTransfer();
+    dt.items.add(processed);
+    document.getElementById('label-image-input').files = dt.files;
+    showLabelPreview(processed);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = original;
+  }
+}
+
 function showLabelPreview(file) {
   const reader = new FileReader();
   reader.onload = function(e) {
     document.getElementById('label-preview-img').src = e.target.result;
     document.getElementById('label-preview-row').style.display = 'flex';
     document.getElementById('label-upload-btn-row').style.display = 'none';
-    document.getElementById('food-textarea').placeholder = 'Optional: add any extra context about this food';
+    document.getElementById('food-textarea').placeholder = 'Optional: anything the photo doesn\'t show — brand, how it was cooked, what you left';
   };
   reader.readAsDataURL(file);
 }
 
+if (window.matchMedia('(pointer: coarse)').matches) {
+  document.getElementById('take-photo-btn').style.display = '';
+}
+
+// Setting .files programmatically doesn't re-fire change, so there's no loop.
 document.getElementById('label-image-input').addEventListener('change', function() {
-  if (this.files[0]) showLabelPreview(this.files[0]);
+  if (this.files[0]) setFoodImage(this.files[0]);
+});
+
+document.getElementById('photo-capture-input').addEventListener('change', function() {
+  if (this.files[0]) setFoodImage(this.files[0]);
+  this.value = '';
 });
 
 document.getElementById('food-textarea').addEventListener('paste', function(e) {
@@ -314,12 +373,7 @@ document.getElementById('food-textarea').addEventListener('paste', function(e) {
   for (const item of items) {
     if (item.type.startsWith('image/')) {
       e.preventDefault();
-      const file = item.getAsFile();
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      const inp = document.getElementById('label-image-input');
-      inp.files = dt.files;
-      showLabelPreview(file);
+      setFoodImage(item.getAsFile());
       break;
     }
   }
@@ -328,6 +382,7 @@ document.getElementById('food-textarea').addEventListener('paste', function(e) {
 function clearLabelImage() {
   const inp = document.getElementById('label-image-input');
   inp.value = '';
+  document.getElementById('photo-capture-input').value = '';
   document.getElementById('label-preview-row').style.display = 'none';
   document.getElementById('label-upload-btn-row').style.display = 'flex';
   document.getElementById('serving-note-input').value = '';

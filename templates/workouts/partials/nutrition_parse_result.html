@@ -13,12 +13,17 @@
   <input type="hidden" name="date" value="{{ page_date }}">
   <input type="hidden" name="raw_text" value="{{ raw_text }}">
   <input type="hidden" name="meal" id="meal-field" value="{{ meal }}">
-  <input type="hidden" name="ai_model" value="claude-haiku-4-5-20251001">
+  <input type="hidden" name="ai_model" value="{{ ai_model|default:'claude-haiku-4-5-20251001' }}">
   <input type="hidden" name="ai_confidence" value="{{ confidence }}">
   <input type="hidden" name="edited_by_user" id="edited-flag" value="0">
 
   <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;flex-wrap:wrap">
     <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Parsed Items</span>
+    {% if result.image_type == "label" %}
+    <span class="confidence-badge confidence-badge--neutral">Read from nutrition label</span>
+    {% elif result.image_type == "meal" %}
+    <span class="confidence-badge confidence-badge--med">Estimated from photo — check portions</span>
+    {% endif %}
     {% if confidence == "low" %}
     <span class="confidence-badge confidence-badge--low">Low confidence — double-check values</span>
     {% elif confidence == "medium" %}
@@ -144,10 +149,11 @@
   function scaleQuantity(row, ratio) {
     var qtyInput = row.querySelector('input[data-role="quantity"]');
     if (!qtyInput) return;
-    var m = qtyInput.value.match(/^(\d+(?:\.\d+)?)/);
+    // Photo estimates prefix the amount with "~" (e.g. "~5 oz"); keep the prefix.
+    var m = qtyInput.value.match(/^(~?\s*)(\d+(?:\.\d+)?)/);
     if (!m) return;
-    var scaled = Math.round(parseFloat(m[1]) * ratio * 100) / 100;
-    qtyInput.value = scaled + qtyInput.value.slice(m[1].length);
+    var scaled = Math.round(parseFloat(m[2]) * ratio * 100) / 100;
+    qtyInput.value = m[1] + scaled + qtyInput.value.slice(m[0].length);
   }
   window.removeRow = function(btn) {
     btn.closest('tr').remove();

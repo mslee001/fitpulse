@@ -2040,6 +2040,7 @@ a:hover { text-decoration: underline; }
 }
 .confidence-badge--low  { background: color-mix(in srgb, var(--accent-red) 15%, transparent); color: var(--accent-red); }
 .confidence-badge--med  { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.confidence-badge--neutral { color: var(--text-muted); border: 1px solid var(--border); }
 
 /* Macro chips on entries */
 .food-macro-chip {

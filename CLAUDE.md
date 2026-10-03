@@ -76,7 +76,7 @@ templates/workouts/
   partials/
     insights.html              # Analytics AI insights partial (HTMX polling target)
     workout_list.html          # Workout list rows partial
-    nutrition_parse_result.html      # Food parse preview (editable items before confirming)
+    nutrition_parse_result.html      # Food parse preview (editable items before confirming); source badge for photo parses ("Read from nutrition label" / "Estimated from photo"); hidden ai_model comes from the view context, not hardcoded
     nutrition_entry_row.html         # Read-only food entry table row
     nutrition_edit_row.html          # Inline edit form for a food entry
     nutrition_suggestions.html       # AI meal suggestion cards with "Log this" + "★ Save" buttons (HTMX)
@@ -215,6 +215,8 @@ Singleton (pk=1). Stores inputs for the macro target calculator.
 One logged food/meal event per day.
 
 **Fields:** `date`, `logged_at`, `meal` (breakfast/lunch/dinner/snack), `raw_text`, `items_json` (list of parsed item dicts), `calories`, `protein_g`, `carbs_g`, `fat_g`, `fiber_g`, `ai_model`, `ai_confidence`, `edited_by_user`, `is_favorite`, `source_saved_meal` (FK to SavedMeal, nullable)
+
+Photo-only entries (no typed text) store `raw_text` as `"Photo: <item names>"` so the logged row isn't blank. The photo itself is never stored.
 
 ### SavedMeal Model
 Saved meal template for one-click re-logging.
@@ -385,7 +387,7 @@ All Anthropic calls live in `workouts/ai.py`. They use `requests.post` to `https
 - **Body commentary** (`_get_or_generate_body_commentary`): Claude Haiku, synchronous, cached 24h in `UserSettings.ai_body_commentary`. Interprets recent body composition and recovery trends. Refreshed via `POST /api/body/commentary/refresh/`.
 - **Intervention interpretation** (`_generate_intervention_interpretation`): Claude Sonnet, called on-demand from Trends page run-analysis flow. Returns free-form text interpreting the before/after metrics in context of the intervention and its dose history.
 - **Compare analysis** (`compare_analysis`): Claude Haiku, on-demand HTMX endpoint (`POST /api/compare/analysis/`). Generates a short narrative comparing 2–4 workouts side-by-side using extracted stats.
-- **Food parsing** (`parse_food_text`): Claude Haiku, synchronous. Called from `POST /nutrition/api/parse/`. Converts freeform food description into structured items list with per-item macros. Also calls OpenFoodFacts for branded foods, detects meal kit services (Home Chef, Factor, etc.) and fetches their nutrition data from their APIs.
+- **Food parsing** (`parse_food_text`): synchronous. Called from `POST /nutrition/api/parse/`. Text parses use Claude Haiku: converts freeform food description into structured items list with per-item macros, also calls OpenFoodFacts for branded foods, detects meal kit services (Home Chef, Factor, etc.) and fetches their nutrition data from their APIs. Image parses use Claude Sonnet and a single prompt that classifies `image_type` (`label` / `meal` / `not_food`) and then applies label-reading rules or portion-estimation rules (assumed portion in `quantity` with a `~` prefix, cooking fat folded in and named in `note`, confidence capped at medium for photo-only meals, user portion text overrides the visual estimate). The result includes `model` and, for images, `image_type` (missing → `"label"`).
 - **Meal suggestions** (`suggest_meals`): Claude Haiku, synchronous. Called from `GET /nutrition/api/suggest/` (HTMX). Suggests 3 meals based on remaining daily macros and time of day. Context-aware: receives `recent_meals` (last 3 days) and `top_foods` (top 8 foods last 30 days) to avoid repeats and lean toward familiar foods. **Hunger-aware**: `current_hunger` (int 1-10, from most recent `HungerCheck` within 4h) scales suggestion size: 1-3→60-200 kcal snacks, 4-6→300-500 kcal standard, 7-10→500-700 kcal substantial. **Symptom-aware**: `gi_symptoms=True` (nausea or bloating in last 24h via `SideEffectLog`) avoids high-fat, prefers easily-digested options, adds a `gi_note` in the response. Returns `{suggestions, tip, gi_note}` rendered by `nutrition_suggestions.html`. Cards include "+ Save" button to add suggestion directly to SavedMeals.
 - **Nutrition insights** (`_get_or_generate_nutrition_insights`): Claude Sonnet, 7-day cache in `UserSettings.ai_nutrition_insights` / `ai_nutrition_insights_generated_at` / `ai_nutrition_insights_range`. Comprehensive prompt covering targets, adherence, weekday vs weekend patterns, meal timing, top 5 foods, weight trend, interventions context. Structured `## What's working / ## Where the friction is / ## Specific suggestions / ## Watch list`. Range-aware: separate caches for different range_days values.
 - **Weekly review** (`_get_or_generate_weekly_review`): Claude Sonnet. Generates a review of the most recently completed Mon–Sun week. Covers weight change vs. prior week, nutrition adherence vs. targets, workout summary, recovery averages, hunger patterns (morning avg), and logged symptoms. Structured sections: Weight & Body Composition / Nutrition / Training / Hunger & Symptoms / One Thing Going Well / One Focus for Next Week. Cached per `week_start` in the `WeeklyReview` model (one row per week). Force-refresh via `GET /review/?refresh=1`. Called from `weekly_review_page` view.
@@ -437,7 +439,7 @@ All Anthropic calls live in `workouts/ai.py`. They use `requests.post` to `https
 | `/nutrition/` | `nutrition_page` | Daily log: macro bars, THIS WEEK table, streak badges, yesterday recap, hunger widget (today only), AI suggestions, saved meals |
 | `/nutrition/targets/` | `nutrition_targets_page` | Edit NutritionProfile; computed vs. manual; Target Fit check (14-day trend vs expected); adjustment history |
 | `/nutrition/analytics/` | `nutrition_analytics_page` | Adherence stats, macro trend chart, day-of-week, top foods, hunger trend, symptom summary, AI insights |
-| `POST /nutrition/api/parse/` | `nutrition_parse_api` | Parse raw food text → `nutrition_parse_result.html` partial (HTMX) |
+| `POST /nutrition/api/parse/` | `nutrition_parse_api` | Parse food text and/or a photo (nutrition label or meal, auto-detected) → `nutrition_parse_result.html` partial (HTMX). Images are downscaled in the browser to ≤1568 px JPEG; server rejects >3.75 MB. Upload field is still named `label_image`; "Take photo" (`capture="environment"`) shows on touch devices only |
 | `POST /nutrition/api/log/` | `nutrition_log_api` | Save confirmed FoodEntry + recompute daily totals |
 | `POST /nutrition/api/delete/<pk>/` | `nutrition_delete_api` | Delete FoodEntry + recompute |
 | `GET /nutrition/api/suggest/` | `nutrition_suggest_api` | AI meal suggestions (context-aware: passes recent meals + top foods) → `nutrition_suggestions.html` (HTMX) |

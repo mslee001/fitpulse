@@ -1868,10 +1868,11 @@ def parse_food_text(
     """
     Parse freeform food description into structured nutrition data.
     saved_meals: list of dicts with name/calories/protein_g/carbs_g/fat_g/fiber_g
-    image_b64: base64-encoded nutrition label image (optional)
+    image_b64: base64-encoded photo of a nutrition label OR of food; the model classifies which (optional)
     serving_note: user's quantity qualifier, e.g. "I had the whole bag" or "half"
-    Returns {"ok": True, "items": [...], "meal_guess": ..., "confidence": ..., "note": ...}
-    or {"ok": False, "error": ..., "items": []}
+    Returns {"ok": True, "model": ..., "items": [...], "meal_guess": ..., "confidence": ..., "note": ...}
+    (image parses also carry "image_type": "label" | "meal" | "not_food")
+    or {"ok": False, "error": ..., "items": [], "model": ...}
     """
     meal_context = meal or "unspecified"
 
@@ -1885,13 +1886,30 @@ def parse_food_text(
 }"""
 
     if image_b64:
-        # ── Label image path ──────────────────────────────────────────────
+        # ── Image path: model classifies label vs. meal vs. not_food ─────
         serving_line = f'\nUSER QUANTITY NOTE: "{serving_note}"' if serving_note else ""
         extra_text = f'\nADDITIONAL CONTEXT FROM USER: "{raw_text}"' if raw_text.strip() else ""
 
-        prompt = f"""You are a nutrition label parser. Extract nutrition data from the label in this image and return it as structured JSON.
+        image_json_schema = """{
+  "image_type": "meal",
+  "items": [
+    {"name": "grilled chicken breast", "quantity": "~5 oz", "calories": 230, "protein_g": 43, "carbs_g": 0, "fat_g": 5, "fiber_g": 0}
+  ],
+  "meal_guess": "dinner",
+  "confidence": "medium",
+  "note": "Assumed 1 tsp oil on the chicken; rice portion estimated from plate size."
+}"""
 
-LABEL PARSING RULES:
+        prompt = f"""You are a nutrition parser for a food photo. First decide what the image shows, then follow the matching rules.
+
+STEP 1 — CLASSIFY the image as exactly one of:
+- "label": a Nutrition Facts / nutrition information panel is the main subject and its numbers are legible.
+- "meal": prepared food, a plate, bowl, snack, or drink, OR packaged food whose nutrition panel is not visible or not legible.
+- "not_food": anything else.
+If a legible nutrition panel AND food are both visible, use "label" and the panel's values.
+If only the front of a package is visible, use "meal" and identify the product by the name printed on it.
+
+STEP 2a — IF "label":
 1. COLUMN PRIORITY: If the label has multiple columns (e.g. "as packaged" vs "as prepared", "unpopped" vs "popped", "dry" vs "cooked"), always use the "as prepared" or "ready-to-eat" column.
 2. SERVING SIZE LOGIC:
    - Default to the serving size printed on the label (1 serving).
@@ -1899,17 +1917,28 @@ LABEL PARSING RULES:
    - "half" → multiply by 0.5. "two servings" → multiply by 2. Fractional descriptions (e.g. "about a third") → apply that multiplier.
    - If the user specifies a weight or volume that differs from the label serving, scale proportionally.
 3. SPECIAL NOTATIONS: Interpret any %, DV, added sugars, trans fat asterisks, and ingredient callouts naturally.
-4. AMBIGUITY: If part of the label is cut off or unclear, extract what you can and set confidence to "low" or "medium" with a note explaining what was unclear.{serving_line}{extra_text}
+4. AMBIGUITY: If part of the label is cut off or unclear, extract what you can and set confidence to "low" or "medium" with a note explaining what was unclear.
+- Use the label values directly — do not substitute estimates from training knowledge when the label is readable.
+- Confidence "high" if the panel is clear and fully visible, "medium" if partially visible, "low" if very unclear.
+
+STEP 2b — IF "meal":
+1. ITEMS: list each distinct food or drink as its own item. Split visible sides, sauces, and drinks. Keep a dish as one item only when its components can't be separated visually (e.g. a burrito, a casserole, a smoothie).
+2. QUANTITY: put your portion assumption in "quantity" using household measures or weight, prefixed with "~" (e.g. "~1 cup", "~6 oz", "1 medium"). Judge scale from visible references: plate or bowl size (assume a 10–11 inch dinner plate unless it is clearly smaller), utensils, hands, cans, cups.
+3. HIDDEN FAT: for foods that look fried, sautéed, roasted, buttered, or glossy, include a typical amount of cooking fat in that item's values. List dressing or sauce as its own item only when it is visibly separate. State the fat assumption in "note".
+4. USER CONTEXT WINS: a portion, brand, ingredient, or preparation method in the user quantity note or additional context overrides your visual estimate.
+5. CONFIDENCE: at most "medium" from a photo alone. "high" only when the user context supplies portions for the main items. "low" when the food is partly hidden, a mixed dish with unknown ingredients, or there is no scale reference.
+6. NAMES: generic food names. Use a brand only if it is legible in the photo or given by the user.
+
+STEP 2c — IF "not_food": return "items": [] and a "note" saying what the image appears to show.
+{serving_line}{extra_text}
 MEAL CONTEXT: {meal_context}
 
 Respond with ONLY valid JSON, no markdown fences:
-{json_schema}
+{image_json_schema}
 
-Additional rules:
-- Use the label values directly — do not substitute estimates from training knowledge when the label is readable.
-- Round all numbers to whole integers.
-- If a nutrient is not listed on the label, use 0.
-- Set confidence "high" if the label is clear and fully visible, "medium" if partially visible, "low" if very unclear."""
+Rules for every image type:
+- Round all numbers to whole integers. Missing nutrients are 0.
+- "note" is one sentence stating the main assumption or what was unclear. No adjectives like "healthy", "delicious", "balanced"; no advice."""
 
         message_content = [
             {
@@ -1922,6 +1951,9 @@ Additional rules:
             },
             {"type": "text", "text": prompt},
         ]
+        # Photo portion estimation is the hardest vision task in the app and
+        # classification happens inside the call, so every image parse uses Sonnet.
+        model, max_tokens, timeout = llm.SONNET, 900, 45
     else:
         # ── Text description path (existing logic) ─────────────────────────
         meal_kit_brand = _detect_meal_kit(raw_text)
@@ -1991,18 +2023,22 @@ Rules:
 - Separate combo items into individual components when reasonable (e.g. "eggs and toast" → two rows)"""
 
         message_content = prompt
+        model, max_tokens, timeout = llm.HAIKU, 600, 30
 
     try:
-        result = llm.call_json(prompt, model=llm.HAIKU, max_tokens=600,
-                               message_content=message_content, timeout=30)
+        result = llm.call_json(prompt, model=model, max_tokens=max_tokens,
+                               message_content=message_content, timeout=timeout)
         result["ok"] = True
+        result["model"] = model
+        if image_b64 and not result.get("image_type"):
+            result["image_type"] = "label"  # pre-classification behavior
         return result
     except json.JSONDecodeError as e:
         logger.warning("parse_food_text JSON decode failed: %s", e)
-        return {"ok": False, "error": "parse_failed", "items": [], "confidence": "low", "note": ""}
+        return {"ok": False, "error": "parse_failed", "items": [], "confidence": "low", "note": "", "model": model}
     except Exception as e:
         logger.warning("parse_food_text failed: %s", e)
-        return {"ok": False, "error": str(e), "items": [], "confidence": "low", "note": ""}
+        return {"ok": False, "error": str(e), "items": [], "confidence": "low", "note": "", "model": model}
 
 
 def parse_plan_skeleton(raw_text: str = "", image_b64: str | None = None, image_media_type: str = "image/jpeg") -> dict:

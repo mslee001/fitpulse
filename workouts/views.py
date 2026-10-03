@@ -2294,7 +2294,7 @@ def nutrition_targets_page(request):
 
 
 def nutrition_parse_api(request):
-    """POST (HTMX) — parse food text or label image and return editable preview partial."""
+    """POST (HTMX) — parse food text and/or a photo (nutrition label or meal) and return editable preview partial."""
     if request.method != "POST":
         from django.http import HttpResponseNotAllowed
         return HttpResponseNotAllowed(["POST"])
@@ -2315,17 +2315,27 @@ def nutrition_parse_api(request):
         content_type = label_image.content_type or "image/jpeg"
         if content_type not in ("image/jpeg", "image/png", "image/gif", "image/webp"):
             return render(request, "workouts/partials/nutrition_parse_result.html", {
-                "error": "Unsupported image type. Please upload a JPEG, PNG, or WebP.",
+                "error": "That image format can't be read (often an iPhone HEIC opened on a computer). "
+                         "Upload a JPEG or PNG, or take the photo from your phone.",
                 "raw_text": raw_text,
                 "meal": meal,
                 "page_date": page_date,
             })
-        image_b64 = base64.b64encode(label_image.read()).decode("utf-8")
+        raw_bytes = label_image.read()
+        if len(raw_bytes) > 3_750_000:  # base64 inflates ~4/3; keeps the request under the API's 5 MB image cap
+            return render(request, "workouts/partials/nutrition_parse_result.html", {
+                "error": f"That photo is too large ({len(raw_bytes) / 1_000_000:.1f} MB). "
+                         "The page normally shrinks photos automatically — try again, or upload a screenshot of it.",
+                "raw_text": raw_text,
+                "meal": meal,
+                "page_date": page_date,
+            })
+        image_b64 = base64.b64encode(raw_bytes).decode("utf-8")
         image_media_type = content_type
 
     if not raw_text and not image_b64:
         return render(request, "workouts/partials/nutrition_parse_result.html", {
-            "error": "Please describe what you ate or upload a nutrition label.",
+            "error": "Describe what you ate or add a photo.",
             "raw_text": raw_text,
             "meal": meal,
             "page_date": page_date,
@@ -2342,12 +2352,20 @@ def nutrition_parse_api(request):
         serving_note=serving_note,
     )
 
+    # Photo-only parses have no typed text; label the entry with what was found
+    # so the logged row isn't blank.
+    display_raw_text = raw_text
+    if image_b64 and not raw_text and result.get("items"):
+        names = ", ".join(i.get("name", "") for i in result["items"] if i.get("name"))
+        display_raw_text = f"Photo: {names}"[:500]
+
     return render(request, "workouts/partials/nutrition_parse_result.html", {
         "result": result,
-        "raw_text": raw_text,
+        "raw_text": display_raw_text,
         "meal": meal or result.get("meal_guess", ""),
         "page_date": page_date,
         "meal_choices": FoodEntry.MEAL_CHOICES,
+        "ai_model": result.get("model", ""),
     })
 
 
