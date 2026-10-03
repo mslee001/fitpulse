@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Strength trends — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-row">
+    <div>
+      <h1 class="page-title">Strength trends</h1>
+      <p class="page-sub">From your hand-logged exercises
+        {% if move_up_count %}&middot; <strong>{{ move_up_count }}</strong> exercise{{ move_up_count|pluralize }} ready to move up{% endif %}</p>
+    </div>
+  </div>
+</div>
+
+{% if not weighted and not unweighted %}
+<div class="chart-card">
+  <p class="stat-sub">No logged exercises yet. Log sets, reps, weight and effort on a strength or circuit workout's
+    <strong>Class Exercises</strong> card and they'll show up here.</p>
+</div>
+{% else %}
+
+<div class="chart-card">
+  <div class="chart-header">
+    <h3 class="chart-title">VOLUME PER WORKOUT</h3>
+    <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">sets &times; reps &times; weight &times; dumbbells</span>
+  </div>
+  <div style="position:relative;height:220px"><canvas id="volumeChart" aria-label="Logged volume per workout"></canvas></div>
+</div>
+
+<p class="stat-sub" style="margin:1rem 0 0.5rem">
+  Recommendations step through your dumbbells ({% for d in dumbbells %}{{ d|floatformat:"-1" }}{% if not forloop.last %}, {% endif %}{% endfor %}&nbsp;lb &middot; <a href="{% url 'settings' %}">edit</a>):
+  <strong>Easy</strong> &rarr; next one up &middot; <strong>Just right</strong> twice in a row &rarr; up &middot;
+  <strong>Hard</strong> &rarr; stay &middot; <strong>Couldn't finish</strong> &rarr; one down.
+  Hover a recommendation for the reason.
+</p>
+
+<div class="strength-grid">
+  {% for x in weighted %}
+  <div class="chart-card strength-card">
+    <div class="strength-card-head">
+      <div>
+        <div class="strength-card-name">{{ x.name }}</div>
+        <div class="stat-sub">
+          {{ x.count }} session{{ x.count|pluralize }}
+          {% if x.first_lb != x.current_lb %}&middot; {{ x.first_lb|floatformat:"-1" }} &rarr; {{ x.current_lb|floatformat:"-1" }} lb{% else %}&middot; {{ x.current_lb|floatformat:"-1" }} lb{% endif %}
+        </div>
+      </div>
+      {% if x.rec %}
+      <div class="weight-rec-badge weight-rec-badge--{{ x.rec.action }}" title="{{ x.rec.reason }}">
+        <span class="weight-rec-badge-label">{% if x.rec.action == "up" %}Move up{% elif x.rec.action == "down" %}Drop{% elif x.rec.action == "max" %}Maxed{% else %}Stay{% endif %}</span>
+        <span class="mono">{{ x.rec.weight|floatformat:"-1" }} lb</span>
+      </div>
+      {% endif %}
+    </div>
+    {% if x.rec %}<div class="strength-card-reason">{{ x.rec.reason }}</div>{% endif %}
+    {% if x.chart|length > 1 %}
+    <div style="position:relative;height:120px;margin:0.5rem 0"><canvas class="ex-chart" data-key="{{ x.key }}" aria-label="{{ x.name }} weight over time"></canvas></div>
+    {% endif %}
+    <table class="strength-sessions">
+      {% for s in x.recent %}
+      <tr>
+        <td><a href="{% url 'workout_detail' s.workout_id %}">{{ s.date|date:"M j" }}</a></td>
+        <td class="mono">{% if s.timed %}{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}s{% else %}{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}{% if s.per_side %}/side{% endif %}{% endif %}{% if s.weight_lb %} @ {{ s.weight_lb|floatformat:"-1" }}{% endif %}</td>
+        <td class="strength-effort">{{ s.effort_label|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+</div>
+
+{% if unweighted %}
+<div class="chart-card" style="margin-top:1rem">
+  <div class="chart-header"><h3 class="chart-title">BODYWEIGHT &amp; TIMED</h3></div>
+  <table class="strength-sessions">
+    {% for x in unweighted %}
+    {% with s=x.recent.0 %}
+    <tr>
+      <td>{{ x.name }}</td>
+      <td class="mono">{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}{% if s.timed %}s{% elif s.per_side %}/side{% endif %}</td>
+      <td class="strength-effort">{{ s.effort_label|default:"—" }}</td>
+      <td class="stat-sub"><a href="{% url 'workout_detail' s.workout_id %}">{{ s.date|date:"M j" }}</a> &middot; {{ x.count }} session{{ x.count|pluralize }}</td>
+    </tr>
+    {% endwith %}
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  if (typeof Chart === "undefined") return;
+  const { gridColor, tickColor, mainLineWidth } = window.chartTheme;
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#E8743B";
+  const volumes = {{ volume_series|safe }};
+  const charts = {{ charts|safe }};
+  const axisFont = { family: "JetBrains Mono", size: 10 };
+
+  const volCanvas = document.getElementById("volumeChart");
+  if (volCanvas && volumes.length) {
+    new Chart(volCanvas, {
+      type: "bar",
+      data: {
+        labels: volumes.map(v => v.date),
+        datasets: [{ data: volumes.map(v => v.volume), backgroundColor: accent, borderRadius: 4, maxBarThickness: 36 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            title: items => `${volumes[items[0].dataIndex].date} · ${volumes[items[0].dataIndex].title}`,
+            label: ctx => `${ctx.parsed.y.toLocaleString()} lb`,
+          } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: tickColor, font: axisFont } },
+          y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: tickColor, font: axisFont, callback: v => v.toLocaleString() } },
+        },
+      },
+    });
+  }
+
+  document.querySelectorAll(".ex-chart").forEach(canvas => {
+    const pts = charts[canvas.dataset.key] || [];
+    new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: pts.map(p => p.date),
+        datasets: [{
+          data: pts.map(p => p.weight), borderColor: accent, backgroundColor: accent,
+          borderWidth: mainLineWidth, pointRadius: 4, pointHoverRadius: 6, stepped: false, tension: 0,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: ctx => {
+              const p = pts[ctx.dataIndex];
+              return `${p.weight} lb · ${p.sets ?? "?"}×${p.reps ?? "?"}${p.timed ? "s" : p.per_side ? "/side" : ""} · ${p.effort}`;
+            },
+          } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: tickColor, font: axisFont, maxTicksLimit: 6 } },
+          y: { grace: "15%", grid: { color: gridColor }, ticks: { color: tickColor, font: axisFont, maxTicksLimit: 4, callback: v => `${v} lb` } },
+        },
+      },
+    });
+  });
+});
+</script>
+{% endblock %}

@@ -1464,6 +1464,21 @@ def compare_analysis(request):
                         ex_parts.append(f"{len(timed_sets)} sets × {avg_secs}s")
                     lines.append(f"    {name}: {', '.join(ex_parts)}")
 
+        # Hand-entered exercise log (classes Movement Tracker didn't record)
+        manual = w.manual_log_summary
+        if manual and not w.movements:
+            lines.append(
+                f"  logged by hand: {manual['total_sets']} sets, {manual['total_reps']} reps, "
+                f"{manual['volume_lb']:,} lb volume"
+            )
+            lines.append("  exercises (hand-logged):")
+            for r in w.manual_log_rows:
+                unit = "s" if r["timed"] else " reps"
+                side = "/side" if r["per_side"] else ""
+                pair = "2×" if r["dumbbells"] == 2 else ""
+                wt = f" @ {pair}{r['weight_lb']:g} lb" if r.get("weight_lb") else ""
+                lines.append(f"    {r.get('name')}: {r.get('sets') or '?'} sets × {r.get('reps') or '?'}{unit}{side}{wt}")
+
         return "\n".join(lines)
 
     workout_blocks = "\n\n".join(f"WORKOUT {i+1}:\n{_stat(w)}" for i, w in enumerate(workouts))

@@ -323,7 +323,6 @@ const perf = {{ perf|safe }};
 const metrics = perf.metrics_by_slug || {};
 const everyN = perf.every_n || 5;
 const recentStrength = {{ recent_strength|safe }};
-const currentWorkoutId = "{{ workout.workout_id }}";
 const exerciseSets = {{ exercise_sets|safe }};
 const hrZonesDirect = {{ hr_zones_direct|safe }};
 
@@ -513,22 +512,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Compare bar
-  function updateCompareBar() {
-    const checked = [...document.querySelectorAll(".compare-check:checked")].map(cb => cb.value);
-    const bar = document.getElementById("compareBar");
-    const link = document.getElementById("compareBarLink");
-    const count = document.getElementById("compareBarCount");
-    if (checked.length > 0) {
-      bar.style.display = "";
-      link.href = `/compare/?ids=${[currentWorkoutId, ...checked].join(",")}`;
-      count.textContent = `${checked.length} workout${checked.length > 1 ? "s" : ""} selected`;
-    } else {
-      bar.style.display = "none";
-    }
-  }
-  document.addEventListener("change", e => {
-    if (e.target.classList.contains("compare-check")) updateCompareBar();
-  });
 
   // Recent strength sidebar
   if (recentStrength.length) {

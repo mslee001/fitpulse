@@ -1,5 +1,8 @@
-{# Class exercise plan + hand-entered exercise log. Included by strength_detail.html and detail.html.
-   Context: class_plan, manual_rows, has_manual_data, workout. #}
+{% comment %}
+  Class exercise plan + hand-entered exercise log. Included by strength_detail.html and detail.html.
+  Context: class_plan, manual_rows, has_manual_data, manual_volume_lb, workout.
+  Volume is computed server-side (CachedWorkout.manual_log_rows), so it shows for saved rows only.
+{% endcomment %}
 {% load workout_filters %}
 <div class="chart-card" id="classExercisesCard">
   <div class="chart-header">
@@ -37,14 +40,16 @@
   <form method="post" action="{% url 'save_manual_movements' workout.workout_id %}">
     {% csrf_token %}
     <div class="movement-table-wrap">
-      <table class="movement-table" id="manualMovementsTable">
+      <table class="movement-table manual-log-table" id="manualMovementsTable">
         <thead>
           <tr>
             <th>Exercise</th>
-            <th style="width:70px">Sets</th>
-            <th style="width:70px">Reps</th>
-            <th style="width:100px">Weight (lb)</th>
+            <th class="col-num">Sets</th>
+            <th class="col-num">Reps</th>
+            <th class="col-weight">Weight</th>
             <th>Notes</th>
+            <th class="col-effort">Effort</th>
+            <th class="col-volume">Volume</th>
           </tr>
         </thead>
         <tbody id="manualMovementsBody">
@@ -53,17 +58,44 @@
             <td><input type="text" name="name" class="form-input" value="{{ r.name }}" maxlength="120" placeholder="Exercise"></td>
             <td><input type="number" name="sets" class="form-input" value="{{ r.sets|default_if_none:'' }}" min="0" step="1" inputmode="numeric"></td>
             <td><input type="number" name="reps" class="form-input" value="{{ r.reps|default_if_none:'' }}" min="0" step="1" inputmode="numeric"></td>
-            <td><input type="number" name="weight_lb" class="form-input" value="{{ r.weight_lb|floatformat:"-1" }}" min="0" step="any" inputmode="decimal"></td>
+            <td><input type="number" name="weight_lb" class="form-input" placeholder="{% if r.rec and r.weight_lb is None %}{{ r.rec.weight|floatformat:"-1" }}{% else %}lb{% endif %}" value="{{ r.weight_lb|floatformat:"-1" }}" min="0" step="any" inputmode="decimal"></td>
             <td><input type="text" name="notes" class="form-input" value="{{ r.notes }}" maxlength="200" placeholder="e.g. per side"></td>
+            <td>
+              <select name="effort" class="form-select">
+                <option value="">&ndash;</option>
+                {% for value, label in effort_choices %}<option value="{{ value }}"{% if r.effort == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+              </select>
+            </td>
+            <td class="mono" style="text-align:right;white-space:nowrap">
+              {% if r.volume_lb %}{{ r.volume_lb|floatformat:"0g" }} lb
+                <div class="volume-hint">{% if r.dumbbells == 2 %}2 dumbbells{% else %}1 dumbbell{% endif %}{% if r.per_side %} &middot; both sides{% endif %}</div>
+              {% elif r.timed %}<span style="color:var(--text-dim)">timed</span>
+              {% else %}<span style="color:var(--text-dim)">&mdash;</span>{% endif %}
+              {% if r.rec %}
+                <div class="weight-rec weight-rec--{{ r.rec.action }}" title="{{ r.rec.reason }}">
+                  {% if r.weight_lb is None %}Try{% else %}Next{% endif %}
+                  {% if r.rec.action == "up" %}&uarr;{% elif r.rec.action == "down" %}&darr;{% else %}={% endif %}
+                  {{ r.rec.weight|floatformat:"-1" }} lb
+                </div>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
+        {% if manual_volume_lb %}
+        <tfoot>
+          <tr>
+            <td colspan="6" style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted)">Total volume</td>
+            <td class="mono" style="text-align:right;font-weight:700;white-space:nowrap">{{ manual_volume_lb|floatformat:"0g" }} lb</td>
+          </tr>
+        </tfoot>
+        {% endif %}
       </table>
     </div>
     <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.9rem;flex-wrap:wrap">
       <button type="submit" class="btn btn-accent">Save log</button>
       <button type="button" class="btn btn-ghost" id="addManualRowBtn">+ Add exercise</button>
-      <span style="font-size:0.72rem;color:var(--text-dim)">Exercises with no numbers or notes aren't saved.</span>
+      <span style="font-size:0.72rem;color:var(--text-dim)">Exercises with no numbers, notes or effort aren't saved. Rate effort to get weight recommendations &middot; <a href="{% url 'strength_trends' %}">Strength trends &rarr;</a></span>
     </div>
   </form>
 
@@ -72,8 +104,15 @@
       <td><input type="text" name="name" class="form-input" maxlength="120" placeholder="Exercise"></td>
       <td><input type="number" name="sets" class="form-input" min="0" step="1" inputmode="numeric"></td>
       <td><input type="number" name="reps" class="form-input" min="0" step="1" inputmode="numeric"></td>
-      <td><input type="number" name="weight_lb" class="form-input" min="0" step="any" inputmode="decimal"></td>
+      <td><input type="number" name="weight_lb" class="form-input" placeholder="lb" min="0" step="any" inputmode="decimal"></td>
       <td><input type="text" name="notes" class="form-input" maxlength="200" placeholder="e.g. per side"></td>
+      <td>
+        <select name="effort" class="form-select">
+          <option value="">&ndash;</option>
+          {% for value, label in effort_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </td>
+      <td></td>
     </tr>
   </template>
   <script>

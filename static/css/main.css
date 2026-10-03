@@ -446,7 +446,7 @@ a:hover { text-decoration: underline; }
 
 .detail-layout {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: minmax(0, 1fr) 280px;
   gap: 2rem;
   align-items: start;
 }
@@ -822,6 +822,17 @@ a:hover { text-decoration: underline; }
   font-size: 0.8rem; color: var(--text-muted); text-align: right;
 }
 
+/* Rows that also show % of total (generic detail page) */
+.hr-zone-row--pct { grid-template-columns: 110px 1fr 60px 52px; }
+@media (max-width: 480px) {
+  .hr-zone-row--pct { grid-template-columns: 76px 1fr 44px 44px; gap: 0.5rem; }
+}
+
+.hr-zone-pct {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem; color: var(--text-dim); text-align: right;
+}
+
 /* ── Segment list (strength class structure) ─── */
 
 .segment-list { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -1184,6 +1195,24 @@ a:hover { text-decoration: underline; }
   vertical-align: middle;
 }
 .movement-table tr:hover td { background: var(--bg-hover); }
+
+/* Hand-entered exercise log: compact fixed number columns, name/notes share the rest.
+   min-width makes it scroll inside .movement-table-wrap on phones instead of squashing. */
+.manual-log-table { table-layout: fixed; min-width: 48rem; }
+.manual-log-table th, .manual-log-table td { padding-left: 0.4rem; padding-right: 0.4rem; }
+.manual-log-table .col-num { width: 4.25rem; }
+.manual-log-table .col-weight { width: 5rem; }
+.manual-log-table .col-volume { width: 10.5rem; text-align: right; }
+.manual-log-table .col-effort { width: 8.5rem; }
+.manual-log-table .form-select { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.4rem 0.35rem; }
+.weight-rec {
+  margin-top: 0.2rem; font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted);
+  cursor: help;
+}
+.weight-rec--up { color: var(--accent); }
+.manual-log-table .volume-hint { font-size: 0.66rem; color: var(--text-dim); white-space: normal; }
+.manual-log-table .form-input { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.4rem 0.5rem; }
 .movement-table tr.movement-hit td { color: var(--text); }
 .movement-table tr.movement-miss td { opacity: 0.65; }
 
@@ -3039,7 +3068,7 @@ a:hover { text-decoration: underline; }
   .review-layout { grid-template-columns: 1fr !important; }
 
   /* ── Detail pages (cycling, run, strength, etc.): sidebar below ── */
-  .detail-layout { grid-template-columns: 1fr; }
+  .detail-layout { grid-template-columns: minmax(0, 1fr); }
   .detail-sidebar { position: static; }
 
   /* ── Nutrition targets: single column ── */
@@ -3278,3 +3307,28 @@ a:hover { text-decoration: underline; }
     width: 90vw;
   }
 }
+
+/* ── Strength trends (/strength/) ─────────────── */
+
+.strength-grid {
+  display: grid; gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+}
+.strength-card { margin: 0; }
+.strength-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; }
+.strength-card-name { font-family: 'Barlow Condensed', sans-serif; font-size: 1.05rem; font-weight: 700; color: var(--text); }
+.strength-card-reason { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem; }
+.weight-rec-badge {
+  display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.55rem; cursor: help;
+}
+.weight-rec-badge-label {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted);
+}
+.weight-rec-badge--up { border-color: var(--accent); }
+.weight-rec-badge--up .weight-rec-badge-label { color: var(--accent); }
+.strength-sessions { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.strength-sessions td { padding: 0.3rem 0.4rem 0.3rem 0; border-top: 1px solid var(--bg); color: var(--text); }
+.strength-sessions td.mono { font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; }
+.strength-effort { color: var(--text-muted); text-align: right; white-space: nowrap; }

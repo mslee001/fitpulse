@@ -124,5 +124,20 @@
   </aside>
 </div>
 
+<script>
+// Previous-attempts checkboxes → "Compare →" bar. Shared by every detail page;
+// delegated so rows added later (e.g. walking's leaderboard list) work too.
+document.addEventListener("change", e => {
+  if (!e.target.classList.contains("compare-check")) return;
+  const checked = [...document.querySelectorAll(".compare-check:checked")].map(cb => cb.value);
+  const bar = document.getElementById("compareBar");
+  if (!checked.length) { bar.style.display = "none"; return; }
+  bar.style.display = "";
+  document.getElementById("compareBarLink").href =
+    `/compare/?ids=${["{{ workout.workout_id|escapejs }}", ...checked].join(",")}`;
+  document.getElementById("compareBarCount").textContent =
+    `${checked.length} workout${checked.length > 1 ? "s" : ""} selected`;
+});
+</script>
 {% block detail_scripts %}{% endblock %}
 {% endblock %}

@@ -88,6 +88,30 @@
       </div>
     </div>
 
+    <!-- Dumbbells Card -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">DUMBBELLS</h3>
+      </div>
+      <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1rem">
+        The weights you own. Strength recommendations step through these &mdash; &ldquo;move up&rdquo; suggests the next one on this list, &ldquo;drop&rdquo; the one below.
+        <a href="{% url 'strength_trends' %}">Strength trends &rarr;</a>
+      </p>
+      {% if dumbbells %}
+      <div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:1rem">
+        {% for d in dumbbells %}<span class="movement-tag mono" style="font-size:0.78rem;padding:0.15rem 0.5rem">{{ d|floatformat:"-1" }}</span>{% endfor %}
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;color:var(--text-dim);align-self:center;margin-left:0.25rem">lb</span>
+      </div>
+      {% endif %}
+      <form method="post" action="{% url 'set_dumbbells' %}" style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+        {% csrf_token %}
+        <input type="text" name="dumbbells" class="form-input" style="flex:1;min-width:14rem;font-family:'JetBrains Mono',monospace;font-size:0.85rem"
+               value="{% for d in dumbbells %}{{ d|floatformat:"-1" }}{% if not forloop.last %}, {% endif %}{% endfor %}"
+               placeholder="e.g. 5, 10, 12.5, 15" aria-label="Dumbbell weights in pounds">
+        <button type="submit" class="btn btn-accent">Save</button>
+      </form>
+    </div>
+
   </div>{# end left column #}
 
   {# ── Right column: AI Coaching Profile ── #}
