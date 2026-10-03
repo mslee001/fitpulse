@@ -116,7 +116,7 @@
 
     <div class="sync-menu">
       <button class="btn btn-sm btn-accent" onclick="this.closest('.sync-menu').classList.toggle('open')">
-        ↻ Sync ▾
+        <span class="sync-icon">↻</span> Sync ▾
       </button>
       <div class="sync-dropdown">
         {% enabled_integrations as enabled %}
@@ -128,32 +128,32 @@
         {% endif %}
         {% if ls or lds %}<div class="sync-divider"></div>{% endif %}
         {% if 'peloton' in enabled %}
-        <a class="sync-option" href="{% url 'sync_new_workouts' %}" target="_blank">
+        <a class="sync-option" data-sync href="{% url 'sync_new_workouts' %}" target="_blank">
           <strong>Peloton Sync New</strong>
           <span>New Peloton workouts</span>
         </a>
         {% endif %}
         {% if 'garmin' in enabled %}
         <div class="sync-divider"></div>
-        <a class="sync-option" href="{% url 'sync_garmin_new' %}" target="_blank">
+        <a class="sync-option" data-sync href="{% url 'sync_garmin_new' %}" target="_blank">
           <strong>Garmin Sync New</strong>
           <span>New Garmin activities</span>
         </a>
-        <a class="sync-option" href="{% url 'sync_garmin_wellness' %}" target="_blank">
+        <a class="sync-option" data-sync href="{% url 'sync_garmin_wellness' %}" target="_blank">
           <strong>Garmin Wellness Today</strong>
           <span>Today's wellness data</span>
         </a>
         {% endif %}
         {% if 'withings' in enabled %}
         <div class="sync-divider"></div>
-        <a class="sync-option" href="{% url 'sync_withings_new' %}" target="_blank">
+        <a class="sync-option" data-sync href="{% url 'sync_withings_new' %}" target="_blank">
           <strong>Withings Sync New</strong>
           <span>Sync new Withings body weight data</span>
         </a>
         {% endif %}
         {% if 'google_health' in enabled %}
         <div class="sync-divider"></div>
-        <a class="sync-option" href="{% url 'sync_google_health_new' %}" target="_blank">
+        <a class="sync-option" data-sync href="{% url 'sync_google_health_new' %}" target="_blank">
           <strong>Google Health Sync New</strong>
           <span>Sync new wellness &amp; exercise data</span>
         </a>
@@ -230,6 +230,90 @@
         document.querySelectorAll('.sync-menu.open').forEach(m => m.classList.remove('open'));
       }
     });
+
+    // Sync New links run in place: spinner on the row (and the Sync button) while
+    // running, then a one-line summary of the endpoint's JSON result.
+    (function() {
+      var menu = document.querySelector('.sync-menu');
+      if (!menu) return;
+
+      function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+
+      // Returns {error: bool, parts: [..]} for any sync endpoint's result shape.
+      function describe(d) {
+        if (!d || typeof d !== 'object') return { error: true, parts: ['Unexpected response'] };
+        if (d.wellness || d.exercise) {
+          var ex = describe(d.exercise), we = describe(d.wellness);
+          return { error: ex.error || we.error, parts: ex.parts.concat(we.parts) };
+        }
+        if (d.error) return { error: true, parts: [d.error] };
+        if (d.skipped === true) return { error: false, parts: ['Skipped — source is disabled'] };
+        if (d.skipped === 'already_in_progress') return { error: false, parts: ['Already running'] };
+        var parts = [];
+        if (d.created) parts.push(d.created + ' new');
+        if (d.updated) parts.push(d.updated + ' updated');
+        if (d.synced) parts.push(plural(d.synced, 'day') + ' synced');
+        if (d.errors) parts.push(plural(d.errors, 'error'));
+        return { error: false, parts: parts };
+      }
+
+      // The status line sits after the link, not inside it, so its Reload
+      // button doesn't also trigger the link.
+      function setStatus(link, state, html) {
+        var el = link.nextElementSibling;
+        if (!el || !el.classList.contains('sync-status')) {
+          el = document.createElement('div');
+          el.className = 'sync-status';
+          link.after(el);
+        }
+        el.dataset.state = state;
+        el.innerHTML = html;
+      }
+
+      function escapeHtml(s) {
+        var div = document.createElement('div');
+        div.textContent = s;
+        return div.innerHTML;
+      }
+
+      function updateMenuState() {
+        menu.classList.toggle('syncing', !!menu.querySelector('.sync-option.is-syncing'));
+      }
+
+      menu.querySelectorAll('.sync-option[data-sync]').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          if (link.classList.contains('is-syncing')) return;
+          link.classList.add('is-syncing');
+          updateMenuState();
+          setStatus(link, 'running', '<span class="sync-spinner"></span>Syncing…');
+
+          fetch(link.href, { headers: { 'Accept': 'application/json' } })
+            .then(function(resp) {
+              return resp.json().catch(function() {
+                throw new Error(resp.redirected ? 'Signed out — reload and sign in' : 'Failed (HTTP ' + resp.status + ')');
+              });
+            })
+            .then(function(data) {
+              var r = describe(data);
+              var text = r.parts.length ? r.parts.join(' · ') : 'Up to date';
+              if (r.error) {
+                setStatus(link, 'error', '✕ ' + escapeHtml(text));
+              } else {
+                setStatus(link, 'done', '✓ Complete — ' + escapeHtml(text) +
+                  ' <button type="button" class="sync-reload" onclick="location.reload()">Reload page</button>');
+              }
+            })
+            .catch(function(err) {
+              setStatus(link, 'error', '✕ ' + escapeHtml(err.message || 'Network error'));
+            })
+            .finally(function() {
+              link.classList.remove('is-syncing');
+              updateMenuState();
+            });
+        });
+      });
+    })();
 
     (function() {
       var burger = document.getElementById('nav-burger');

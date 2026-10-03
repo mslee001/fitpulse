@@ -698,11 +698,13 @@ a:hover { text-decoration: underline; }
 /* ── Sync dropdown ───────────────────────────── */
 
 .sync-menu { position: relative; }
+.sync-menu > .btn { white-space: nowrap; }
 
 .sync-dropdown {
   display: none;
   position: absolute; right: 0; top: calc(100% + 8px);
-  width: 200px;
+  width: 240px;
+  max-height: calc(100vh - var(--nav-h) - 1rem); overflow-y: auto;
   background: var(--bg-raised);
   border: 1px solid var(--border-accent);
   border-radius: var(--r);
@@ -729,6 +731,30 @@ a:hover { text-decoration: underline; }
   padding: 0.4rem 0.75rem 0.2rem;
 }
 .sync-divider { height: 1px; background: var(--border); margin: 0.4rem 0; }
+
+/* Inline sync progress/result (base.html script) */
+.sync-icon { display: inline-block; }
+.sync-menu.syncing .sync-icon { animation: spin 0.9s linear infinite; }
+.sync-option.is-syncing { cursor: progress; }
+.sync-status {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.15rem 0.35rem;
+  padding: 0 0.75rem 0.5rem;
+  font-size: 0.75rem; line-height: 1.35; color: var(--text-muted);
+}
+.sync-status[data-state="done"]  { color: var(--accent-green); }
+.sync-status[data-state="error"] { color: var(--accent-red); word-break: break-word; }
+.sync-spinner {
+  display: inline-block; flex-shrink: 0;
+  width: 12px; height: 12px; margin-right: 0.2rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.sync-reload {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; color: var(--accent); text-decoration: underline;
+}
 
 
 .empty-state {
@@ -2847,13 +2873,16 @@ a:hover { text-decoration: underline; }
   }
 
   .nav-links   { display: none; }
-  .sync-menu   { display: none; }
   .logout-form { display: none; }
 
   .nav-burger  { display: block; }
 
-  /* Push theme-toggle + burger to the right */
+  /* Push theme-toggle + sync to the right */
   .theme-toggle { margin-left: auto; }
+
+  /* Sync stays in the top bar; keep its dropdown inside the screen */
+  .sync-dropdown { width: min(260px, calc(100vw - 2rem)); }
+  .sync-option { padding: 0.7rem 0.75rem; }
 
   /* Mobile menu open: nav-links becomes a vertical panel below the bar */
   .nav.nav-open .nav-links {
@@ -2881,6 +2910,7 @@ a:hover { text-decoration: underline; }
     position: static;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     width: 100%;
   }
 
