@@ -1466,6 +1466,60 @@ def reset_and_regenerate(draft):
 # Creating the Program (05)
 # ---------------------------------------------------------------------------
 
+def pace_summary(inputs, spec):
+    """{"lines", "guidance", "stretch"} — the pace card on the review page and,
+    saved in goal_json, on the program's run page."""
+    p = inputs.get("pace") or {}
+    lines = []
+    if p.get("level"):
+        lines.append(f"Peloton pace level {p['level']}")
+    if p.get("goal_pace_s"):
+        goal = f"Goal pace {_fmt_pace(p['goal_pace_s'])}"
+        if p.get("goal_zone"):
+            goal += f" ({p['goal_zone']} zone at Level {p['level']})"
+        lines.append(goal)
+        if p.get("race_level") and p.get("level") and p["race_level"] <= p["level"]:
+            lines.append(f"Level {p['level']} already covers goal pace")
+        elif p.get("race_level"):
+            lines.append(f"Race-pace level {p['race_level']}")
+    est = p.get("estimate")
+    if est:
+        lines.append(f"Current estimate {_fmt_hms(est['seconds'])} from training runs"
+                     + (f" · {p['gap_pct']}% to go" if p.get("gap_pct") and p["gap_pct"] > 0 else ""))
+    longest = max((sl["duration_min"] for _, sl in iter_slots(spec) if sl["discipline"] == "running"), default=0)
+    if longest:
+        lines.append(f"Longest run {longest} min" + (f" (target {p['long_run_min']}+)" if p.get("long_run_min") else ""))
+    return {"lines": lines, "guidance": spec.get("pace_guidance", ""), "stretch": bool(p.get("stretch"))}
+
+
+def plan_overview(program):
+    """What the run page shows about an AI training plan: summary, pace card and
+    per-week dates/phase/focus. Saved in goal_json at creation; plans created
+    before that read the pace card and weeks from their original draft. None for
+    other programs."""
+    from .models import PlanDraft
+    goal = program.goal_json or {}
+    if not goal.get("start_date"):
+        return None
+    pace, weeks_info = goal.get("pace_summary"), goal.get("weeks_info")
+    if (pace is None or weeks_info is None) and goal.get("draft_id"):
+        draft = PlanDraft.objects.for_user(program.user).filter(pk=goal["draft_id"]).first()
+        if draft and draft.spec_json:
+            pace = pace if pace is not None else pace_summary(draft.inputs_json, draft.spec_json)
+            weeks_info = weeks_info if weeks_info is not None else {
+                str(wk["number"]): {"phase": wk.get("phase", ""), "focus": wk.get("focus", "")}
+                for wk in draft.spec_json.get("weeks", [])}
+    start = date.fromisoformat(goal["start_date"])
+    monday = start - timedelta(days=start.weekday())
+    weeks = {}
+    for pw in program.weeks.all():
+        info = (weeks_info or {}).get(str(pw.number), {})
+        weeks[pw.number] = {"start": monday + timedelta(weeks=pw.number - 1),
+                            "end": monday + timedelta(weeks=pw.number - 1, days=6),
+                            "phase": info.get("phase", ""), "focus": info.get("focus", "")}
+    return {"summary": program.description, "pace": pace or {}, "weeks": weeks, "monday": monday}
+
+
 def slot_notes(spec_slot, instructor=""):
     """"easy aerobic minutes · Easy zone · Becs Gentry" — purpose, pace zone, instructor."""
     parts = [spec_slot.get("purpose") or "",
@@ -1520,6 +1574,9 @@ def create_program_from_draft(draft, name):
             "model": draft.ai_model, "level": inputs.get("level"), "weeks": inputs["weeks"],
             "pace_level": (inputs.get("pace") or {}).get("level"),
             "goal_pace_s": (inputs.get("pace") or {}).get("goal_pace_s"),
+            "pace_summary": pace_summary(inputs, spec),
+            "weeks_info": {str(wk["number"]): {"phase": wk.get("phase", ""), "focus": wk.get("focus", "")}
+                           for wk in spec["weeks"]},
         }
         program.save(update_fields=["description", "goal_json"])
         start_run(program, start)

@@ -6,7 +6,7 @@
   </div>
   <div class="tp-row-class">
     {% if r.cls %}
-      <a href="{{ r.cls.peloton_url }}" target="_blank" rel="noopener" class="tp-class-title">{{ r.cls.title }}</a>
+      <a href="{{ r.cls.peloton_url }}" target="_blank" rel="noopener" class="tp-class-title" title="Open on Peloton to add it to your Stack">{{ r.cls.title }}</a>
       <span class="stat-sub">
         {{ r.cls.instructor_name|default:"" }}
         {% if r.rank %} · difficulty {{ r.rank.difficulty|floatformat:1 }}{% if r.rank.phrase %} ({{ r.rank.phrase }}){% endif %}{% endif %}

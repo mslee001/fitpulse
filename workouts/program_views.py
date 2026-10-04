@@ -1,7 +1,7 @@
 """Program & Collection Tracker — list/detail/run views and the completion grid builder."""
 import base64
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib import messages
 from django.http import JsonResponse
@@ -42,6 +42,12 @@ def _run_grid(run):
     # earlier pass is done. A never-filled optional slot there is just noise.
     latest_run_week_id = (run.run_weeks.order_by("-sequence")
                           .values_list("id", flat=True).first())
+    # Plans seed every week up front, so "the latest pass" is the plan's last week —
+    # weeks still ahead aren't finished. A pass is finished once a later pass has a
+    # completion (you've moved on) or the run ended.
+    last_done_seq = max((e.run_week.sequence for e in entries), default=0)
+    from .training_plans import DAY_NAMES, plan_overview
+    overview = plan_overview(run.program)
 
     from .catalog import DifficultyRanker
     ranker = DifficultyRanker()
@@ -57,7 +63,7 @@ def _run_grid(run):
     # group — so a repeated pass (e.g. a week resumed after a gap) sits right
     # under its earlier attempt instead of trailing at the end of the run.
     for rw in run.run_weeks.select_related("program_week").order_by("program_week__number", "sequence"):
-        is_open_pass = run.end_date is None and rw.id == latest_run_week_id
+        is_open_pass = run.end_date is None and (rw.id == latest_run_week_id or rw.sequence >= last_done_seq)
         slots = list(rw.program_week.slots.all())
         cells = []
         for slot in slots:
@@ -73,12 +79,22 @@ def _run_grid(run):
                     recovery_seconds += sum(r.workout.duration_seconds or 0 for r in recoveries)
             elif slot.optional and not is_open_pass:
                 continue   # never-filled optional slot in a closed pass — hide it
-            cells.append({"slot": slot, "entry": e, "recoveries": recoveries,
+            day_label = ""
+            if slot.day:
+                day_label = DAY_NAMES.get(slot.day, "")
+                if overview and rw.program_week.number in overview["weeks"]:
+                    d = overview["weeks"][rw.program_week.number]["start"] + timedelta(days=slot.day - 1)
+                    day_label = f"{day_label} · {d:%b} {d.day}"
+            cells.append({"slot": slot, "entry": e, "recoveries": recoveries, "day_label": day_label,
                           "swappable": run.end_date is None and slot_swappable(slot, e),
                           "difficulty": None if e else ranker.rank(planned.get(slot.peloton_ride_id))})
-        # Completed classes in the order actually taken; still-empty slots trail at
-        # the end (they have no date to sort by) in their defined slot order.
-        cells.sort(key=lambda c: (c["entry"] is None, c["entry"] and c["entry"].workout.created_at))
+        if overview:
+            # A dated plan reads best in calendar order.
+            cells.sort(key=lambda c: (c["slot"].day or 8, c["slot"].order))
+        else:
+            # Completed classes in the order actually taken; still-empty slots trail at
+            # the end (they have no date to sort by) in their defined slot order.
+            cells.sort(key=lambda c: (c["entry"] is None, c["entry"] and c["entry"].workout.created_at))
         # entries in this run-week with no slot (matched week, not a specific class)
         loose = sorted(
             (e for e in entries if e.run_week_id == rw.id and e.slot_id is None),
@@ -86,9 +102,11 @@ def _run_grid(run):
         )
         total_workouts += len(loose)
         has_done = any(c["entry"] for c in cells) or bool(loose)
-        rows.append({"run_week": rw, "cells": cells, "loose": loose, "has_done": has_done})
+        rows.append({"run_week": rw, "cells": cells, "loose": loose, "has_done": has_done,
+                     "plan_week": overview["weeks"].get(rw.program_week.number) if overview else None})
 
     totals = {
+        "overview": overview,
         "workouts": total_workouts, "effort_points": round(total_effort),
         "recovery_sessions": recovery_sessions,
         "recovery_minutes": round(recovery_seconds / 60),

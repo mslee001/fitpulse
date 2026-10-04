@@ -1748,6 +1748,12 @@ models.signals.post_save.connect(_create_user_access, sender=settings.AUTH_USER_
 # describe Peloton's library, not anyone's training. Synced by workouts/catalog.py.
 # ---------------------------------------------------------------------------
 
+def peloton_class_url(ride_id):
+    """The class's details page on Peloton's site — where you can add it to your
+    Stack and start it on the Tread — rather than the web player."""
+    return f"https://members.onepeloton.com/home/?modal=classDetailsModal&classId={ride_id}"
+
+
 class PelotonClassType(models.Model):
     """Peloton class type lookup (from the class_types list on every archive
     page). Global — not user-owned."""
@@ -1818,7 +1824,7 @@ class PelotonClass(models.Model):
 
     @property
     def peloton_url(self):
-        return f"https://members.onepeloton.com/classes/player/{self.ride_id}"
+        return peloton_class_url(self.ride_id)
 
 
 class SyncJob(models.Model):

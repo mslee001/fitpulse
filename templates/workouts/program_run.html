@@ -121,13 +121,31 @@
 </div>
 {% endif %}
 
+{% with ov=totals.overview %}
+{% if ov %}
+<div class="chart-card tp-plan-card">
+  <div class="chart-header"><h3 class="chart-title">PLAN</h3><span class="stat-sub">{{ program|ai_plan_tag }}</span></div>
+  {% if ov.summary %}<p class="tp-plan-summary">{{ ov.summary }}</p>{% endif %}
+  {% if ov.pace.lines %}
+  <div class="tp-pace">
+    <span class="difficulty-label">Pace</span> {{ ov.pace.lines|join:" · " }}
+    {% if ov.pace.stretch %}<span class="badge badge-muted">Stretch goal</span>{% endif %}
+    {% if ov.pace.guidance %}<p class="tp-pace-guidance">{{ ov.pace.guidance }}</p>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endwith %}
+
 <div class="program-grid">
   {% for row in rows %}
   <div class="program-week">
     <div class="program-week-label">
       <span class="program-week-label-text">
         Week {{ row.run_week.program_week.number }}
-        {% if row.run_week.program_week.label %}<span class="stat-sub">{{ row.run_week.program_week.label }}</span>{% endif %}
+        {% if row.plan_week %}
+          <span class="stat-sub">{{ row.plan_week.start|date:"M j" }} – {{ row.plan_week.end|date:"M j" }}{% if row.plan_week.phase %} &middot; {{ row.plan_week.phase }}{% endif %}{% if row.plan_week.focus %} &middot; {{ row.plan_week.focus }}{% endif %}</span>
+        {% elif row.run_week.program_week.label %}<span class="stat-sub">{{ row.run_week.program_week.label }}</span>{% endif %}
         <span class="stat-sub">&middot; pass {{ row.run_week.sequence }}</span>
       </span>
       <form method="post" action="{% url 'program_delete_week' row.run_week.pk %}"
@@ -141,6 +159,7 @@
       {% for cell in row.cells %}
         {% if cell.entry %}
           <a class="pcell pcell-done" href="{% url 'workout_detail' cell.entry.workout.workout_id %}">
+            {% if cell.day_label %}<span class="pcell-day">{{ cell.day_label }}</span>{% endif %}
             <span class="pcell-check">&check;</span>
             <span class="pcell-title">{{ cell.slot.title }}</span>
             <span class="pcell-sub">
