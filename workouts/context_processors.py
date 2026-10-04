@@ -17,7 +17,8 @@ def access(request):
     u = getattr(request, "user", None)
     if not u or not u.is_authenticated:
         return {}
-    return {"can": _Can(u), "is_owner": u.is_superuser, "setup_pending": _LazyPending(u)}
+    return {"can": _Can(u), "is_owner": u.is_superuser, "setup_pending": _LazyPending(u),
+            "peloton_reconnect": _LazyPelotonReconnect(u)}
 
 
 class _LazyPending:
@@ -38,3 +39,30 @@ class _LazyPending:
 
     def __bool__(self):
         return bool(self._load())
+
+
+class _LazyPelotonReconnect:
+    """True when the user's Peloton sign-in ended (or was never renewed after the
+    switch to refresh tokens) and the Peloton integration is still enabled.
+    `key` changes with each failure, so dismissing the banner hides only this one."""
+    def __init__(self, user):
+        self.user = user
+        self._auth = None
+        self._value = None
+
+    def __bool__(self):
+        if self._value is None:
+            from .models import Integration, PelotonAuth
+            self._auth = PelotonAuth.for_user(self.user)
+            self._value = bool(
+                self._auth and self._auth.needs_reconnect
+                and Integration.objects.for_user(self.user).filter(key="peloton", is_enabled=True).exists()
+            )
+        return self._value
+
+    @property
+    def key(self):
+        if not self:
+            return ""
+        failed = self._auth.auth_failed_at
+        return str(int(failed.timestamp())) if failed else "no-token"

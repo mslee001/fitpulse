@@ -184,13 +184,19 @@
   </nav>
 
   <main class="main">
-    {% if setup_pending %}
+    {% if setup_pending or peloton_reconnect %}
     {% for step in setup_pending %}
     <div class="setup-banner" data-step="{{ step.key }}" hidden>
       <a href="{% url 'get_started' %}#{{ step.key }}">Finish setting up {{ step.title }} →</a>
       <button type="button" class="setup-banner-close" aria-label="Dismiss">&times;</button>
     </div>
     {% endfor %}
+    {% if peloton_reconnect %}
+    <div class="setup-banner" data-step="peloton-reconnect-{{ peloton_reconnect.key }}" hidden>
+      <a href="{% url 'integrations_settings' %}">Peloton needs reconnecting → Data Sources</a>
+      <button type="button" class="setup-banner-close" aria-label="Dismiss">&times;</button>
+    </div>
+    {% endif %}
     <script>
       document.querySelectorAll('.setup-banner').forEach(function (el) {
         var key = 'setupBannerDismissed:' + el.dataset.step;

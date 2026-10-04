@@ -9,7 +9,7 @@ from workouts.analysis import run_intervention_analysis
 from workouts.models import (
     BodyMeasurement, CachedWorkout, DailyStats, DoseChange, FoodEntry, HungerCheck, Intervention,
     Program, ProgramRun, ProgramSlot, ProgramWeek, ProgramWorkout, RunWeek, SavedAnalysis, SavedMeal,
-    SideEffectLog, WeeklyReview,
+    PlanDraft, SideEffectLog, WeeklyReview,
 )
 from workouts.nutrition import compute_streaks, get_top_foods
 from workouts.programs import associate_workout, identify_membership
@@ -54,7 +54,10 @@ class IsolationTests(TwoUserTestCase):
         self.program = Program.objects.create(user=a, name="ALICE-ONLY-PROGRAM", slug="alice-split",
                                               kind="split", match_strategy="ride_ids")
         week = ProgramWeek.objects.create(program=self.program, number=1)
-        ProgramSlot.objects.create(week=week, title="Pull", peloton_ride_id=RIDE)
+        self.slot = ProgramSlot.objects.create(week=week, title="Pull", peloton_ride_id=RIDE,
+                                               spec_json={"discipline": "running", "class_type_id": "t"})
+        from workouts.models import PlanDraft
+        self.draft = PlanDraft.objects.create(user=a, status="ready", inputs_json={}, spec_json={"weeks": []})
         self.run = ProgramRun.objects.create(program=self.program, start_date=DAY - timedelta(days=7))
         self.run_week = RunWeek.objects.create(run=self.run, program_week=week, sequence=1)
         ProgramWorkout.objects.create(run_week=self.run_week, workout=self.workout)
@@ -62,7 +65,7 @@ class IsolationTests(TwoUserTestCase):
     def counts(self):
         return {M.__name__: M.objects.count() for M in (
             CachedWorkout, Intervention, DoseChange, SavedAnalysis, FoodEntry, SavedMeal,
-            Program, ProgramRun, RunWeek, ProgramWorkout)}
+            Program, ProgramRun, RunWeek, ProgramWorkout, PlanDraft)}
 
     # ── ids in URLs ───────────────────────────────────────────────────────────
 
@@ -74,6 +77,7 @@ class IsolationTests(TwoUserTestCase):
             ("nutrition_edit", [self.food.pk]), ("program_detail", ["alice-split"]),
             ("program_edit", ["alice-split"]), ("program_run", [run]), ("program_progression", [run]),
             ("program_running_progression", [run]),
+            ("program_training_plan_draft", [self.draft.pk]), ("program_training_plan_status", [self.draft.pk]),
         ]
         posts = [
             ("save_manual_movements", [wid]), ("intervention_end", [iv]), ("intervention_delete", [iv]),
@@ -87,6 +91,9 @@ class IsolationTests(TwoUserTestCase):
             ("program_backfill", ["alice-split"]), ("program_complete_run", [run]),
             ("program_retrospective", [run]), ("program_delete_run", [run]),
             ("program_delete_week", [rw]), ("run_week_rate", [rw]),
+            ("program_training_plan_retry", [self.draft.pk]), ("program_training_plan_swap", [self.draft.pk]),
+            ("program_training_plan_pick", [self.draft.pk]), ("program_training_plan_create", [self.draft.pk]),
+            ("program_training_plan_discard", [self.draft.pk]), ("program_slot_swap", [self.slot.pk]),
         ]
         before = self.counts()
         for name, args in gets:

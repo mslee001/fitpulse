@@ -5,6 +5,7 @@ from statistics import mean
 
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.text import slugify
 
 from .models import (
@@ -135,6 +136,21 @@ def _discipline_slots_for(workout):
 
 # ---------- the confidence ladder ----------
 
+def _in_ai_plan_window(program, workout):
+    """False when `program` is an AI training plan (goal_json set) and the
+    workout falls outside its start → end/race dates. Ride-id matching ignores
+    dates otherwise, so a class you took last year would land in the new plan.
+    Every other program keeps date-free matching (their history backfill needs it)."""
+    goal = program.goal_json or {}
+    if not goal.get("start_date") or not workout.created_at:
+        return True
+    day = timezone.localtime(workout.created_at).date()
+    end = goal.get("race_date") or goal.get("end_date")
+    if day < date.fromisoformat(goal["start_date"]):
+        return False
+    return not (end and day > date.fromisoformat(end))
+
+
 def identify_membership(workout):
     """
     Return (program, canonical_week_number, day, matched_by) or None.
@@ -158,6 +174,9 @@ def identify_membership(workout):
                      .filter(week__program__user_id=workout.user_id)
                      .filter(Q(peloton_ride_id=ride_id) | Q(alt_ride_ids__contains=ride_id))
                      .select_related("week", "week__program"))
+        # AI training plans may pin classes you took before the plan — only
+        # workouts inside the plan's own dates count for them.
+        slots = [s for s in slots if _in_ai_plan_window(s.week.program, workout)]
         if slots:
             program = slots[0].week.program
             week_numbers = {s.week.number for s in slots}
@@ -1110,10 +1129,23 @@ def create_plan(user, name, slug, instructor, weeks_data, kind=None):
                 optional=bool(s.get("optional")),
                 match_discipline=s.get("match_discipline", ""),
                 match_title_keyword=s.get("match_title_keyword", ""),
+                notes=s.get("notes", ""),
+                spec_json=s.get("spec") or {},
             )
             _expand_repeats(base, week, weeks_by_number, s)
     backfill_program(program)
     return program
+
+
+def start_run(program, start_date):
+    """Open a new run on start_date and, for a plan, seed one RunWeek per
+    canonical week so the grid shows every week up front. Doesn't end any
+    other run (callers end the current one first if they mean to replace it)."""
+    run = ProgramRun.objects.create(program=program, start_date=start_date)
+    if program.kind == "plan":
+        for pw in program.weeks.all():
+            RunWeek.objects.get_or_create(run=run, program_week=pw, sequence=pw.number)
+    return run
 
 
 # ---------- program retrospective — aggregation for the Sonnet prompt ----------
@@ -1275,6 +1307,14 @@ def build_retrospective_context(run):
     running_deltas = running_progression_deltas(run)
     if running_deltas:
         ctx["running_progression_deltas"] = running_deltas
+    goal = run.program.goal_json or {}
+    if goal.get("goal"):   # AI training plan — judge the block against what it was for
+        from .training_plans import GOALS, _fmt_hms
+        ctx["training_goal"] = {
+            "goal": GOALS.get(goal["goal"], goal["goal"]),
+            "race_date": goal.get("race_date") or None,
+            "target_time": _fmt_hms(goal["target_time"]) if goal.get("target_time") else None,
+        }
     # cross-cycle: only when a prior ended run of the same program exists
     prior = (run.program.runs.filter(end_date__isnull=False)
              .exclude(pk=run.pk).order_by("-end_date").first())

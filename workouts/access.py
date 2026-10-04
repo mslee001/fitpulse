@@ -15,7 +15,8 @@ FEATURES = {
         "url_names": ["program_list", "program_new", "program_new_blank", "program_detail", "program_delete",
                       "program_edit", "program_duplicate", "program_start_cycle", "program_backfill",
                       "program_run", "program_progression", "program_running_progression",
-                      "program_complete_run", "program_delete_week", "run_week_rate", "program_delete_run"],
+                      "program_complete_run", "program_delete_week", "run_week_rate", "program_delete_run",
+                      "program_slot_swap"],
         "requires": ["training"], "note": None,
     },
     "strength": {
@@ -90,8 +91,12 @@ FEATURES = {
         "url_names": [], "requires": ["interventions"], "note": None,   # inline in save_analysis
     },
     "ai_program_tools": {
-        "label": "Plan import & retrospectives", "group": "AI", "ai": True,
-        "url_names": ["program_new_plan", "program_retrospective"], "requires": ["programs"], "note": None,
+        "label": "Plan import, training plans & retrospectives", "group": "AI", "ai": True,
+        "url_names": ["program_new_plan", "program_retrospective", "program_training_plan_new",
+                      "program_training_plan_draft", "program_training_plan_status", "program_training_plan_retry",
+                      "program_training_plan_swap", "program_training_plan_pick", "program_training_plan_create",
+                      "program_training_plan_discard"],
+        "requires": ["programs"], "note": None,
     },
     "ai_chat": {
         "label": "Stats chat", "group": "AI", "ai": True,
@@ -119,6 +124,7 @@ CORE_URL_NAMES = {   # any logged-in, active user
 }
 OWNER_URL_NAMES = {  # superusers only
     "sync_garmin_new", "sync_garmin_all", "sync_garmin_wellness", "garmin_activity_history",
+    "catalog_sync_start",
 }
 ADMIN_URL_NAMES = {      # superusers only: /settings/users/
     "admin_users", "admin_user_new", "admin_user_detail", "admin_user_feature_toggle", "admin_user_ai",

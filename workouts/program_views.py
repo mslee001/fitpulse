@@ -11,12 +11,13 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from .access import has_feature
+from .training_plan_views import slot_swappable
 from .models import Program, ProgramRun, ProgramSlot, ProgramWeek, ProgramWorkout, RunWeek
 from .programs import (
     ANY_CLASS_PRESETS, backfill_program, create_plan, create_split, duplicate_program,
     extract_ride_id_from_text, normalize_ride_id_input, preset_for, progression_categories,
     recompute_run_dates, resolve_slot_match, resolve_slot_ride_id, resolve_split_candidates,
-    run_exercise_progression, run_running_progression, unique_slug,
+    run_exercise_progression, run_running_progression, start_run, unique_slug,
 )
 
 
@@ -42,6 +43,10 @@ def _run_grid(run):
     latest_run_week_id = (run.run_weeks.order_by("-sequence")
                           .values_list("id", flat=True).first())
 
+    from .catalog import DifficultyRanker
+    ranker = DifficultyRanker()
+    planned = ranker.for_rides(ProgramSlot.objects.filter(week__program=run.program)
+                               .exclude(peloton_ride_id="").values_list("peloton_ride_id", flat=True))
     rows = []
     total_workouts = 0
     total_effort = 0.0
@@ -68,7 +73,9 @@ def _run_grid(run):
                     recovery_seconds += sum(r.workout.duration_seconds or 0 for r in recoveries)
             elif slot.optional and not is_open_pass:
                 continue   # never-filled optional slot in a closed pass — hide it
-            cells.append({"slot": slot, "entry": e, "recoveries": recoveries})
+            cells.append({"slot": slot, "entry": e, "recoveries": recoveries,
+                          "swappable": run.end_date is None and slot_swappable(slot, e),
+                          "difficulty": None if e else ranker.rank(planned.get(slot.peloton_ride_id))})
         # Completed classes in the order actually taken; still-empty slots trail at
         # the end (they have no date to sort by) in their defined slot order.
         cells.sort(key=lambda c: (c["entry"] is None, c["entry"] and c["entry"].workout.created_at))
@@ -697,11 +704,7 @@ def program_start_cycle(request, slug):
             _end_run(cur)
         # No label — ProgramRun.display_name derives the name from start_date/end_date
         # directly, so it can't drift out of sync the way a static "Cycle N" string would.
-        run = ProgramRun.objects.create(program=program, start_date=date.today())
-        # seed empty weeks for a plan so the grid shows
-        if program.kind == "plan":
-            for pw in program.weeks.all():
-                RunWeek.objects.get_or_create(run=run, program_week=pw, sequence=pw.number)
+        run = start_run(program, date.today())
         return redirect("program_run", pk=run.pk)
     return redirect("program_detail", slug=slug)
 

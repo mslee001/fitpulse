@@ -691,6 +691,17 @@ class CachedWorkout(models.Model):
         return ez.get("total_effort_points")
 
     @property
+    def effort_per_min(self):
+        """Effort points per minute — how hard the session was for *you* (heart-rate
+        based), without long classes scoring high just for being long. None without
+        Peloton's effort score or for sessions under 5 minutes."""
+        pts = self.effort_points
+        minutes = (self.duration_seconds or 0) / 60
+        if pts is None or minutes < 5:
+            return None
+        return round(pts / minutes, 1)
+
+    @property
     def heart_rate_avg_best(self):
         """HR average: model field if set, otherwise from performance graph."""
         if self.heart_rate_avg:
@@ -1233,23 +1244,31 @@ class WithingsAuth(models.Model):
 
 class PelotonAuth(models.Model):
     """
-    One row per user. Stores Peloton session credentials in Postgres so both
-    laptop and hosted app can sync. Peloton has no OAuth — the session cookie
-    is extracted manually from browser DevTools and pasted into /settings/integrations/.
-    Cookies last weeks to months; rotate when sync starts returning 403.
+    One row per user. Peloton's web app signs in through Auth0; the user pastes
+    a refresh token copied from a private browser window (see
+    partials/peloton_token_help.html) and PelotonClient trades it for 48-hour
+    access tokens. Refresh tokens rotate: every refresh returns a new one and
+    spends the old, so the new one is saved immediately (PelotonClient._ensure_token).
+    The pasted token itself is spent on connect and never stored.
     """
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="peloton_auth")
-    session_id = models.CharField(max_length=512, help_text="peloton_session_id cookie")
     # The Peloton account id (named peloton_user_id so it can't be confused
     # with the Django `user` FK above, whose attribute is user_id).
     peloton_user_id = models.CharField(max_length=64, help_text="Peloton user ID")
     peloton_username = models.CharField(max_length=64, blank=True)   # from /api/me, for "Connected as @…"
+    refresh_token = models.TextField(blank=True)            # latest rotated token; the pasted one is never stored
+    access_token = models.TextField(blank=True)
+    access_expires_at = models.DateTimeField(null=True, blank=True)
+    refresh_rotated_at = models.DateTimeField(null=True, blank=True)   # last time a refresh token was saved (paste or rotation)
+    connected_at = models.DateTimeField(null=True, blank=True)         # last paste — how long a token family lasts
+    auth_failed_at = models.DateTimeField(null=True, blank=True)       # set on invalid_grant; cleared on reconnect
+    auth_error = models.CharField(max_length=300, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
     notes = models.CharField(
         max_length=500,
         blank=True,
-        help_text="Optional — e.g. 'extracted from Chrome 2026-06-26'",
+        help_text="Optional — e.g. 'copied from Chrome 2026-10-03'",
     )
 
     class Meta:
@@ -1271,10 +1290,12 @@ class PelotonAuth(models.Model):
         return cls.objects.filter(user=user).first()
 
     @property
-    def masked_session_id(self):
-        if not self.session_id or len(self.session_id) < 8:
-            return "(empty)"
-        return f"…{self.session_id[-4:]}"
+    def has_tokens(self):
+        return bool(self.refresh_token)
+
+    @property
+    def needs_reconnect(self):
+        return not self.refresh_token or self.auth_failed_at is not None
 
 
 class GoogleHealthAuth(models.Model):
@@ -1459,6 +1480,10 @@ class Program(models.Model):
     recovery_max_min = models.PositiveSmallIntegerField(default=30)      # longer than this is a workout, not a cool-down
     recovery_walks = models.BooleanField(default=True)                   # count walking workouts
     recovery_stretches = models.BooleanField(default=True)               # count stretching workouts
+    # Set only for AI-generated training plans (workouts/training_plans.py):
+    # {"goal", "race_date", "target_time", "start_date", "mode",
+    #  "companion_program_id", "draft_id", "generated_at", "model"}.
+    goal_json = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1511,6 +1536,10 @@ class ProgramSlot(models.Model):
     # Only workouts on/after the active run's start date qualify.
     match_discipline = models.CharField(max_length=40, blank=True)
     match_title_keyword = models.CharField(max_length=80, blank=True)
+    # The class spec a training-plan slot was filled from: {"discipline",
+    # "class_type_id", "class_type", "duration_min", "intensity", "purpose",
+    # "setting"}. Drives "Swap class". Empty for every other slot.
+    spec_json = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["week", "day", "order"]
@@ -1620,6 +1649,49 @@ class ProgramWorkout(models.Model):
         return f"{self.run_week} · {self.workout_id}"
 
 
+class PlanDraft(models.Model):
+    """One AI training-plan generation: inputs → context snapshot → AI spec →
+    class picks → (optionally) a created Program. Owned by user."""
+    STATUS = [("generating", "Generating"), ("ready", "Ready"), ("failed", "Failed"), ("created", "Created")]
+    STALE_AFTER = timedelta(minutes=10)
+    STALE_ERROR = "Interrupted, probably by a deploy or restart"
+    PRUNE_AFTER = timedelta(days=30)
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+", db_index=True)
+    objects = UserOwnedManager()
+    status = models.CharField(max_length=12, choices=STATUS, default="generating")
+    inputs_json = models.JSONField(default=dict)
+    context_text = models.TextField(blank=True)     # exactly what the prompt's FITNESS CONTEXT said — for spot-checks
+    spec_json = models.JSONField(default=dict, blank=True)   # validated AI output
+    picks_json = models.JSONField(default=dict, blank=True)  # {"<week>-<day>-<order>": {"ride_id", "alternates": [...]}}
+    warnings = models.JSONField(default=list, blank=True)
+    ai_model = models.CharField(max_length=60, blank=True)
+    error = models.TextField(blank=True)
+    program = models.ForeignKey("Program", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PlanDraft({self.pk}, {self.status})"
+
+    def refreshed(self):
+        """A generating draft older than STALE_AFTER lost its thread (deploys
+        kill threads) — mark it failed so the page offers Retry."""
+        if self.status == "generating" and self.updated_at and timezone.now() - self.updated_at > self.STALE_AFTER:
+            self.status, self.error = "failed", self.STALE_ERROR
+            PlanDraft.objects.filter(pk=self.pk, status="generating").update(status="failed", error=self.STALE_ERROR)
+        return self
+
+    @classmethod
+    def prune(cls, user):
+        """Drop this user's uncreated drafts older than PRUNE_AFTER."""
+        cls.objects.for_user(user).exclude(status="created").filter(
+            created_at__lt=timezone.now() - cls.PRUNE_AFTER).delete()
+
+
 class AIUsage(models.Model):
     """One Anthropic response's token usage and cost, for per-user monthly
     budgets and the admin page. Counts and cost only — never prompt or response text."""
@@ -1668,6 +1740,85 @@ def _create_user_access(sender, instance, created, **kwargs):
 
 models.signals.post_save.connect(_create_user_access, sender=settings.AUTH_USER_MODEL,
                                  dispatch_uid="workouts_create_user_access")
+
+
+# ---------------------------------------------------------------------------
+# Peloton class catalog — public Peloton data shared by every user. These three
+# models are the one deliberate exception to "every row has an owner": they
+# describe Peloton's library, not anyone's training. Synced by workouts/catalog.py.
+# ---------------------------------------------------------------------------
+
+class PelotonClassType(models.Model):
+    """Peloton class type lookup (from the class_types list on every archive
+    page). Global — not user-owned."""
+    id = models.CharField(primary_key=True, max_length=64)
+    name = models.CharField(max_length=120)
+    display_name = models.CharField(max_length=120, blank=True)
+    discipline = models.CharField(max_length=40, db_index=True)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.display_name or self.name} ({self.discipline})"
+
+
+class PelotonInstructor(models.Model):
+    """Peloton instructor (from the instructors list on archive pages). Global — not user-owned."""
+    id = models.CharField(primary_key=True, max_length=64)
+    name = models.CharField(max_length=120)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
+class PelotonClass(models.Model):
+    """One on-demand Peloton class (a "ride"). Global — not user-owned; synced
+    by workouts/catalog.py from /api/v2/ride/archived."""
+    ride_id = models.CharField(primary_key=True, max_length=64)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    discipline = models.CharField(max_length=40, db_index=True)        # fitness_discipline; pilates is "strength"
+    # ",strength,pilates," — the browse categories it was seen under. A delimited
+    # string, not JSON, so categories__contains=",pilates," works on SQLite too.
+    categories = models.CharField(max_length=200, blank=True, db_index=True)
+    class_type_id = models.CharField(max_length=64, blank=True, db_index=True)  # ride_type_id (primary type)
+    class_type_ids = models.JSONField(default=list, blank=True)
+    instructor_id = models.CharField(max_length=64, blank=True)
+    instructor_name = models.CharField(max_length=120, blank=True)     # denormalized from PelotonInstructor
+    duration_seconds = models.PositiveIntegerField(db_index=True)
+    length_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # Member-rated 1–10, each rater judging against their own fitness — compare
+    # only within one class type + duration, never across types.
+    difficulty_estimate = models.FloatField(null=True, blank=True)
+    difficulty_level = models.CharField(max_length=20, blank=True)    # Peloton tag; set on <10% of classes
+    difficulty_rating_count = models.PositiveIntegerField(default=0)
+    overall_rating_avg = models.FloatField(null=True, blank=True)
+    overall_rating_count = models.PositiveIntegerField(default=0)
+    original_air_time = models.DateTimeField(db_index=True)
+    is_outdoor = models.BooleanField(default=False)
+    has_tread_pace_target = models.BooleanField(default=False)
+    equipment_tags = models.JSONField(default=list, blank=True)
+    is_explicit = models.BooleanField(default=False)
+    language = models.CharField(max_length=20, blank=True, default="english")
+    image_url = models.URLField(max_length=500, blank=True)
+    is_available = models.BooleanField(default=True, db_index=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [models.Index(fields=["discipline", "class_type_id", "duration_seconds"])]
+
+    def __str__(self):
+        return f"{self.title} ({self.ride_id})"
+
+    @property
+    def duration_min(self):
+        return round(self.duration_seconds / 60)
+
+    @property
+    def peloton_url(self):
+        return f"https://members.onepeloton.com/classes/player/{self.ride_id}"
 
 
 class SyncJob(models.Model):

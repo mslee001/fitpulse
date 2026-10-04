@@ -33,23 +33,15 @@
       {% include "workouts/partials/gs_pill.html" %}
     </div>
     {% if step.status == "done" %}
-      <p class="gs-line">Connected{% if peloton_auth.peloton_username %} as @{{ peloton_auth.peloton_username }}{% endif %}.
-        <details class="gs-inline"><summary>Reconnect</summary>{% include "workouts/partials/gs_peloton_form.html" %}</details></p>
+      <p class="gs-line">Connected{% if peloton_auth.peloton_username %} as @{{ peloton_auth.peloton_username }}{% endif %}.</p>
+      <details class="gs-inline"><summary>Reconnect</summary>{% include "workouts/partials/gs_peloton_form.html" %}</details>
       {% include "workouts/partials/gs_sync_status.html" with job=jobs.peloton source="peloton" %}
     {% elif step.status == "skipped" %}
       <p class="gs-line muted">Skipped.</p>
       <form method="post" action="{% url 'gs_unskip' 'peloton' %}">{% csrf_token %}<button class="btn btn-sm btn-ghost">Connect Peloton after all</button></form>
     {% else %}
       <div class="gs-copy">
-        <p>FitPulse reads your Peloton workouts using your browser's sign-in cookie. This takes about two minutes and needs a <strong>computer</strong> (it doesn't work on a phone).</p>
-        <ol>
-          <li>On your computer, go to <strong>onepeloton.com</strong> and log in.</li>
-          <li>Open developer tools: <strong>Chrome/Edge</strong> View → Developer → Developer Tools (or ⌥⌘I on Mac, F12 on Windows). <strong>Safari</strong> first turn on Settings → Advanced → "Show features for web developers", then Develop → Show Web Inspector.</li>
-          <li>Go to the <strong>Application</strong> tab (Safari: <strong>Storage</strong>) → <strong>Cookies</strong> → <code>https://www.onepeloton.com</code>.</li>
-          <li>Find <strong><code>peloton_session_id</code></strong> and copy its <strong>Value</strong>.</li>
-          <li>Paste it below and click <strong>Connect</strong>.</li>
-        </ol>
-        <p>The cookie expires every so often. If your workouts stop syncing, repeat these steps from Settings → Data Sources. Treat the cookie like a password: don't share it anywhere else.</p>
+        <p>FitPulse reads your Peloton workouts using a sign-in token you copy from Peloton's website once. This takes about two minutes and needs a <strong>computer</strong> (it doesn't work on a phone).</p>
       </div>
       {% include "workouts/partials/gs_peloton_form.html" %}
       <form method="post" action="{% url 'gs_skip' 'peloton' %}" class="gs-skip">{% csrf_token %}<button class="btn-link">I don't use Peloton — skip</button></form>

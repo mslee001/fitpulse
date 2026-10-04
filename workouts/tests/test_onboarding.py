@@ -84,7 +84,7 @@ class OnboardingTests(TwoUserTestCase):
         Integration.objects.filter(user=self.carol).update(is_enabled=False)
         self.assertFalse(can_finish(self.carol))                 # everything skipped
         Integration.objects.filter(user=self.carol, key="peloton").update(is_enabled=True)
-        PelotonAuth.objects.create(user=self.carol, session_id="c", peloton_user_id="p-carol")
+        PelotonAuth.objects.create(user=self.carol, refresh_token="rt", peloton_user_id="p-carol")
         self.assertTrue(can_finish(self.carol))
         NutritionProfile.objects.filter(user=self.carol).update(age=None)
         self.assertFalse(can_finish(self.carol))                 # required profile incomplete
@@ -93,7 +93,7 @@ class OnboardingTests(TwoUserTestCase):
         self.client_c.post(reverse("gs_finish"))
         self.assertIsNone(access_for(self.carol).onboarding_completed_at)
         self.finish_profiles()
-        PelotonAuth.objects.create(user=self.carol, session_id="c", peloton_user_id="p-carol")
+        PelotonAuth.objects.create(user=self.carol, refresh_token="rt", peloton_user_id="p-carol")
         for key in ("withings", "google_health"):
             self.client_c.post(reverse("gs_skip", args=[key]))
         resp = self.client_c.post(reverse("gs_finish"))
@@ -124,52 +124,66 @@ class OnboardingTests(TwoUserTestCase):
 
     # ── Peloton connect ───────────────────────────────────────────────────────
 
+    def patch_exchange(self, **kwargs):
+        tokens = {"access_token": "A1", "refresh_token": "R2", "expires_at": NOW + timedelta(hours=48)}
+        p = patch("workouts.services.peloton_client.PelotonClient.exchange_refresh_token",
+                  return_value=tokens, **kwargs)
+        return p.start()
+
     @patch("workouts.services.peloton_client.PelotonClient.fetch_me")
-    def test_peloton_cookie_connect(self, fetch_me):
+    def test_peloton_token_connect(self, fetch_me):
+        self.patch_exchange()
         fetch_me.return_value = {"id": "p-carol", "username": "carolrides"}
-        resp = self.client_c.post(reverse("set_peloton_auth"), {"session_id": "cookie", "next": "/get-started/#peloton"})
+        resp = self.client_c.post(reverse("set_peloton_auth"), {"refresh_token": "R1", "next": "/get-started/#peloton"})
         self.assertRedirects(resp, "/get-started/#peloton", fetch_redirect_response=False)
         auth = PelotonAuth.objects.get(user=self.carol)
         self.assertEqual((auth.peloton_user_id, auth.peloton_username), ("p-carol", "carolrides"))
         self.start_backfill.assert_called_once_with(self.carol, "peloton")
         self.assertEqual(self.step("peloton").status, "done")
 
-    @patch("workouts.services.peloton_client.PelotonClient.fetch_me",
-           side_effect=PelotonAuthError("That cookie didn't work. It may have expired. Copy it again."))
-    def test_peloton_bad_cookie(self, fetch_me):
-        resp = self.client_c.post(reverse("set_peloton_auth"), {"session_id": "stale"}, follow=False)
+    def test_peloton_row_without_token_is_not_done(self):
+        PelotonAuth.objects.create(user=self.carol, peloton_user_id="p-carol")   # pre-token row
+        self.assertNotEqual(self.step("peloton").status, "done")
+
+    def test_peloton_bad_token(self):
+        self.patch_exchange(side_effect=PelotonAuthError("That Peloton sign-in token expired or was already used."))
+        resp = self.client_c.post(reverse("set_peloton_auth"), {"refresh_token": "stale"}, follow=False)
         self.assertFalse(PelotonAuth.objects.filter(user=self.carol).exists())
         self.start_backfill.assert_not_called()
         from django.contrib.messages import get_messages
-        self.assertIn("didn't work", " ".join(str(m) for m in get_messages(resp.wsgi_request)))
+        self.assertIn("expired or was already used", " ".join(str(m) for m in get_messages(resp.wsgi_request)))
 
     @patch("workouts.services.peloton_client.PelotonClient.fetch_me",
            return_value={"id": "p-bob", "username": "bob"})
     def test_peloton_account_already_used_by_someone_else(self, fetch_me):
         from django.contrib.messages import get_messages
-        PelotonAuth.objects.create(user=self.b, session_id="b", peloton_user_id="p-bob")
-        resp = self.client_c.post(reverse("set_peloton_auth"), {"session_id": "cookie"})
+        self.patch_exchange()
+        PelotonAuth.objects.create(user=self.b, refresh_token="b", peloton_user_id="p-bob")
+        resp = self.client_c.post(reverse("set_peloton_auth"), {"refresh_token": "R1"})
         self.assertFalse(PelotonAuth.objects.filter(user=self.carol).exists())
         msg = " ".join(str(m) for m in get_messages(resp.wsgi_request))
-        self.assertIn("Peloton account @bob", msg)          # names whose session the cookie is
-        self.assertIn("signed in to onepeloton.com as yourself", msg)
+        self.assertIn("That sign-in is for Peloton account @bob", msg)   # names whose account the token is
+        self.assertIn("Sign in to Peloton as yourself", msg)
 
     @patch("workouts.services.peloton_client.PelotonClient.fetch_me",
            return_value={"id": "p-carol", "username": "carol"})
     def test_database_error_is_not_reported_as_a_duplicate_account(self, fetch_me):
         from django.contrib.messages import get_messages
         from django.db import IntegrityError
+        self.patch_exchange()
         with patch("workouts.models.PelotonAuth.objects.update_or_create", side_effect=IntegrityError("dup pk")):
-            resp = self.client_c.post(reverse("set_peloton_auth"), {"session_id": "cookie"})
+            resp = self.client_c.post(reverse("set_peloton_auth"), {"refresh_token": "R1"})
         msg = " ".join(str(m) for m in get_messages(resp.wsgi_request))
         self.assertIn("database error", msg)
+        self.assertIn("copy a fresh one", msg)       # the pasted token is spent
         self.assertNotIn("already connected", msg)
 
     def test_open_redirects_are_refused(self):
+        self.patch_exchange()
         with patch("workouts.services.peloton_client.PelotonClient.fetch_me",
                    return_value={"id": "p-carol", "username": "c"}):
             resp = self.client_c.post(reverse("set_peloton_auth"),
-                                      {"session_id": "x", "next": "https://evil.example/"})
+                                      {"refresh_token": "x", "next": "https://evil.example/"})
         self.assertEqual(resp["Location"], reverse("integrations_settings"))
 
     # ── Withings connect ──────────────────────────────────────────────────────

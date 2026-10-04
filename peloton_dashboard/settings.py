@@ -100,6 +100,8 @@ CSRF_TRUSTED_ORIGINS = [
 PELOTON_SESSION_ID = os.getenv("PELOTON_SESSION_ID", "")
 PELOTON_USER_ID = os.getenv("PELOTON_USER_ID", "")
 PELOTON_API_BASE = "https://api.onepeloton.com"
+PELOTON_AUTH_TOKEN_URL = "https://auth.onepeloton.com/oauth/token"
+PELOTON_WEB_CLIENT_ID = "WVoJxVDdPoFx4RNewvvg6ch2mZ7bwnsM"   # Peloton web app's public Auth0 client
 
 GARMIN_EMAIL = os.getenv("GARMIN_EMAIL", "")
 GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD", "")

@@ -492,3 +492,17 @@ def format_duration_hm(seconds):
         return f"{hours}h {minutes}m"
     except (TypeError, ValueError):
         return "—"
+
+
+@register.filter
+def ai_plan_tag(program):
+    """'AI plan · 5K on Nov 22' for an AI training plan (Program.goal_json), else ''."""
+    from datetime import date
+    goal = getattr(program, "goal_json", None) or {}
+    if not goal.get("goal"):
+        return ""
+    from workouts.training_plans import RACE_LABELS
+    if goal.get("race_date"):
+        race = date.fromisoformat(goal["race_date"])
+        return f"AI plan · {RACE_LABELS.get(goal['goal'], 'Race')} on {race:%b} {race.day}"
+    return f"AI plan · {goal['weeks']}-week base" if goal.get("weeks") else "AI plan · running base"

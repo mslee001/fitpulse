@@ -3385,3 +3385,43 @@ a:hover { text-decoration: underline; }
   .admin-grid { grid-template-columns: 1fr; }
   .gs-inline-form .form-input { min-width: 0 !important; width: 100%; }
 }
+
+/* Peloton sign-in token instructions (partials/peloton_token_help.html) */
+.peloton-snippet { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.5rem 0 0.25rem; }
+.peloton-snippet-code { flex: 1; min-width: 0; margin: 0; padding: 0.55rem 0.7rem; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--r); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-all; }
+.peloton-token-help p { margin: 0.5rem 0; }
+
+/* AI training plans (program_training_plan_new / _draft) */
+.tp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.85rem; align-items: end; }
+.tp-days { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.tp-check { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; color: var(--text-muted); cursor: pointer; margin: 0.2rem 0; }
+.tp-mode .tp-check { display: flex; }
+.tp-evidence { margin: 0.25rem 0 0.75rem; padding-left: 1.2rem; font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; }
+.tp-name { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 700; max-width: 36rem; width: 100%; }
+.tp-week { margin-bottom: 1rem; }
+.tp-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr) auto; gap: 0.75rem; align-items: start; padding: 0.6rem 0; border-top: 1px solid var(--border); font-size: 0.86rem; }
+.tp-row-spec { display: flex; gap: 0.6rem; }
+.tp-day { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; letter-spacing: 0.05em; color: var(--text-dim); min-width: 2.2rem; text-transform: uppercase; }
+.tp-row-class { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.tp-class-title { color: var(--text); font-weight: 600; }
+.tp-purpose { font-style: italic; }
+.tp-row-actions { display: flex; gap: 0.4rem; align-items: flex-start; flex-wrap: wrap; }
+.tp-choose summary { list-style: none; }
+.tp-choose[open] form { margin-top: 0.4rem; }
+.tp-choose .form-select { max-width: 22rem; }
+.tp-row--companion, .tp-row--race { opacity: 0.6; }
+.tp-int--hard { color: var(--accent-red); }
+.tp-int--moderate { color: #FFB74D; }
+.tp-int--easy { color: var(--accent-green); }
+.tp-status { display: flex; align-items: center; gap: 0.5rem; }
+.pcell-swap { margin-top: 0.35rem; }
+@media (max-width: 720px) {
+  .tp-row { grid-template-columns: 1fr; }
+}
+
+/* Difficulty in context (catalog.DifficultyRanker) + your effort per minute */
+.class-difficulty { flex-wrap: wrap; }
+.class-difficulty + .class-difficulty { margin-top: 0.4rem; }
+.difficulty-context { font-size: 0.78rem; color: var(--text-muted); }
+.difficulty-note { margin: 0.5rem 0 0; font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; }
+.workout-difficulty { font-size: 0.75rem; color: var(--text-muted); margin: 0.15rem 0 0.35rem; }

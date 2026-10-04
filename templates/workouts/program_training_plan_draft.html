@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Training Plan — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+{% if draft.status == "ready" %}
+<form method="post" action="{% url 'program_training_plan_create' draft.pk %}" id="tp-create-form">
+  {% csrf_token %}
+  <div class="page-header">
+    <input name="name" class="form-input tp-name" value="{{ draft.spec_json.plan_name }}" maxlength="200" aria-label="Plan name">
+    <p class="page-sub">{{ goal_label }} · {{ start|date:"D M j" }} → {% if race %}race {{ race|date:"D M j, Y" }}{% else %}{{ inputs.weeks }} weeks{% endif %} · {{ inputs.mode|title }}{% if companion %} with {{ companion.name }}{% endif %} · {{ inputs.level|title }} start</p>
+  </div>
+</form>
+
+<div class="add-form-card" style="margin-bottom:1.25rem">
+  <p style="margin:0 0 0.6rem">{{ draft.spec_json.summary }}</p>
+  {% if draft.spec_json.assumptions %}
+    {% if draft.spec_json.assumptions|length > 2 %}<details><summary class="stat-sub">Assumptions ({{ draft.spec_json.assumptions|length }})</summary>{% endif %}
+    <ul class="tp-evidence">{% for a in draft.spec_json.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
+    {% if draft.spec_json.assumptions|length > 2 %}</details>{% endif %}
+  {% endif %}
+  {% if draft.warnings %}
+  <details class="peloton-msg peloton-msg--warning" style="margin-top:0.6rem">
+    <summary>Adjusted {{ draft.warnings|length }} session{{ draft.warnings|length|pluralize }} to fit the catalog and your settings</summary>
+    <ul class="tp-evidence">{% for w in draft.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+  {% for p in other_active %}
+  <p class="stat-sub" style="margin:0.6rem 0 0">You also have an active cycle of {{ p.name }}. End it from its page if this plan replaces it.</p>
+  {% endfor %}
+</div>
+
+{% for wk in weeks %}
+<div class="chart-card tp-week">
+  <div class="chart-header">
+    <h3 class="chart-title">WEEK {{ wk.number }} · {{ wk.phase|upper }}</h3>
+    <span class="stat-sub">{{ wk.start|date:"M j" }} – {{ wk.end|date:"M j" }}{% if wk.focus %} · {{ wk.focus }}{% endif %}</span>
+  </div>
+  {% for r in wk.rows %}
+    {% if r.kind == "slot" %}
+      {% include "workouts/partials/training_plan_slot_row.html" %}
+    {% elif r.kind == "companion" %}
+      <div class="tp-row tp-row--companion">
+        <div class="tp-row-spec"><span class="tp-day">{{ r.date|date:"D" }}</span><span>{{ r.c.title }}{% if r.c.duration_min %} · {{ r.c.duration_min }} min{% endif %}{% if r.c.body %} · {{ r.c.body }}{% endif %}</span></div>
+        <div class="tp-row-class"><span class="stat-sub">{{ companion.name }}</span></div>
+      </div>
+    {% else %}
+      <div class="tp-row tp-row--race">
+        <div class="tp-row-spec"><span class="tp-day">{{ r.date|date:"D" }}</span><span>Race day: {{ r.label }}</span></div>
+        <div class="tp-row-class"><span class="stat-sub">Added as an optional reminder; not matched automatically.</span></div>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endfor %}
+
+<div class="page-header-actions" style="margin-top:1.25rem">
+  <button class="btn btn-accent" type="submit" form="tp-create-form">Create plan</button>
+  <form method="post" action="{% url 'program_training_plan_discard' draft.pk %}" onsubmit="return confirm('Discard this draft plan?')">
+    {% csrf_token %}<button class="btn btn-ghost" type="submit">Discard</button>
+  </form>
+  <a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}?from={{ draft.pk }}">Change inputs</a>
+</div>
+
+{% else %}
+<div class="page-header">
+  <h1 class="page-title">New Training Plan</h1>
+</div>
+{% if draft.status == "generating" %}
+  {% include "workouts/partials/training_plan_status.html" %}
+{% else %}
+  <div class="add-form-card">
+    <div class="peloton-msg peloton-msg--error">{{ draft.error|default:"The plan couldn't be built." }}</div>
+    <div class="page-header-actions" style="margin-top:0.9rem">
+      <form method="post" action="{% url 'program_training_plan_retry' draft.pk %}">
+        {% csrf_token %}<button class="btn btn-accent" type="submit">Retry</button>
+      </form>
+      <a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}?from={{ draft.pk }}">Change inputs</a>
+    </div>
+  </div>
+{% endif %}
+{% endif %}
+{% endblock %}

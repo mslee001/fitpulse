@@ -4,7 +4,7 @@ A fitness dashboard for a small household, built with Django. Syncs workout and 
 
 Each person has their own account and their own data. The first superuser is the owner: they create accounts for the rest of the household, choose which features each person can use, and set a monthly AI budget per person.
 
-> **Private use only.** This tool uses Peloton's unofficial internal API via session cookie. It is not affiliated with Peloton, Garmin, Withings, or Google and is intended for one household running its own copy.
+> **Private use only.** This tool uses Peloton's unofficial internal API with your own Peloton sign-in. It is not affiliated with Peloton, Garmin, Withings, or Google and is intended for one household running its own copy.
 
 ---
 
@@ -94,14 +94,13 @@ Open [http://localhost:8000](http://localhost:8000) and log in as the owner.
 
 **5. Connect Peloton**
 
-Peloton's login endpoint is no longer publicly accessible, so authentication is done via session cookie:
+Peloton's web app signs in through Auth0. FitPulse uses a refresh token copied from the web app once, then renews it by itself:
 
-1. On a computer, log into [onepeloton.com](https://www.onepeloton.com)
-2. Open developer tools → **Application** (Safari: **Storage**) → **Cookies** → `https://www.onepeloton.com`
-3. Copy the value of `peloton_session_id`
-4. Paste it into the **Integrations** page (`/settings/integrations/`) under "Peloton Session Cookie"
+1. On a computer, open a **private/incognito window** and sign in at [members.onepeloton.com](https://members.onepeloton.com)
+2. Open developer tools → **Console** and paste the one-line snippet shown on the **Integrations** page (`/settings/integrations/`) or Get Started. It copies your sign-in token to the clipboard.
+3. Paste it under "Peloton Connection" and click **Connect**, then close the private window (a private window keeps FitPulse's sign-in separate from your everyday browser's, so the two don't log each other out)
 
-FitPulse checks the cookie with Peloton and shows "Connected as @username". The first time you connect, your workout history imports in the background. The cookie is stored in the app's database, not in `.env`.
+FitPulse trades the pasted token for its own (the pasted one stops working right away), checks it with Peloton and shows "Connected as @username". Access tokens last 48 hours and renew automatically. The first time you connect, your workout history imports in the background. Tokens are stored in the app's database, not in `.env`.
 
 **6. Connect Garmin (owner only, optional)**
 
@@ -209,7 +208,7 @@ Each source is independent — no combined "sync everything" button, and syncing
 
 Withings and Google Health also push updates automatically via webhooks. Withings notifications are routed to the right person by their Withings account; Google Health notifications currently re-sync every connected person for the notified dates.
 
-Session cookies expire periodically. When Peloton syncing stops working, grab a fresh `peloton_session_id` from your browser and update it on the **Integrations** page. Garmin and Withings tokens auto-refresh. Google Health refresh tokens expire every 7 days while the Google Cloud project is in "Testing" status — reconnect from the Integrations page when that happens.
+Peloton sign-ins renew automatically. If Peloton ends one, FitPulse shows a "Peloton needs reconnecting" banner — repeat the connect steps from the **Integrations** page. Garmin and Withings tokens auto-refresh. Google Health refresh tokens expire every 7 days while the Google Cloud project is in "Testing" status — reconnect from the Integrations page when that happens.
 
 ---
 
@@ -228,7 +227,7 @@ venv/bin/python3 manage.py backfill_ftp --dry-run  # preview without writing
 
 ## Automated Daily Sync
 
-`sync_daily` syncs every active user in turn. For each person it runs Peloton, Garmin activities and wellness (owner only), and Google Health — each only if that source is enabled and connected. People with nothing connected are skipped. One person's failure (an expired cookie, say) doesn't stop the others; output lines are prefixed with the username. Withings isn't included because its webhook pushes new weigh-ins.
+`sync_daily` syncs every active user in turn. For each person it runs Peloton, Garmin activities and wellness (owner only), and Google Health — each only if that source is enabled and connected. People with nothing connected are skipped. One person's failure (an ended Peloton sign-in, say) doesn't stop the others; output lines are prefixed with the username. Withings isn't included because its webhook pushes new weigh-ins.
 
 ```bash
 venv/bin/python3 manage.py sync_daily
@@ -284,7 +283,7 @@ The next-workout recommendation and day analysis need at least one day's wellnes
 | Charts | Chart.js (CDN) |
 | Styles | Single hand-written CSS file, no framework |
 | AI | Anthropic API (Claude Sonnet + Haiku) |
-| Peloton data | Unofficial internal API via session cookie |
+| Peloton data | Unofficial internal API via the web app's Auth0 sign-in |
 | Garmin data | `garminconnect` library |
 | Withings data | Withings OAuth 2.0 API + push webhooks |
 | Google Health data | Google Health API (OAuth 2.0 + push webhooks) |

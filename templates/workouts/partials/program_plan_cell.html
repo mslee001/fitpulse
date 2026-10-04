@@ -1,0 +1,12 @@
+{# A not-yet-done cell on the run grid. AI training-plan slots dated today or later get a Swap button. #}
+<div class="pcell pcell-todo{% if cell.slot.optional %} pcell-optional{% endif %}" id="pcell-{{ cell.slot.pk }}">
+  <span class="pcell-title">{% if cell.slot.peloton_ride_id and cell.slot.spec_json %}<a href="https://members.onepeloton.com/classes/player/{{ cell.slot.peloton_ride_id }}" target="_blank" rel="noopener">{{ cell.slot.title }}</a>{% else %}{{ cell.slot.title }}{% endif %}</span>
+  {% if cell.slot.optional %}<span class="pcell-sub">optional</span>{% endif %}
+  {% if cell.difficulty %}<span class="pcell-sub" title="Peloton members rate each class against their own fitness, so this only compares classes of the same type and length.">difficulty {{ cell.difficulty.difficulty|floatformat:1 }}{% if cell.difficulty.phrase %} · {{ cell.difficulty.phrase }}{% endif %}</span>{% endif %}
+  {% if cell.swappable and can.programs %}
+  <form class="pcell-swap" hx-post="{% url 'program_slot_swap' cell.slot.pk %}" hx-target="#pcell-{{ cell.slot.pk }}" hx-swap="outerHTML">
+    {% csrf_token %}<button type="submit" class="btn btn-sm btn-ghost">Swap</button>
+  </form>
+  {% endif %}
+  {% if swap_note %}<span class="pcell-sub">{{ swap_note }}</span>{% endif %}
+</div>

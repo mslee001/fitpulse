@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from workouts.management.user_arg import add_user_argument, resolve_user
 from workouts.models import GoogleHealthAuth, PelotonAuth, UserSettings
+from workouts.users import get_owner
 from workouts.sync import (
     _integration_enabled,
     _run_garmin_sync_new,
@@ -93,8 +94,12 @@ class Command(BaseCommand):
             self._out(user, f"Skipped — last sync was less than {stale_hours}h ago.")
             return True
 
+        peloton_auth = PelotonAuth.for_user(user)
         do_peloton = (not opts["skip_peloton"] and _integration_enabled(user, "peloton")
-                      and PelotonAuth.for_user(user) is not None)
+                      and peloton_auth is not None and not peloton_auth.needs_reconnect)
+        if peloton_auth and peloton_auth.needs_reconnect and not opts["skip_peloton"]:
+            # A rejected refresh token never comes back; retrying would only log errors.
+            self._out(user, "Peloton needs reconnecting at /settings/integrations/ — skipped.")
         do_garmin = user.is_superuser and _integration_enabled(user, "garmin")
         do_google = (_integration_enabled(user, "google_health")
                      and GoogleHealthAuth.for_user(user) is not None)
@@ -114,6 +119,11 @@ class Command(BaseCommand):
         if do_peloton:
             self._step(user, results, "peloton", "Peloton",
                        lambda: _run_peloton_sync_new(user), counts)
+            if user == get_owner() and results[-1] == ("peloton", "ok"):
+                # Shared class catalog, incremental — usually one request per category.
+                self._step(user, results, "catalog", "Peloton class catalog",
+                           lambda: _catalog_incremental(user),
+                           lambda r: f"{sum(c['created'] for c in r['categories'].values())} new classes")
 
         if do_garmin:
             # Garmin activities — new since last sync
@@ -144,3 +154,12 @@ class Command(BaseCommand):
         UserSettings.objects.filter(pk=settings_row.pk).update(last_daily_sync_at=timezone.now())
         self._out(user, self.style.SUCCESS("All sources synced ✓"))
         return True
+
+
+def _catalog_incremental(user):
+    from workouts.catalog import sync_catalog
+    result = sync_catalog(user, full=False)
+    errors = [f"{cat}: {c['error']}" for cat, c in result["categories"].items() if c["error"]]
+    if errors:
+        return {"error": "; ".join(errors), **result}
+    return result

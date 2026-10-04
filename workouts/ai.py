@@ -3362,3 +3362,143 @@ def run_stats_chat(user, context, history, user_message):
         "specific date range or metric).",
         messages,
     )
+
+
+# ---------------------------------------------------------------------------
+# AI training plans — Sonnet writes the week-by-week structure as class specs;
+# workouts/training_plans.py validates them and picks the real classes.
+# ---------------------------------------------------------------------------
+
+def _training_plan_prompt(inputs, context_text, menu_text):
+    from .training_plans import DAY_NAMES, GOALS, RACE_LABELS, _fmt_hms, plan_dates
+
+    start, race = plan_dates(inputs)
+    goal_line = GOALS[inputs["goal"]]
+    if race:
+        goal_line += f", race on {race:%A} {race.isoformat()}"
+    if inputs.get("target_time"):
+        goal_line += f", target time {_fmt_hms(inputs['target_time'])}"
+    race_line = (f" Race is on day {inputs['race_weekday']} of week {inputs['race_week']}."
+                 if race else "")
+    if inputs["mode"] == "standalone":
+        mode_line = "STANDALONE: this plan is their main training for these weeks"
+        extras = (f"Strength sessions per week: {inputs.get('strength_per_week', 0)}. "
+                  f"Mobility sessions: {'yes' if inputs.get('mobility') else 'no'}.")
+    else:
+        mode_line = ("ALONGSIDE: they keep doing the COMPANION PROGRAM below; you schedule only runs "
+                     "(and optional short stretches) around it")
+        extras = f"Running on a companion strength day: {'allowed' if inputs.get('allow_doubles') else 'not allowed'}."
+    days = ", ".join(DAY_NAMES[d] for d in inputs["days"])
+    long_day = DAY_NAMES[inputs["long_day"]] if inputs.get("long_day") else "none"
+    weeks = inputs["weeks"]
+    race_name = RACE_LABELS.get(inputs["goal"], "")
+    example_name = f"{race_name} in {weeks} Weeks" if race_name else f"{weeks}-Week Running Base"
+
+    return f"""You are building a {weeks}-week training plan for one person, made only of Peloton
+classes. You write the structure; software picks the actual classes afterwards, so
+you describe each session as a class spec, never a class title or id.
+
+GOAL
+{goal_line}
+Plan weeks run Monday–Sunday. Week 1 starts {start.isoformat()} ({start:%A}); schedule nothing in week 1 before that day.{race_line}
+Mode: {mode_line}
+Available days: {days} (1=Mon … 7=Sun; allowed day numbers: {inputs['days']}). Preferred long-run day: {long_day}.
+Max session length: weekdays {inputs['max_weekday_min']} min, weekends {inputs['max_weekend_min']} min.
+{extras}
+Their notes: {inputs.get('notes') or 'none'}
+
+FITNESS CONTEXT
+{context_text}
+
+CLASS MENU — choose class types and durations ONLY from these lines
+{menu_text}
+
+PLANNING RULES
+1. Start from STARTING LEVEL and their current running volume in FITNESS CONTEXT,
+   not from a generic template. Week 1 total running minutes should be within about
+   10% of their recent 4-week weekly average — except for beginner (see rule 8) and
+   returning (rule 8b).
+2. Increase weekly running minutes by no more than about 10–15% week over week.
+   For plans of 8+ weeks, make every 3rd or 4th week a lighter week (~20–30% less).
+3. At most 2 quality sessions per week (intervals, speed, hills, tempo/progression).
+   Never schedule quality sessions on consecutive days.
+4. One long easy run per week on the preferred day when given; grow it gradually.
+   Easy/endurance running should be most of the weekly minutes.
+5. Taper: the final 7–10 days before the race cut volume ~30–50% while keeping one
+   short quality session early in race week. The day before the race is rest or a
+   very short easy session. Do not schedule anything on race day — software adds the
+   race itself.
+6. ALONGSIDE mode: no quality run on the same day as, or the day after, a [lower body]
+   companion session. Only put a run on a companion strength day if doubling is allowed.
+   Use only running, walking, stretching and (if on the menu) yoga.
+7. STANDALONE mode: place strength on non-quality days, not the day before a long run
+   or a quality run if avoidable. Stretching/pilates sessions are short (10–20 min)
+   and may share a day with a run (order 1 = after the run).
+7b. Yoga (when on the menu) is recovery or mobility: gentle types (Slow Flow,
+   Restorative, Yin, Recovery, Flow ≤ 30 min) on easy days or rest days, or after a
+   long run. No Power/Sculpt yoga the day before a quality run or the long run. In
+   ALONGSIDE mode, don't add yoga on a day the companion program already has yoga or
+   pilates, and mark added yoga sessions optional.
+8. beginner: start with Walk + Run / Beginner Running / Running Basics at 15–20 min,
+   2–3 times a week. Progress toward 25–30 minutes of continuous running before any
+   quality session; the first quality sessions are short and moderate.
+8b. returning: they have a running base from before. Start with short easy continuous
+   runs (20–30 min) rather than walk/run unless the evidence shows no runs at all in
+   8 weeks; you may ramp faster than for a beginner (up to ~20% a week for the first
+   3 weeks) but add no quality session before week 3.
+8c. intermediate/advanced: keep their current frequency, build the long run, and use
+   up to 2 quality sessions a week from week 1–2.
+8d. Only use running class types marked [early OK] during the weeks the menu says;
+   types marked [from week N] only from week N onward.
+8e. If the runway is short, aim the plan at finishing comfortably rather than the
+   target time, keep the ramp within the limits above, and say so in assumptions.
+8f. RECENT CLASS DIFFICULTY is member-rated relative to each rater's own fitness —
+   use it only to see whether they usually choose easier or harder classes, never as
+   an ability score.
+9. Respect available days and max session lengths exactly. One running session per
+   day at most.
+10. If their notes mention pain or an injury, keep intensity lower than you otherwise
+    would and say so in assumptions. Don't give medical instructions.
+
+WRITING RULES
+- summary: 2–3 sentences. Name the starting point using numbers from FITNESS CONTEXT
+  (e.g. "averaging 3 runs and 74 minutes a week over the last 4 weeks, longest 35 min")
+  and how the plan builds from it. Every number you cite must appear in FITNESS
+  CONTEXT or be a property of this plan. No filler adjectives ("solid", "great",
+  "strong", "excellent", "impressive").
+- purpose: one short sentence per session saying what it's for ("easy aerobic
+  minutes", "race-pace practice") — no motivation lines.
+- assumptions: things you inferred because data was missing, each one sentence.
+  If FITNESS CONTEXT lacks something you needed, say so here instead of guessing.
+
+Return ONLY JSON, no prose, in exactly this shape:
+{{
+  "plan_name": "{example_name}",
+  "summary": "...",
+  "assumptions": ["..."],
+  "weeks": [
+    {{"number": 1, "phase": "base", "focus": "one short line",
+     "slots": [
+       {{"day": 1, "order": 0, "discipline": "running", "class_type": "Endurance",
+        "class_type_id": "19efefbcf7394ff8bac0ac89a674c545", "duration_min": 30,
+        "intensity": "easy", "setting": "tread", "purpose": "...", "optional": false}}
+     ]}}
+  ]
+}}
+phase ∈ base | build | peak | lighter | taper | race. intensity ∈ easy | moderate | hard.
+setting ∈ tread | outdoor (only when the menu lists both; otherwise use the one listed).
+discipline ∈ the first column of the CLASS MENU (running, walking, stretching, strength, pilates, yoga, cycling)."""
+
+
+def generate_training_plan_spec(user, inputs, context_text, menu_text) -> dict:
+    """Sonnet writes the plan structure as class specs (feature ai_program_tools).
+    Input ≈ 6–9k tokens, output ≈ 3–5k → roughly $0.03–0.07 per plan at the
+    MODEL_PRICES Sonnet rate. AIFeatureDenied / AIBudgetExceeded propagate;
+    ValueError on bad JSON."""
+    prompt = _training_plan_prompt(inputs, context_text, menu_text)
+    raw = llm.call_json(prompt, user=user, feature="ai_program_tools", model=llm.SONNET,
+                        max_tokens=8000, timeout=150)
+    if not isinstance(raw, dict):
+        raise ValueError("The AI returned something other than a plan.")
+    raw["model"] = llm.SONNET
+    return raw

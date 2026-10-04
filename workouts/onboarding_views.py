@@ -6,7 +6,7 @@ import secrets
 from django.conf import settings
 from django.contrib import messages
 from django.db import IntegrityError, transaction
-from django.http import HttpResponseNotFound
+from django.http import HttpResponseForbidden, HttpResponseNotFound
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -14,9 +14,10 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .access import access_for
-from .background import ALL_SYNC, latest_job, start_backfill, start_withings_subscribe
+from .background import ALL_SYNC, OWNER_ONLY_SOURCES, latest_job, start_backfill, start_withings_subscribe
 from .models import AthleteProfile, Integration, NutritionProfile, UserSettings
 from .onboarding import DATA_SOURCES, can_finish, missing_steps, steps_for
+from .users import get_owner
 
 logger = logging.getLogger(__name__)
 
@@ -128,16 +129,37 @@ def _status_partial(request, source):
     return render(request, "workouts/partials/gs_sync_status.html", {"job": job, "source": source})
 
 
-def gs_sync_status(request, source):
+def is_owner(user):
+    owner = get_owner()
+    return owner is not None and user.is_authenticated and user.pk == owner.pk
+
+
+def _source_denied(request, source):
     if source not in ALL_SYNC:
         return HttpResponseNotFound()
-    return _status_partial(request, source)
+    if source in OWNER_ONLY_SOURCES and not is_owner(request.user):
+        return HttpResponseForbidden()
+    return None
+
+
+def gs_sync_status(request, source):
+    return _source_denied(request, source) or _status_partial(request, source)
+
+
+@require_POST
+def catalog_sync_start(request):
+    """POST /settings/catalog/sync/ — owner only: full catalog refresh in the background."""
+    if not is_owner(request.user):
+        return HttpResponseForbidden()
+    start_backfill(request.user, "catalog")
+    return _status_partial(request, "catalog")
 
 
 @require_POST
 def gs_retry(request, source):
-    if source not in ALL_SYNC:
-        return HttpResponseNotFound()
+    denied = _source_denied(request, source)
+    if denied:
+        return denied
     start_backfill(request.user, source)
     return _status_partial(request, source)
 

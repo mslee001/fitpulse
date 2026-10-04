@@ -163,6 +163,8 @@ def history(request):
     per_page = 20
     offset   = (page - 1) * per_page
     workouts = qs[offset: offset + per_page]
+    from .catalog import DifficultyRanker
+    workouts = DifficultyRanker().annotate_workouts(workouts)
     total    = qs.count()
     has_next = (offset + per_page) < total
 
@@ -250,9 +252,19 @@ def _workout_detail_fields(workout):
         "achievements": workout.achievements,
         "class_description": workout.class_description,
         "difficulty_estimate": workout.difficulty_estimate,
+        "difficulty_info": _difficulty_info(workout),
+        "effort_per_min": workout.effort_per_min,
+        "effort_points": workout.effort_points,
         "strava_id": workout.strava_id,
         "detail_synced": workout.detail_synced_at is not None,
     }
+
+
+def _difficulty_info(workout):
+    """The class's difficulty ranked among same-type, same-length catalog classes (see catalog.DifficultyRanker)."""
+    from .catalog import DifficultyRanker
+    ranker = DifficultyRanker()
+    return ranker.rank(ranker.for_rides([workout.ride_id]).get(workout.ride_id), workout.difficulty_estimate)
 
 
 def _get_perf_dict(workout, client):
@@ -1257,9 +1269,19 @@ def integrations_settings_page(request):
     integrations = Integration.objects.for_user(request.user)
     if not request.user.is_superuser:
         integrations = integrations.exclude(key="garmin")
+    catalog = catalog_job = None
+    if request.user.is_superuser:
+        from .background import latest_job
+        from .catalog import catalog_status
+        from .onboarding_views import is_owner
+        if is_owner(request.user):
+            catalog, catalog_job = catalog_status(), latest_job(request.user, "catalog")
     return render(request, "workouts/integrations_settings.html", {
+        "catalog": catalog,
+        "catalog_job": catalog_job,
         "integrations": integrations,
         "peloton_auth": PelotonAuth.for_user(request.user),
+        "now": timezone.now(),
         "webhook_error_count": _webhook_errors_for(request.user).count(),
         "webhook_retention_days": WebhookError.RETENTION_DAYS,
         "google_health_auth": GoogleHealthAuth.for_user(request.user),
@@ -1504,30 +1526,39 @@ def strength_trends(request):
 
 @require_POST
 def set_peloton_auth(request):
-    """Connect or rotate Peloton from just the session cookie: /api/me says
-    whose account it is. The first connection starts a history import."""
+    """Connect or reconnect Peloton from a pasted Auth0 refresh token. The
+    pasted token is spent right away: it's exchanged for an access token plus
+    a rotated refresh token (the one we store), and /api/me says whose account
+    it is. The first connection starts a history import."""
     from django.db import IntegrityError, transaction
     from .background import start_backfill
     from .models import Integration, PelotonAuth
     from .services.peloton_client import PelotonAuthError, PelotonClient, PelotonNetworkError
 
     nxt = safe_next(request, "integrations_settings")
-    session_id = request.POST.get("session_id", "").strip()
+    pasted = request.POST.get("refresh_token", "").strip().strip("'\"").strip()
     notes = request.POST.get("notes", "").strip()[:500]
-    if not session_id:
-        messages.error(request, "Paste your peloton_session_id cookie.")
+    if not pasted:
+        messages.error(request, "Paste your Peloton sign-in token.")
         return redirect(nxt)
     try:
-        me = PelotonClient.fetch_me(session_id)
+        tokens = PelotonClient.exchange_refresh_token(pasted)
     except (PelotonAuthError, PelotonNetworkError) as e:
         messages.error(request, str(e))
         return redirect(nxt)
+    # From here on the pasted token is spent — every failure says to copy a fresh one.
+    spent = " The token you pasted can't be reused — copy a fresh one before trying again."
+    try:
+        me = PelotonClient.fetch_me(tokens["access_token"])
+    except (PelotonAuthError, PelotonNetworkError) as e:
+        messages.error(request, str(e) + spent)
+        return redirect(nxt)
+
     def taken_message():
-        # Names the account: the person already holds this session, and it's the
-        # fastest way to spot "signed in to Peloton as someone else".
+        # Names the account: the fastest way to spot "signed in to Peloton as someone else".
         account = f"Peloton account @{me['username']}" if me["username"] else "that Peloton account"
-        return (f"That cookie is for {account}, which is already connected to another FitPulse user. "
-                "Make sure you're signed in to onepeloton.com as yourself, then copy the cookie again.")
+        return (f"That sign-in is for {account}, which is already connected to another FitPulse user. "
+                "Sign in to Peloton as yourself in a private window, then copy a new token.")
 
     def taken():
         return PelotonAuth.objects.filter(peloton_user_id=me["id"]).exclude(user=request.user).exists()
@@ -1536,20 +1567,26 @@ def set_peloton_auth(request):
         messages.error(request, taken_message())
         return redirect(nxt)
     first_connection = not CachedWorkout.objects.for_user(request.user).filter(source="peloton").exists()
+    now = timezone.now()
     try:
         with transaction.atomic():
             PelotonAuth.objects.update_or_create(
                 user=request.user,
-                defaults={"session_id": session_id, "peloton_user_id": me["id"],
-                          "peloton_username": me["username"], "notes": notes},
+                defaults={"refresh_token": tokens["refresh_token"] or pasted,   # pasted only if Auth0 didn't rotate
+                          "access_token": tokens["access_token"],
+                          "access_expires_at": tokens["expires_at"],
+                          "refresh_rotated_at": now, "connected_at": now,
+                          "auth_failed_at": None, "auth_error": "",
+                          "peloton_user_id": me["id"], "peloton_username": me["username"],
+                          "notes": notes},
             )
     except IntegrityError:
         if taken():   # lost a race with another user saving the same account
             messages.error(request, taken_message())
         else:
             logger.exception("Saving PelotonAuth failed for user %s", request.user.pk)
-            messages.error(request, "Couldn't save the Peloton connection because of a database error. "
-                                    "Try again, and tell Megan if it keeps happening.")
+            messages.error(request, "Couldn't save the Peloton connection because of a database error." + spent
+                                    + " Tell Megan if it keeps happening.")
         return redirect(nxt)
     Integration.ensure_for_user(request.user)
     Integration.objects.for_user(request.user).filter(key="peloton").update(is_enabled=True, is_authenticated=True)

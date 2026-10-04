@@ -1,0 +1,42 @@
+{# One plan session on the review page. r = training_plan_views._slot_row_context(...) #}
+<div class="tp-row" id="tp-row-{{ r.key }}">
+  <div class="tp-row-spec">
+    <span class="tp-day">{{ r.day_name }}</span>
+    <span>{{ r.slot.class_type }} · {{ r.slot.duration_min }} min · <span class="tp-int tp-int--{{ r.slot.intensity }}">{{ r.slot.intensity }}</span>{% if r.slot.setting == "outdoor" %} · outdoor{% endif %}{% if r.slot.optional %} · optional{% endif %}</span>
+  </div>
+  <div class="tp-row-class">
+    {% if r.cls %}
+      <a href="{{ r.cls.peloton_url }}" target="_blank" rel="noopener" class="tp-class-title">{{ r.cls.title }}</a>
+      <span class="stat-sub">
+        {{ r.cls.instructor_name|default:"" }}
+        {% if r.rank %} · difficulty {{ r.rank.difficulty|floatformat:1 }}{% if r.rank.phrase %} ({{ r.rank.phrase }}){% endif %}{% endif %}
+        {% if r.cls.overall_rating_avg is not None %} · {% widthratio r.cls.overall_rating_avg 1 100 %}% rating{% endif %}
+        · aired {{ r.cls.original_air_time|date:"M j, Y" }}
+      </span>
+      {% if r.pick.repeat %}<span class="badge badge-muted">Taken before · {{ r.last_taken|date:"M Y" }}</span>{% endif %}
+    {% else %}
+      <span class="stat-sub">No matching class in the catalog — will be created unpinned.</span>
+    {% endif %}
+    {% if r.slot.purpose %}<span class="stat-sub tp-purpose">{{ r.slot.purpose }}</span>{% endif %}
+  </div>
+  {% if r.cls or r.alternates %}
+  <div class="tp-row-actions">
+    <form hx-post="{% url 'program_training_plan_swap' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML">
+      {% csrf_token %}<input type="hidden" name="key" value="{{ r.key }}">
+      <button type="submit" class="btn btn-sm btn-ghost">Swap</button>
+    </form>
+    {% if r.alternates %}
+    <details class="tp-choose">
+      <summary class="btn btn-sm btn-ghost">Choose…</summary>
+      <form hx-post="{% url 'program_training_plan_pick' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="key" value="{{ r.key }}">
+        <select name="ride_id" class="form-select" onchange="this.form.requestSubmit()">
+          <option value="">Pick a class…</option>
+          {% for a in r.alternates %}<option value="{{ a.ride_id }}">{{ a.title }} · {{ a.instructor_name }}{% if a.difficulty_estimate is not None %} · {{ a.difficulty_estimate|floatformat:1 }}{% endif %}</option>{% endfor %}
+        </select>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

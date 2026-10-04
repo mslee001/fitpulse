@@ -18,11 +18,19 @@ from .sync import _run_google_health_sync_all, _run_peloton_sync_all, _run_withi
 
 logger = logging.getLogger(__name__)
 
+def _catalog_full_sync(user):
+    from .catalog import sync_catalog
+    return sync_catalog(user, full=True)
+
+
 ALL_SYNC = {
     "peloton": _run_peloton_sync_all,
     "withings": _run_withings_sync_all,
     "google_health": _run_google_health_sync_all,
+    "catalog": _catalog_full_sync,     # owner only — the shared Peloton class catalog
 }
+# Sources only the owner may start or poll (gs_sync_status / gs_retry / catalog_sync_start).
+OWNER_ONLY_SOURCES = {"catalog"}
 
 
 def latest_job(user, source):
@@ -100,7 +108,8 @@ def _run_job(job_pk):
         logger.exception("Backfill %s failed for user %s", job.source, job.user_id)
         job.status, job.error = "failed", str(exc)[:500]
         WebhookError.record(source=f"backfill_{job.source}", user=job.user,
-                            summary=f"First-time {job.source} import failed", detail=traceback.format_exc())
+                            summary=f"{'Catalog sync' if job.source == 'catalog' else f'First-time {job.source} import'} failed",
+                        detail=traceback.format_exc())
     finally:
         job.finished_at = timezone.now()
         job.save(update_fields=["status", "summary", "error", "finished_at"])
