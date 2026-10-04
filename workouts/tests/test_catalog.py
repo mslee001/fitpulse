@@ -202,3 +202,78 @@ class DifficultyInContextTests(TwoUserTestCase):
         history = self.client_a.get(reverse("history"))
         self.assertContains(history, "harder than 80%")
         self.assertContains(history, "Effort/min")
+
+
+class WeeklyFullSyncTests(TwoUserTestCase):
+    """sync_daily runs a full catalog sync for the owner when the last good one is
+    a week old (or there isn't one), otherwise incremental."""
+
+    def setUp(self):
+        super().setUp()
+        from workouts.models import Integration
+        PelotonAuth.objects.create(user=self.a, peloton_user_id="pa", refresh_token="r")
+        Integration.ensure_for_user(self.a)
+        Integration.objects.filter(user=self.a).exclude(key="peloton").update(is_enabled=False)
+
+    def run_daily(self, *args, catalog_result=None):
+        from io import StringIO
+        from django.core.management import call_command
+        result = catalog_result or {"categories": {"running": {"pages": 1, "created": 2, "updated": 0,
+                                                               "skipped_unavailable": 0, "error": ""}},
+                                    "class_types": 1, "total_classes": 100}
+        out = StringIO()
+        with patch("workouts.management.commands.sync_daily._run_peloton_sync_new",
+                   return_value={"done": True, "created": 0, "updated": 0}), \
+             patch("workouts.catalog.sync_catalog", return_value=result) as sync:
+            try:
+                call_command("sync_daily", "--user", "alice", *args, stdout=out)
+            except SystemExit:
+                pass
+        return sync, out.getvalue()
+
+    def done_job(self, days_ago):
+        return SyncJob.objects.create(user=self.a, source="catalog", status="done",
+                                      finished_at=timezone.now() - timedelta(days=days_ago))
+
+    def test_no_full_sync_yet_runs_full_and_records_a_job(self):
+        sync, out = self.run_daily()
+        self.assertTrue(sync.call_args.kwargs["full"])
+        self.assertIn("weekly full sync", out)
+        self.assertEqual(SyncJob.objects.get(user=self.a, source="catalog").status, "done")
+
+    def test_recent_full_sync_runs_incremental(self):
+        self.done_job(days_ago=3)
+        sync, out = self.run_daily()
+        self.assertFalse(sync.call_args.kwargs["full"])
+        self.assertEqual(SyncJob.objects.filter(source="catalog").count(), 1)
+
+    def test_week_old_full_sync_runs_full(self):
+        self.done_job(days_ago=7)
+        sync, _ = self.run_daily()
+        self.assertTrue(sync.call_args.kwargs["full"])
+
+    def test_flag_forces_full(self):
+        self.done_job(days_ago=1)
+        sync, _ = self.run_daily("--catalog-full")
+        self.assertTrue(sync.call_args.kwargs["full"])
+
+    def test_partial_failure_marks_job_failed_so_next_run_retries(self):
+        bad = {"categories": {"running": {"pages": 3, "created": 0, "updated": 0, "skipped_unavailable": 0,
+                                          "error": "boom"}},
+               "class_types": 1, "total_classes": 100, "error": "running: boom"}
+        self.run_daily(catalog_result=bad)
+        self.assertEqual(SyncJob.objects.get(user=self.a, source="catalog").status, "failed")
+        from workouts.catalog import full_sync_due
+        self.assertTrue(full_sync_due(self.a))
+
+    def test_skipped_while_the_button_job_is_running(self):
+        SyncJob.objects.create(user=self.a, source="catalog", status="running")
+        sync, out = self.run_daily()
+        sync.assert_not_called()
+        self.assertIn("already running", out)
+
+    def test_sync_catalog_reports_top_level_error(self):
+        client = FakeClient({"running": [_page([_item(f"a{i}") for i in range(100)], 200)]}, fail={("running", 1)})
+        with patch("workouts.catalog.PelotonClient", return_value=client):
+            result = sync_catalog(self.a, categories=["running"], full=True, pause=0)
+        self.assertIn("running: boom", result["error"])

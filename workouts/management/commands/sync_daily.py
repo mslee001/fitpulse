@@ -30,6 +30,10 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            "--catalog-full", action="store_true",
+            help="Run a full Peloton class catalog sync now (owner only) instead of waiting for the weekly one",
+        )
+        parser.add_argument(
             "--skip-peloton",
             action="store_true",
             help="Skip Peloton sync (Garmin only)",
@@ -120,10 +124,18 @@ class Command(BaseCommand):
             self._step(user, results, "peloton", "Peloton",
                        lambda: _run_peloton_sync_new(user), counts)
             if user == get_owner() and results[-1] == ("peloton", "ok"):
-                # Shared class catalog, incremental — usually one request per category.
-                self._step(user, results, "catalog", "Peloton class catalog",
-                           lambda: _catalog_incremental(user),
-                           lambda r: f"{sum(c['created'] for c in r['categories'].values())} new classes")
+                # Shared class catalog: a full sync once a week (refreshes ratings on older
+                # classes and retires removed ones), otherwise incremental — usually one
+                # request per category.
+                from workouts.catalog import catalog_job_running, full_sync_due
+                if catalog_job_running(user):
+                    self._out(user, "Peloton class catalog… skipped — a catalog sync is already running.")
+                elif opts.get("catalog_full") or full_sync_due(user):
+                    self._step(user, results, "catalog", "Peloton class catalog (weekly full sync)",
+                               lambda: _catalog_sync(user, full=True), _catalog_summary)
+                else:
+                    self._step(user, results, "catalog", "Peloton class catalog",
+                               lambda: _catalog_sync(user, full=False), _catalog_summary)
 
         if do_garmin:
             # Garmin activities — new since last sync
@@ -156,10 +168,16 @@ class Command(BaseCommand):
         return True
 
 
-def _catalog_incremental(user):
-    from workouts.catalog import sync_catalog
-    result = sync_catalog(user, full=False)
-    errors = [f"{cat}: {c['error']}" for cat, c in result["categories"].items() if c["error"]]
-    if errors:
-        return {"error": "; ".join(errors), **result}
-    return result
+def _catalog_sync(user, full):
+    """sync_catalog puts a top-level "error" in its result when any category failed."""
+    from workouts.catalog import run_recorded_full_sync, sync_catalog
+    return run_recorded_full_sync(user) if full else sync_catalog(user, full=False)
+
+
+def _catalog_summary(r):
+    cats = r["categories"].values()
+    line = f"{sum(c['created'] for c in cats)} new classes"
+    gone = sum(c.get("marked_unavailable", 0) for c in cats)
+    if any("marked_unavailable" in c for c in cats):
+        line += f", {gone} retired · {r['total_classes']} available"
+    return line
