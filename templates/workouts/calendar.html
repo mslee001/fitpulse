@@ -5,146 +5,53 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="ui-page-header">
   <div>
-    <h1 class="page-title">Calendar</h1>
-    <p class="page-sub">{{ month_name }}</p>
+    <div class="ui-page-sub">Calendar</div>
+    <h1 class="ui-page-title">{{ month_name }}</h1>
   </div>
-  <div style="display:flex;gap:0.5rem;align-items:center;">
-    <a href="{% url 'calendar_month' prev_year prev_month %}" class="btn btn-ghost btn-sm">← Prev</a>
-    <a href="{% url 'calendar' %}" class="btn btn-ghost btn-sm">Today</a>
+  <div class="join">
+    <a href="{% url 'calendar_month' prev_year prev_month %}" class="btn btn-sm join-item">← Prev</a>
+    <a href="{% url 'calendar' %}" class="btn btn-sm join-item">Today</a>
     {% if next_year %}
-    <a href="{% url 'calendar_month' next_year next_month %}" class="btn btn-ghost btn-sm">Next →</a>
+    <a href="{% url 'calendar_month' next_year next_month %}" class="btn btn-sm join-item">Next →</a>
     {% endif %}
   </div>
 </div>
 
-<div class="cal-layout">
+<div class="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
 
-  <!-- Next Workout Recommendation -->
-  <div class="cal-sidebar">
-    {% if can.ai_next_workout %}
-    <div class="stat-card">
-      <div class="stat-label" style="display:flex;justify-content:space-between;align-items:center;">
-        Next Workout
-        {% if today_stats.readiness_score is not None %}
-        <form method="post" action="{% url 'next_workout_refresh' %}" style="margin:0">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:0.2rem 0.5rem;">
-            {% if next_workout_rec %}Refresh{% else %}Get Rec{% endif %}
-          </button>
-        </form>
-        {% endif %}
-      </div>
-      {% if next_workout_rec %}
-        <div style="margin-top:0.75rem">{{ next_workout_rec|format_next_workout|safe }}</div>
-      {% elif today_stats.readiness_score is not None %}
-        <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">Hit "Get Rec" to generate a recommendation based on today's wellness data.</p>
-      {% else %}
-        <p style="margin:0.75rem 0 0;color:var(--text-muted);font-size:0.85rem;">Waiting on today's readiness score (Garmin or Google Health wellness sync) before a recommendation can be generated.</p>
-      {% endif %}
-    </div>
-    {% endif %}
-
-    {% if today_stats and today_stats.has_wellness_data %}
-    <div class="stat-card" style="margin-top:1rem;">
-      <div class="stat-label">Today's Signals</div>
-      <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem;">
-        {% if today_stats.readiness_score is not None %}
-        <div class="cal-signal-row">
-          <span class="cal-signal-label">Readiness{% if today_stats.readiness_is_computed %} (est.){% endif %}</span>
-          <span class="cal-signal-value cal-sig-{{ today_stats.readiness_color }}">
-            {{ today_stats.readiness_score }}/100
-          </span>
-        </div>
-        {% endif %}
-        {% if today_stats.hrv_status %}
-        <div class="cal-signal-row">
-          <span class="cal-signal-label">HRV</span>
-          <span class="cal-signal-value {% if today_stats.hrv_status == 'BALANCED' %}cal-sig-green{% elif today_stats.hrv_status == 'UNBALANCED' %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
-            {{ today_stats.hrv_status_display }}{% if today_stats.hrv_last_night %} · {{ today_stats.hrv_last_night|floatformat:0 }} ms{% endif %}
-          </span>
-        </div>
-        {% endif %}
-        {% if today_stats.sleep_score %}
-        <div class="cal-signal-row">
-          <span class="cal-signal-label">Sleep</span>
-          <span class="cal-signal-value {% if today_stats.sleep_score >= 75 %}cal-sig-green{% elif today_stats.sleep_score >= 50 %}cal-sig-yellow{% else %}cal-sig-red{% endif %}">
-            {{ today_stats.sleep_score }}{% if today_stats.sleep_minutes %} · {{ today_stats.sleep_minutes|div:60|floatformat:0 }}h {{ today_stats.sleep_minutes|mod:60 }}m{% endif %}
-          </span>
-        </div>
-        {% endif %}
-        {% if today_stats.body_battery_start is not None %}
-        <div class="cal-signal-row">
-          <span class="cal-signal-label">Body Battery</span>
-          <span class="cal-signal-value">{{ today_stats.body_battery_start }} at wakeup</span>
-        </div>
-        {% endif %}
-        {% if today_stats.training_status %}
-        <div class="cal-signal-row">
-          <span class="cal-signal-label">Training Status</span>
-          <span class="cal-signal-value">{{ today_stats.training_status|title }}</span>
-        </div>
-        {% endif %}
-        {% if today_stats.training_load %}
-        <div class="cal-signal-row">
-          <span class="cal-signal-label">Acute Load</span>
-          <span class="cal-signal-value">{{ today_stats.training_load|floatformat:0 }}</span>
-        </div>
-        {% endif %}
-        {% if today_stats.load_focus_anaerobic or today_stats.load_focus_high_aerobic or today_stats.load_focus_low_aerobic %}
-        <div style="margin-top:0.25rem;">
-          <div class="cal-signal-label" style="margin-bottom:0.35rem;">Load Focus</div>
-          <div class="cal-load-focus">
-            <div class="cal-load-bar">
-              <span class="cal-load-label">Anaerobic</span>
-              <span class="cal-load-val">{{ today_stats.load_focus_anaerobic|floatformat:0|default:"—" }}</span>
-            </div>
-            <div class="cal-load-bar">
-              <span class="cal-load-label">High Aerobic</span>
-              <span class="cal-load-val">{{ today_stats.load_focus_high_aerobic|floatformat:0|default:"—" }}</span>
-            </div>
-            <div class="cal-load-bar">
-              <span class="cal-load-label">Low Aerobic</span>
-              <span class="cal-load-val">{{ today_stats.load_focus_low_aerobic|floatformat:0|default:"—" }}</span>
-            </div>
-          </div>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-  </div>
-
-  <!-- Calendar Grid -->
-  <div class="cal-grid-wrap">
-    <div class="cal-grid">
+  <!-- Month grid -->
+  <div class="min-w-0">
+    <div class="grid grid-cols-7 gap-1 sm:gap-2">
       {% for day_name in "Mon,Tue,Wed,Thu,Fri,Sat,Sun"|split:"," %}
-      <div class="cal-day-header">{{ day_name }}</div>
+      <div class="pb-1 text-center text-xs font-medium text-muted">{{ day_name }}</div>
       {% endfor %}
 
       {% for week in grid %}
         {% for cell in week %}
           {% if cell is None %}
-          <div class="cal-cell cal-cell--empty"></div>
+          <div class="min-h-16 sm:min-h-24" aria-hidden="true"></div>
           {% else %}
           <a href="{% url 'day_view' cell.date|date:'Y-m-d' %}"
-             class="cal-cell{% if cell.is_today %} cal-cell--today{% endif %}{% if cell.is_future %} cal-cell--future{% endif %}{% if cell.workouts %} cal-cell--active{% endif %}">
-            <div class="cal-cell-num">{{ cell.date.day }}</div>
-            {% if cell.workouts %}
-            <div class="cal-dots">
-              {% for w in cell.workouts %}
-              <span class="cal-dot" style="background:{{ discipline_colors|get_item:w.discipline|default:'#888' }}" title="{{ w.title }}"></span>
-              {% endfor %}
+             aria-label="{{ cell.date|date:'l, F j' }}{% if cell.workouts %}: {{ cell.workouts|length }} workout{{ cell.workouts|length|pluralize }}{% endif %}{% if cell.stats and cell.stats.readiness_score is not None %}, readiness {{ cell.stats.readiness_score }}{% endif %}{% if cell.nutrition_status %}, nutrition logged{% endif %}"
+             class="flex min-h-16 flex-col gap-1 rounded-xl bg-base-100 p-1.5 text-base-content shadow-sm hover:no-underline hover:bg-base-300 sm:min-h-24 sm:p-2{% if cell.is_today %} ring-2 ring-primary{% endif %}{% if cell.is_future %} opacity-40{% endif %}">
+            <div class="flex items-start justify-between gap-1">
+              <span class="text-xs font-semibold sm:text-sm{% if cell.is_today %} text-primary{% endif %}">{{ cell.date.day }}</span>
+              {% if cell.stats and cell.stats.readiness_score is not None %}
+              <span class="hidden font-mono text-xs sm:inline {{ cell.stats.readiness_color|tone }}">{{ cell.stats.readiness_score }}</span>
+              {% endif %}
             </div>
-            {% endif %}
-            {% if cell.stats and cell.stats.readiness_score is not None %}
-            <div class="cal-readiness cal-sig-{{ cell.stats.readiness_color }}">
-              {{ cell.stats.readiness_score }}
+            {% if cell.workouts %}
+            <div class="flex flex-wrap items-center gap-1">
+              {% for w in cell.workouts|slice:":3" %}
+              <span class="size-2 rounded-full" style="background: {{ discipline_colors|get_item:w.discipline|default:'#888888' }}" title="{{ w.title }}"></span>
+              {% endfor %}
+              {% if cell.workouts|length > 3 %}<span class="text-[0.625rem] leading-none text-muted">+{{ cell.workouts|length|add:"-3" }}</span>{% endif %}
             </div>
             {% endif %}
             {% if cell.nutrition_status %}
-            <div class="cal-nutrition-dot {% if cell.nutrition_status == 'green' %}cal-nutrition-dot--green{% elif cell.nutrition_status == 'yellow' %}cal-nutrition-dot--yellow{% else %}cal-nutrition-dot--logged{% endif %}" title="Nutrition logged"></div>
+            <span class="mt-auto size-1.5 rounded-full {% if cell.nutrition_status == 'green' %}bg-success{% elif cell.nutrition_status == 'yellow' %}bg-warning{% else %}bg-faint{% endif %}" title="Nutrition logged"></span>
             {% endif %}
           </a>
           {% endif %}
@@ -152,21 +59,83 @@
       {% endfor %}
     </div>
 
-    <div class="cal-legend">
+    <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
       {% for disc, color in legend_colors.items %}
-      <span class="cal-legend-item">
-        <span class="cal-dot" style="background:{{ color }}"></span>
+      <span class="flex items-center gap-1.5">
+        <span class="size-2 rounded-full" style="background: {{ color }}"></span>
         {{ disc|title }}
       </span>
       {% endfor %}
-      <span class="cal-legend-item">
-        <span class="cal-nutrition-dot cal-nutrition-dot--green" style="display:inline-block;position:relative;margin-right:0.1rem"></span>
+      <span class="flex items-center gap-1.5">
+        <span class="size-1.5 rounded-full bg-success"></span>
         Nutrition logged
       </span>
-      <span class="cal-legend-item" style="margin-left:auto;color:var(--text-muted);font-size:0.75rem;">
-        Numbers = training readiness score
-      </span>
+      <span class="hidden sm:inline lg:ml-auto">Numbers = training readiness score</span>
     </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="flex flex-col gap-5">
+    {% if can.ai_next_workout %}
+    <div class="rounded-box bg-primary/10 p-5">
+      <div class="mb-2 flex items-center justify-between gap-2">
+        <h2 class="text-sm font-medium text-muted">Next workout</h2>
+        {% if today_stats.readiness_score is not None %}
+        <form method="post" action="{% url 'next_workout_refresh' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-xs">
+            {% if next_workout_rec %}Refresh{% else %}Get rec{% endif %}
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      {% if next_workout_rec %}
+        {{ next_workout_rec|format_next_workout|safe }}
+      {% elif today_stats.readiness_score is not None %}
+        <p class="text-sm text-muted">Hit "Get rec" to generate a recommendation based on today's wellness data.</p>
+      {% else %}
+        <p class="text-sm text-muted">Waiting on today's readiness score (Garmin or Google Health wellness sync) before a recommendation can be generated.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if today_stats and today_stats.has_wellness_data %}
+    <div class="ui-panel">
+      <h2 class="ui-panel-title mb-3">Today's signals</h2>
+      <dl class="ui-kv">
+        {% if today_stats.readiness_score is not None %}
+        <div><dt>Readiness{% if today_stats.readiness_is_computed %} (est.){% endif %}</dt><dd class="{{ today_stats.readiness_color|tone }}">{{ today_stats.readiness_score }}/100</dd></div>
+        {% endif %}
+        {% if today_stats.hrv_status %}
+        <div><dt>HRV</dt><dd class="{{ today_stats.hrv_status|tone }}">{{ today_stats.hrv_status_display }}{% if today_stats.hrv_last_night %} · {{ today_stats.hrv_last_night|floatformat:0 }} ms{% endif %}</dd></div>
+        {% endif %}
+        {% if today_stats.sleep_score %}
+        <div><dt>Sleep</dt><dd class="{% if today_stats.sleep_score >= 75 %}text-success{% elif today_stats.sleep_score >= 50 %}text-warning{% else %}text-error{% endif %}">{{ today_stats.sleep_score }}{% if today_stats.sleep_minutes %} · {{ today_stats.sleep_minutes|div:60|floatformat:0 }}h {{ today_stats.sleep_minutes|mod:60 }}m{% endif %}</dd></div>
+        {% endif %}
+        {% if today_stats.body_battery_start is not None %}
+        <div><dt>Body battery</dt><dd>{{ today_stats.body_battery_start }} at wakeup</dd></div>
+        {% endif %}
+        {% if today_stats.training_status %}
+        <div><dt>Training status</dt><dd class="font-sans">{{ today_stats.training_status|title }}</dd></div>
+        {% endif %}
+        {% if today_stats.training_load %}
+        <div><dt>Acute load</dt><dd>{{ today_stats.training_load|floatformat:0 }}</dd></div>
+        {% endif %}
+      </dl>
+      {% if load_focus_rows %}
+      <h3 class="mb-2 mt-4 text-sm font-medium text-muted">Load focus</h3>
+      <div class="flex flex-col gap-2">
+        {% for r in load_focus_rows %}
+        <div class="grid grid-cols-[5.5rem_1fr_2.5rem] items-center gap-3 text-sm">
+          <span>{{ r.label }}</span>
+          <div class="ui-bar"><span style="width: {{ r.pct }}%"></span></div>
+          <span class="text-right font-mono tabular-nums">{{ r.value|floatformat:0|default:"—" }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
 </div>

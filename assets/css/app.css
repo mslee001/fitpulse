@@ -148,6 +148,12 @@
   .ui-stat-unit     { @apply ml-0.5 font-sans text-sm font-medium text-muted; }
   .ui-stat-sub      { @apply text-sm text-muted; }
 
+  /* Label/value rows: <dl class="ui-kv"><div><dt>Label</dt><dd>Value</dd></div>…</dl> */
+  .ui-kv            { @apply flex flex-col text-sm; }
+  .ui-kv > div      { @apply flex items-baseline justify-between gap-3 border-t border-subtle py-2 first:border-t-0; }
+  .ui-kv dt         { @apply text-muted; }
+  .ui-kv dd         { @apply text-right font-mono tabular-nums; }
+
   /* Misc */
   .ui-empty         { @apply flex flex-col items-center gap-2 rounded-box border border-dashed border-subtle px-6 py-10 text-center text-muted; }
   .ui-bar           { @apply h-2 w-full overflow-hidden rounded-full bg-inset; }

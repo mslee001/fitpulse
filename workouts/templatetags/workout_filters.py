@@ -470,13 +470,32 @@ def dict_get(d, key):
 @register.filter
 def nutrition_rows(_unused):
     """Returns (label, key, color) tuples for nutrition progress bars."""
+    # Fixed chart slots (assets/css/app.css): Calories 1, Protein 2, Fat 3, Fiber 4, Carbs 5.
     return [
-        ("Calories", "cal",     "#FF6B35"),
-        ("Protein",  "protein", "#00D1FF"),
-        ("Carbs",    "carbs",   "#B4FF39"),
-        ("Fat",      "fat",     "#FF3B5C"),
-        ("Fiber",    "fiber",   "#69f0ae"),
+        ("Calories", "cal",     "var(--chart-1)"),
+        ("Protein",  "protein", "var(--chart-2)"),
+        ("Carbs",    "carbs",   "var(--chart-5)"),
+        ("Fat",      "fat",     "var(--chart-3)"),
+        ("Fiber",    "fiber",   "var(--chart-4)"),
     ]
+
+
+# Status words → whole Tailwind classes (Tailwind can't see class names built up
+# from strings). Status color always comes with its label text, never alone.
+TONE_TEXT = {"green": "text-success", "yellow": "text-warning", "red": "text-error",
+             "high": "text-success", "moderate": "text-warning", "low": "text-error",
+             "balanced": "text-success", "unbalanced": "text-warning", "poor": "text-error"}
+TONE_STROKE = {"green": "stroke-success", "yellow": "stroke-warning", "red": "stroke-error",
+               "high": "stroke-success", "moderate": "stroke-warning", "low": "stroke-error",
+               "balanced": "stroke-success", "unbalanced": "stroke-warning", "poor": "stroke-error"}
+
+
+@register.filter
+def tone(value, kind="text"):
+    """'green'/'High'/'BALANCED' → a whole class: text-success, or with
+    kind="stroke", stroke-success. Unknown → text-muted / stroke-current."""
+    table = TONE_STROKE if kind == "stroke" else TONE_TEXT
+    return table.get(str(value or "").strip().lower(), "text-muted" if kind == "text" else "stroke-current")
 
 
 @register.filter
