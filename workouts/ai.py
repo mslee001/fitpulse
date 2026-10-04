@@ -3492,12 +3492,13 @@ discipline ∈ the first column of the CLASS MENU (running, walking, stretching,
 
 def generate_training_plan_spec(user, inputs, context_text, menu_text) -> dict:
     """Sonnet writes the plan structure as class specs (feature ai_program_tools).
-    Input ≈ 6–9k tokens, output ≈ 3–5k → roughly $0.03–0.07 per plan at the
-    MODEL_PRICES Sonnet rate. AIFeatureDenied / AIBudgetExceeded propagate;
-    ValueError on bad JSON."""
+    Input ≈ 6–9k tokens, output ≈ 3–10k (more for long standalone plans) →
+    roughly $0.03–0.12 per plan at the MODEL_PRICES Sonnet rate.
+    AIFeatureDenied / AIBudgetExceeded propagate; llm.AIBadJSON on an
+    unreadable or cut-off reply."""
     prompt = _training_plan_prompt(inputs, context_text, menu_text)
     raw = llm.call_json(prompt, user=user, feature="ai_program_tools", model=llm.SONNET,
-                        max_tokens=8000, timeout=150)
+                        max_tokens=16000, timeout=300)   # long plans run past 8k tokens; this runs in a thread
     if not isinstance(raw, dict):
         raise ValueError("The AI returned something other than a plan.")
     raw["model"] = llm.SONNET

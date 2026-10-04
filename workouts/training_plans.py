@@ -1142,7 +1142,7 @@ def start_generation(draft):
 
 def _generate(draft_pk):
     import traceback
-    from . import ai
+    from . import ai, llm
     from .models import PlanDraft, WebhookError
 
     draft = PlanDraft.objects.select_related("user").get(pk=draft_pk)
@@ -1160,7 +1160,16 @@ def _generate(draft_pk):
         draft.ai_model, draft.status, draft.error = raw.get("model", ""), "ready", ""
     except ai.AI_UNAVAILABLE as e:
         draft.status, draft.error = "failed", ai.ai_unavailable_reason(e)
-    except ValueError as e:      # PlanSpecInvalid, or JSON the AI got wrong
+    except llm.AIBadJSON as e:
+        # Keep the reply for debugging (Webhook Errors page); the user gets a plain message.
+        cut_off = e.stop_reason == "max_tokens"
+        draft.status = "failed"
+        draft.error = ("The AI's plan was too long and got cut off. Try again, or shorten the plan."
+                       if cut_off else "The AI's reply wasn't a readable plan. Try again.")
+        WebhookError.record(source="training_plan", user=user,
+                            summary=f"Training plan reply unreadable: {e}"[:300],
+                            detail=f"stop_reason={e.stop_reason}\n\n{e.text[:20000]}")
+    except ValueError as e:      # PlanSpecInvalid
         draft.status, draft.error = "failed", str(e)[:1000] or "The AI's plan couldn't be read."
     except Exception as e:
         logger.exception("Training plan generation failed for draft %s", draft_pk)
