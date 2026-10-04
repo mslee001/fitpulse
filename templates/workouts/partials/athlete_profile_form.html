@@ -6,7 +6,7 @@
   <div style="margin-bottom:1.25rem">
     <div style="font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">EXPERIENCE LEVEL</div>
     <div class="experience-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem">
-      {% with sel_style="width:100%;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:var(--font-sans);font-size:0.82rem;padding:0.4rem 0.5rem;border-radius:4px" %}
+      {% with sel_style="width:100%;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.82rem;padding:0.4rem 0.5rem;border-radius:4px" %}
       <div>
         <label style="display:block;font-family:var(--font-sans);font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Running</label>
         <select name="running_experience" style="{{ sel_style }}">
@@ -41,7 +41,7 @@
   <!-- Coaching tone -->
   <div style="margin-bottom:1.25rem">
     <label style="display:block;font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.5rem">COACHING TONE</label>
-    <select name="coaching_tone" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.4rem 0.6rem;border-radius:4px;min-width:200px">
+    <select name="coaching_tone" style="background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.4rem 0.6rem;border-radius:4px;min-width:200px">
       {% for val, display in tone_choices %}
       <option value="{{ val }}" {% if athlete.coaching_tone == val %}selected{% endif %}>{{ display }}</option>
       {% endfor %}
@@ -51,21 +51,21 @@
   <!-- Training focus -->
   <div style="margin-bottom:1.25rem">
     <label style="display:block;font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.5rem">CURRENT TRAINING FOCUS</label>
-    <textarea name="training_focus" rows="2" placeholder="e.g. building running base, training for a 10K, strength recomp" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.training_focus }}</textarea>
+    <textarea name="training_focus" rows="2" placeholder="e.g. building running base, training for a 10K, strength recomp" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.training_focus }}</textarea>
   </div>
 
   <!-- Rehab keywords -->
   <div style="margin-bottom:1.25rem">
     <label style="display:block;font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem">PT / REHAB KEYWORDS</label>
     <p style="font-family:var(--font-sans);font-size:0.72rem;color:var(--text-dim);margin:0 0 0.5rem">Comma-separated. Workout titles containing any of these are tagged as PT/rehab and excluded from training-load reasoning.</p>
-    <input type="text" name="rehab_keywords" value="{{ athlete.rehab_keywords|join:', ' }}" placeholder="e.g. shoulder pt, physical therapy, rehab" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.4rem 0.65rem;border-radius:4px">
+    <input type="text" name="rehab_keywords" value="{{ athlete.rehab_keywords|join:', ' }}" placeholder="e.g. shoulder pt, physical therapy, rehab" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.4rem 0.65rem;border-radius:4px">
   </div>
 
   <!-- Health context override -->
   <div style="margin-bottom:1.5rem">
     <label style="display:block;font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem">{% if onboarding %}ANYTHING THE AI SHOULD KEEP IN MIND (OPTIONAL){% else %}HEALTH CONTEXT (OPTIONAL OVERRIDE){% endif %}</label>
     <p style="font-family:var(--font-sans);font-size:0.72rem;color:var(--text-dim);margin:0 0 0.5rem">Free-form context injected into AI health and nutrition prompts. Leave blank to derive context from your tracked Interventions automatically.</p>
-    <textarea name="health_context_override" rows="3" placeholder="e.g. managing weight loss on a GLP-1 medication, building muscle, perimenopausal" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.health_context_override }}</textarea>
+    <textarea name="health_context_override" rows="3" placeholder="e.g. managing weight loss on a GLP-1 medication, building muscle, perimenopausal" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.health_context_override }}</textarea>
   </div>
 
   <button type="submit" class="btn btn-primary">Save Profile</button>

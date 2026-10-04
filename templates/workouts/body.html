@@ -192,7 +192,7 @@
   </div>
   <div>
     {% for iv in active_ivs %}
-    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--fp-border)">
       <span class="cat-badge cat-{{ iv.category }}">{{ iv.category }}</span>
       <span style="font-family:var(--font-sans);font-weight:700">{{ iv.name }}</span>
       {% with cd=iv.current_dose %}{% if cd %}

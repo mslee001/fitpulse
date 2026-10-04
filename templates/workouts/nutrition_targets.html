@@ -192,14 +192,14 @@
       </div>
 
       {% if targets.protein_g and targets.calories %}
-      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);font-size:0.78rem;color:var(--text-muted)">
+      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--fp-border);font-size:0.78rem;color:var(--text-muted)">
         Protein = {{ targets.protein_g }}g × 4 = {{ targets.protein_g|floatformat:0 }}×4 kcal
         ({% widthratio targets.protein_g|default:0 targets.calories|default:1 400 %}% of calories)
       </div>
       {% endif %}
     </div>
 
-    <div class="fp-card" style="margin-top:1rem;padding:0.75rem 1.25rem;border-color:var(--border)">
+    <div class="fp-card" style="margin-top:1rem;padding:0.75rem 1.25rem;border-color:var(--fp-border)">
       <p style="color:var(--text-dim);font-size:0.8rem;line-height:1.5">
         These are estimates for personal tracking, not medical advice.
         Targets work best when adjusted based on your actual weight trend every 2–3 weeks.
@@ -280,7 +280,7 @@
       <div class="section-title" style="margin-bottom:0.75rem">ADJUSTMENT HISTORY</div>
       <div style="display:flex;flex-direction:column;gap:0.4rem">
         {% for adj in adjustments %}
-        <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.82rem;{% if not forloop.first %}padding-top:0.4rem;border-top:1px solid var(--border);{% endif %}">
+        <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.82rem;{% if not forloop.first %}padding-top:0.4rem;border-top:1px solid var(--fp-border);{% endif %}">
           <span style="color:var(--text-dim);font-size:0.72rem;min-width:5rem">{{ adj.timestamp|date:"M j, Y" }}</span>
           <span style="color:var(--text-muted)">{{ adj.previous_calories }} → <strong style="color:var(--text)">{{ adj.new_calories }}</strong> kcal</span>
           <span style="color:var(--text-dim);font-size:0.72rem">

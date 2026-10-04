@@ -66,7 +66,7 @@
   </div>
 
   {# Totals row #}
-  <div id="parse-totals" style="display:flex;gap:1.25rem;padding:0.5rem 0;font-size:0.82rem;color:var(--text-muted);font-family:var(--font-sans);border-top:1px solid var(--border);margin-top:0.5rem;flex-wrap:wrap">
+  <div id="parse-totals" style="display:flex;gap:1.25rem;padding:0.5rem 0;font-size:0.82rem;color:var(--text-muted);font-family:var(--font-sans);border-top:1px solid var(--fp-border);margin-top:0.5rem;flex-wrap:wrap">
     <span>TOTAL</span>
     <span id="tot-cal">— kcal</span>
     <span id="tot-prot">— g P</span>
@@ -78,7 +78,7 @@
   <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap;align-items:center">
     <div style="display:flex;align-items:center;gap:0.4rem">
       <label style="font-size:0.78rem;color:var(--text-muted)">Meal:</label>
-      <select id="meal-select" onchange="document.getElementById('meal-field').value=this.value" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.3rem 0.6rem;font-size:0.82rem">
+      <select id="meal-select" onchange="document.getElementById('meal-field').value=this.value" style="background:var(--bg);color:var(--text);border:1px solid var(--fp-border);border-radius:var(--r);padding:0.3rem 0.6rem;font-size:0.82rem">
         <option value="">—</option>
         {% for val,label in meal_choices %}
         <option value="{{ val }}" {% if meal == val %}selected{% endif %}>{{ label }}</option>

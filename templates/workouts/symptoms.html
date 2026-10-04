@@ -93,7 +93,7 @@
       <div class="section-title" style="margin-bottom:1rem">LAST 30 DAYS</div>
       <div style="display:flex;flex-direction:column;gap:0.4rem">
         {% for row in summary %}
-        <div style="display:flex;align-items:center;gap:0.75rem;padding:0.35rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
+        <div style="display:flex;align-items:center;gap:0.75rem;padding:0.35rem 0;{% if not forloop.first %}border-top:1px solid var(--fp-border);{% endif %}">
           <span style="flex:1;font-size:0.85rem;color:var(--text-muted);text-transform:capitalize">{{ row.symptom|title }}</span>
           <span style="font-size:0.82rem;color:var(--text-dim)">×{{ row.count }}</span>
           <span style="font-size:0.75rem;padding:0.15rem 0.45rem;border-radius:var(--r);background:
@@ -113,7 +113,7 @@
       <div class="section-title" style="margin-bottom:1rem">RECENT ENTRIES</div>
       <div style="display:flex;flex-direction:column;gap:0.5rem" id="recent-list">
         {% for entry in recent|slice:":15" %}
-        <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.83rem;padding:0.3rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
+        <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.83rem;padding:0.3rem 0;{% if not forloop.first %}border-top:1px solid var(--fp-border);{% endif %}">
           <span style="color:var(--text-dim);font-size:0.73rem;white-space:nowrap;min-width:4.5rem">{{ entry.date|date:"M j" }}</span>
           <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ entry.display_name }}</span>
           <span style="font-size:0.75rem;color:{% if entry.severity == 3 %}var(--accent-red){% elif entry.severity == 2 %}var(--accent){% else %}var(--accent-green){% endif %}">

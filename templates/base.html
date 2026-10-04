@@ -45,6 +45,20 @@
         fontSans: "'DM Sans', ui-sans-serif, system-ui, sans-serif",
         fontMono: "'DM Mono', ui-monospace, monospace",
         alpha: mix,
+        // fpChart.track(chart): re-apply axis/legend colors to this chart after every
+        // theme toggle. Series colors are the page's job (cadence:themechange).
+        track: function (chart) { window._fpTracked.add(chart); return chart; },
+        restyle: function (chart) {
+          var f = window.fpChart, o = chart.options;
+          Object.values(o.scales || {}).forEach(function (sc) {
+            if (sc.grid) sc.grid.color = f.grid;
+            if (sc.ticks) sc.ticks.color = f.muted;
+            if (sc.title) sc.title.color = f.muted;
+            if (sc.pointLabels) sc.pointLabels.color = f.muted;
+          });
+          if (o.plugins && o.plugins.legend && o.plugins.legend.labels) o.plugins.legend.labels.color = f.muted;
+          chart.update('none');
+        },
       };
       if (typeof Chart !== 'undefined') {
         Chart.defaults.color = window.fpChart.muted;
@@ -61,8 +75,15 @@
         refLineWidth: 1.5,
       };
     };
+    window._fpTracked = new Set();
     window._applyChartTheme();
     document.addEventListener('DOMContentLoaded', window._applyChartTheme);
+    document.addEventListener('cadence:themechange', function () {
+      window._fpTracked.forEach(function (c) {
+        if (typeof Chart !== 'undefined' && Chart.getChart(c.canvas) === c) window.fpChart.restyle(c);
+        else window._fpTracked.delete(c);  // destroyed
+      });
+    });
   </script>
 </head>
 <body class="min-h-screen">

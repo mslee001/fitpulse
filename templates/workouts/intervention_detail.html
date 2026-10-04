@@ -112,7 +112,7 @@
   </div>
 
   <!-- Add dose form -->
-  <div id="add-dose-form" class="{% if not active_dose %}hidden{% endif %}" style="background:var(--bg-raised);border-radius:var(--r);padding:1rem;margin-bottom:1.25rem;border:1px solid var(--border)">
+  <div id="add-dose-form" class="{% if not active_dose %}hidden{% endif %}" style="background:var(--bg-raised);border-radius:var(--r);padding:1rem;margin-bottom:1.25rem;border:1px solid var(--fp-border)">
     <div style="font-size:0.72rem;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;font-weight:700;margin-bottom:0.75rem">NEW DOSE CHANGE</div>
     <form method="post">
       {% csrf_token %}

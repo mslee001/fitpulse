@@ -53,7 +53,7 @@
           placeholder="Enter watts"
           min="50"
           max="600"
-          style="width:130px;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:0.9rem;padding:0.4rem 0.65rem;border-radius:4px;appearance:textfield;-moz-appearance:textfield"
+          style="width:130px;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-mono);font-size:0.9rem;padding:0.4rem 0.65rem;border-radius:4px;appearance:textfield;-moz-appearance:textfield"
         >
         <button type="submit" class="btn btn-primary">{% if current_ftp %}Update FTP{% else %}Set FTP{% endif %}</button>
         {% if current_ftp %}
@@ -62,7 +62,7 @@
       </form>
 
       {% if is_owner %}
-      <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
+      <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--fp-border)">
         <div style="font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">FTP HISTORY (APPLIED TO WORKOUTS)</div>
         <table style="width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:0.75rem">
           <thead>

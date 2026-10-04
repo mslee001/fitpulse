@@ -116,7 +116,7 @@
   <div class="section-title" style="margin-bottom:1rem">TOP FOODS</div>
   <div style="display:flex;flex-direction:column;gap:0.4rem">
     {% for food in top_foods|slice:":10" %}
-    <div style="display:flex;align-items:baseline;gap:0.5rem;font-size:0.83rem;padding:0.25rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
+    <div style="display:flex;align-items:baseline;gap:0.5rem;font-size:0.83rem;padding:0.25rem 0;{% if not forloop.first %}border-top:1px solid var(--fp-border);{% endif %}">
       <span style="color:var(--text-dim);min-width:1.5rem;font-size:0.75rem;font-weight:700">{{ forloop.counter }}</span>
       <span style="color:var(--text-muted);flex:1;text-transform:capitalize">{{ food.name }}</span>
       <span style="color:var(--text-dim);white-space:nowrap;font-size:0.78rem">×{{ food.count }}</span>
@@ -171,7 +171,7 @@
   </div>
   <div style="display:flex;flex-direction:column;gap:0.4rem">
     {% for row in symptom_summary %}
-    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.35rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
+    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.35rem 0;{% if not forloop.first %}border-top:1px solid var(--fp-border);{% endif %}">
       <span style="flex:1;font-size:0.85rem;color:var(--text-muted);text-transform:capitalize">{{ row.symptom|title }}</span>
       <span style="font-size:0.82rem;color:var(--text-dim)">×{{ row.count }}</span>
       <span style="font-size:0.75rem;padding:0.15rem 0.45rem;border-radius:var(--r);background:

@@ -227,7 +227,7 @@
     <textarea name="raw_text" id="food-textarea"
       placeholder="Describe what you ate — e.g. '2 scrambled eggs, sourdough toast with butter, black coffee'"
       rows="3"
-      style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.75rem;font-family:var(--font-sans);font-size:0.95rem;resize:vertical;margin-bottom:0.75rem"
+      style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--fp-border);border-radius:var(--r);padding:0.75rem;font-family:var(--font-sans);font-size:0.95rem;resize:vertical;margin-bottom:0.75rem"
     ></textarea>
 
     <!-- Food photo area: nutrition label or meal (the AI decides which) -->
@@ -244,7 +244,7 @@
       <div id="label-preview-row" style="display:none;margin-top:0.6rem;align-items:flex-start;gap:1rem;flex-wrap:wrap">
         <div style="position:relative;flex-shrink:0">
           <img id="label-preview-img" src="" alt="Photo preview"
-            style="max-height:120px;max-width:160px;border-radius:var(--r);border:1px solid var(--border);object-fit:contain">
+            style="max-height:120px;max-width:160px;border-radius:var(--r);border:1px solid var(--fp-border);object-fit:contain">
           <button type="button" onclick="clearLabelImage()"
             style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:var(--accent-red);color:#fff;border:none;cursor:pointer;font-size:0.7rem;line-height:1;display:flex;align-items:center;justify-content:center">✕</button>
         </div>
@@ -252,7 +252,7 @@
           <label class="form-label" style="font-size:0.75rem;margin-bottom:0.35rem;display:block">Portion notes (optional)</label>
           <input type="text" name="serving_note" id="serving-note-input"
             placeholder='e.g. "the whole bag", "half", "about 1 cup rice"'
-            style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.65rem;font-family:var(--font-sans);font-size:0.875rem">
+            style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--fp-border);border-radius:var(--r);padding:0.4rem 0.65rem;font-family:var(--font-sans);font-size:0.875rem">
           <div style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.3rem" id="serving-chips">
             <button type="button" class="serving-chip" onclick="setServingNote('1 serving')">1 serving</button>
             <button type="button" class="serving-chip" onclick="setServingNote('I had all of this')">Whole package</button>
@@ -264,7 +264,7 @@
     </div>
 
     <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
-      <select name="meal" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.75rem;font-family:var(--font-sans);font-size:0.85rem">
+      <select name="meal" style="background:var(--bg);color:var(--text);border:1px solid var(--fp-border);border-radius:var(--r);padding:0.4rem 0.75rem;font-family:var(--font-sans);font-size:0.85rem">
         <option value="">Meal (auto)</option>
         {% for val,label in meal_choices %}
         <option value="{{ val }}">{{ label }}</option>
@@ -284,7 +284,7 @@
 .serving-chip {
   padding: 0.2rem 0.55rem;
   border-radius: 20px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--fp-border);
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-sans);
@@ -428,7 +428,7 @@ function setServingNote(text) {
   </div>
 </div>
 {% else %}
-<div style="color:var(--text-dim);font-size:0.85rem;margin-bottom:2rem;padding:1rem;text-align:center;border:1px dashed var(--border);border-radius:var(--r)">
+<div style="color:var(--text-dim);font-size:0.85rem;margin-bottom:2rem;padding:1rem;text-align:center;border:1px dashed var(--fp-border);border-radius:var(--r)">
   Nothing logged yet{% if not is_today %} for {{ page_date|date:"M j" }}{% endif %}.
 </div>
 {% endif %}
