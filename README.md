@@ -116,7 +116,7 @@ Tokens are saved to `~/.garminconnect/` and auto-refresh on subsequent syncs. Yo
 **7. Set up Withings (optional)**
 
 1. Create a Withings developer account at [developer.withings.com](https://developer.withings.com) and register an app
-2. In the app settings, register the callback URL `https://<your-host>/auth/withings/callback/` (and `http://localhost:8000/auth/withings/callback/` for local testing, if the dashboard allows a second one)
+2. In the app settings, add **both** of these to the Callback URLs: `https://<your-host>/auth/withings/callback/` (the sign-in redirect) and `https://<your-host>/api/withings/webhook/` (where weigh-in notifications are sent — Withings refuses to subscribe a URL that isn't listed, with error 293). Withings no longer accepts `localhost` callback URLs.
 3. Add `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET` and `WITHINGS_CALLBACK_URL` (your `https://<your-host>/api/withings/webhook/` endpoint) to `.env`
 4. On the **Integrations** page, click **Connect Withings**, sign in and approve access
 
