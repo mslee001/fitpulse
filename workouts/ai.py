@@ -3476,7 +3476,9 @@ PLANNING RULES
    use it only to see whether they usually choose easier or harder classes, never as
    an ability score.
 9. Respect available days and max session lengths exactly. One running session per
-   day at most.
+   day at most. duration_min must be one of the lengths listed on that class type's
+   CLASS MENU line — Peloton doesn't make in-between lengths like 25, 35 or 40 min, so
+   build progression by stepping between listed lengths (e.g. 20 → 30 → 45).
 10. If their notes mention pain or an injury, keep intensity lower than you otherwise
     would and say so in assumptions. Don't give medical instructions.{pace_rules}
 
@@ -3492,11 +3494,12 @@ WRITING RULES
   If FITNESS CONTEXT lacks something you needed, say so here instead of guessing.
 - pace_zone (running/walking sessions only, else null): the Peloton pace zone the
   session mostly targets — Recovery, Easy, Moderate, Challenging, Hard, Very Hard or Max.
-- pace_guidance: 1–3 sentences mapping their Peloton pace level from the current level
-  toward the race-pace level in PACE — roughly which weeks to try each step up (when
-  Hard-zone efforts start to feel controlled), no faster than the ramp rules allow. If
-  the race-pace level is out of reach in this runway, say where they can realistically
-  get to. Empty string if PACE has no Peloton pace level.
+- pace_guidance: 1–3 sentences (under 600 characters). If PACE gives a race-pace level
+  above their current level, map roughly which weeks to try each step up (when Hard-zone
+  efforts start to feel controlled), no faster than the ramp rules allow, and say where
+  they can realistically get to if it's out of reach. If PACE says no level change is
+  needed, say which zones to run goal-pace work in at their current level instead —
+  never suggest moving to a lower level. Empty string if PACE has no Peloton pace level.
 
 Return ONLY JSON, no prose, in exactly this shape:
 {{

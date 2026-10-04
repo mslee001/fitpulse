@@ -261,11 +261,14 @@
     var sec = t / miles, text = 'Goal pace: ' + fmt(sec) + '/mi';
     if (lv) text += ' — your Level ' + lv + ' ' + zoneFor(lv, sec) + ' zone';
     var rl = raceLevel(goal.value, sec);
-    text += rl ? '. Race-pace level: ' + rl + (lv && rl > lv ? ' (' + (rl - lv) + ' to climb)' : '')
-               : '. That pace is beyond Level 10\'s ' + pace.raceZone[goal.value] + ' zone';
+    if (rl && lv && rl <= lv) text += '. Level ' + lv + ' already covers this pace — no level change needed';
+    else if (rl) text += '. Race-pace level: ' + rl + (lv ? ' (' + (rl - lv) + ' to climb)' : '');
+    else text += '. That pace is beyond Level 10\'s ' + pace.raceZone[goal.value] + ' zone';
     if (goal.value === '5k' || goal.value === '10k') {
-      var long = Math.max(pace.longFloor, Math.ceil(pace.longMultiple * t / 60 / 5) * 5);
-      text += '. The plan will build your long run to at least ' + long + ' min at easy pace.';
+      var raw = Math.max(pace.longFloor, pace.longMultiple * t / 60);
+      var long = pace.runLengths.length ? pace.runLengths.reduce(function (a, b) {
+        return Math.abs(b - raw) < Math.abs(a - raw) ? b : a; }) : Math.ceil(raw / 5) * 5;
+      text += '. The plan will build your long run to about ' + long + ' min at easy pace.';
     }
     goalPace.textContent = text;
     goalPace.hidden = false;

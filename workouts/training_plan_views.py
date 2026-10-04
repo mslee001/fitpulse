@@ -71,7 +71,8 @@ def program_training_plan_new(request):
         "pace_json": json.dumps({"chart": tp.PELOTON_PACE_CHART, "zoneOrder": tp.PACE_ZONES,
                                  "level": (pace_level or {}).get("level"), "raceZone": tp.RACE_PACE_ZONE,
                                  "miles": tp.RACE_MILES, "longMultiple": tp.LONG_RUN_RACE_MULTIPLE,
-                                 "longFloor": tp.LONG_RUN_FLOOR_MIN}),
+                                 "longFloor": tp.LONG_RUN_FLOOR_MIN,
+                                 "runLengths": tp.run_lengths_for_form()}),
         "catalog_empty": catalog_empty, "is_owner": is_owner(request.user),
         "errors": errors, "values": values, "assessment": assessment,
         "goals": tp.GOALS, "levels": tp.LEVELS, "days": tp.DAY_NAMES.items(),
@@ -158,7 +159,9 @@ def _pace_summary(draft):
         if p.get("goal_zone"):
             goal += f" ({p['goal_zone']} zone at Level {p['level']})"
         lines.append(goal)
-        if p.get("race_level"):
+        if p.get("race_level") and p.get("level") and p["race_level"] <= p["level"]:
+            lines.append(f"Level {p['level']} already covers goal pace")
+        elif p.get("race_level"):
             lines.append(f"Race-pace level {p['race_level']}")
     est = p.get("estimate")
     if est:

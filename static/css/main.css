@@ -3436,3 +3436,4 @@ a:hover { text-decoration: underline; }
 /* Training plan pace (form zones list, review pace card) */
 .tp-zones { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; padding-left: 0; }
 .tp-pace { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid var(--border); font-size: 0.86rem; }
+.tp-pace-guidance { margin: 0.4rem 0 0; font-family: 'Barlow', sans-serif; font-size: 0.86rem; line-height: 1.55; color: var(--text-muted); }
