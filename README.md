@@ -227,7 +227,7 @@ venv/bin/python3 manage.py backfill_ftp --dry-run  # preview without writing
 
 ## Automated Daily Sync
 
-`sync_daily` syncs every active user in turn. For each person it runs Peloton, Garmin activities and wellness (owner only), and Google Health — each only if that source is enabled and connected. People with nothing connected are skipped. One person's failure (an ended Peloton sign-in, say) doesn't stop the others; output lines are prefixed with the username. Withings isn't included because its webhook pushes new weigh-ins.
+`sync_daily` syncs every active user in turn. For each person it runs Peloton, Garmin activities and wellness (owner only), and Google Health — each only if that source is enabled and connected. For the owner it also syncs the shared Peloton class catalog: incremental on most runs, a full sync once a week. People with nothing connected are skipped. One person's failure (an ended Peloton sign-in, say) doesn't stop the others; output lines are prefixed with the username. Withings isn't included because its webhook pushes new weigh-ins.
 
 ```bash
 venv/bin/python3 manage.py sync_daily
@@ -236,16 +236,28 @@ venv/bin/python3 manage.py sync_daily
 Flags:
 - `--user USERNAME` — sync just one person
 - `--skip-peloton` — skip Peloton sync
+- `--skip-garmin` — skip Garmin (the scheduled job always passes this)
+- `--catalog-full` — run the full class catalog sync now instead of waiting for the weekly one
 - `--wellness-days N` — days of Garmin wellness to sync (default: 2, catches today + yesterday)
 - `--if-stale HOURS` — skip anyone whose last daily sync was less than HOURS hours ago
 
-On macOS, two launchd plists automate this (stored in `~/Library/LaunchAgents/`, not the repo):
-- `com.fitpulse.sync-daily.plist` — fires at 8:30 AM and 7:00 PM; if the Mac is asleep, launchd catches up on the next wake
-- `com.fitpulse.sync-fallback.plist` — fires every 5 minutes when awake, runs with `--if-stale 8` as a fallback after hibernation
+### Scheduled on Render
 
-The wrapper script is `scripts/sync_daily.sh`. Django loads `.env` itself, so the script doesn't source it. After a successful sync it schedules the next one-shot wake via `sudo pmset schedule wake` (requires a sudoers entry for passwordless `pmset`). Each person's last sync time appears in the nav Sync dropdown and the Settings page footer.
+A Render **Cron Job** runs it twice a day, in its own container, separate from the web service:
 
----
+| Setting | Value |
+|---|---|
+| Repository / branch | same as the web service (`main`) |
+| Runtime | Python (picks up `runtime.txt`) |
+| Build command | `pip install -r requirements.txt` |
+| Command | `python manage.py sync_daily --skip-garmin` |
+| Schedule | `30 2,15 * * *` — UTC, so 8:30 AM and 7:30 PM Pacific during daylight time (7:30 AM / 6:30 PM in winter) |
+| Instance type | the smallest (0.5 CPU, 512 MB) |
+| Environment | the same variables as the web service — at least `DATABASE_URL`, `DJANGO_SECRET_KEY`, `WITHINGS_CLIENT_ID`/`SECRET`, `GOOGLE_HEALTH_CLIENT_ID`/`SECRET` (token refreshes happen here too). An Environment Group shared by both services keeps them in sync. |
+
+A run that exits non-zero (any user's source failed) shows as failed in Render and triggers its failure notification. Each person's last successful sync time appears in the nav Sync dropdown and the Settings page footer.
+
+Garmin isn't scheduled: its tokens live in `~/.garminconnect` on the machine where `garmin_login` ran, which the cron container doesn't have. Garmin syncs run only from the owner's Sync buttons on a local server.
 
 ## AI Features
 

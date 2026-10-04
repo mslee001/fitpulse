@@ -1,7 +1,8 @@
 """
 Daily sync for every active user: Peloton, Garmin activities + wellness (owner
 only), and Google Health.
-Run every morning via launchd (see scripts/sync_daily.sh).
+Scheduled as a Render Cron Job (`python manage.py sync_daily --skip-garmin`,
+twice a day); see README "Daily sync". Garmin runs only from its Sync buttons.
 Withings is push-based (webhook) and doesn't need scheduling.
 """
 import logging
@@ -30,9 +31,19 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            "--catalog-full", action="store_true",
+            help="Run a full Peloton class catalog sync now (owner only) instead of waiting for the weekly one",
+        )
+        parser.add_argument(
             "--skip-peloton",
             action="store_true",
             help="Skip Peloton sync (Garmin only)",
+        )
+        parser.add_argument(
+            "--skip-garmin",
+            action="store_true",
+            help="Skip Garmin (its tokens live only on the machine where garmin_login ran — the Render cron "
+                 "job always passes this; Garmin syncs run from the Sync buttons instead)",
         )
         parser.add_argument(
             "--wellness-days",
@@ -44,7 +55,7 @@ class Command(BaseCommand):
             "--if-stale",
             type=int,
             metavar="HOURS",
-            help="Only sync a user if their last sync was more than HOURS hours ago (used by fallback plist)",
+            help="Only sync a user if their last sync was more than HOURS hours ago",
         )
         add_user_argument(parser)
 
@@ -100,7 +111,7 @@ class Command(BaseCommand):
         if peloton_auth and peloton_auth.needs_reconnect and not opts["skip_peloton"]:
             # A rejected refresh token never comes back; retrying would only log errors.
             self._out(user, "Peloton needs reconnecting at /settings/integrations/ — skipped.")
-        do_garmin = user.is_superuser and _integration_enabled(user, "garmin")
+        do_garmin = not opts.get("skip_garmin") and user.is_superuser and _integration_enabled(user, "garmin")
         do_google = (_integration_enabled(user, "google_health")
                      and GoogleHealthAuth.for_user(user) is not None)
         if not (do_peloton or do_garmin or do_google):
@@ -120,10 +131,18 @@ class Command(BaseCommand):
             self._step(user, results, "peloton", "Peloton",
                        lambda: _run_peloton_sync_new(user), counts)
             if user == get_owner() and results[-1] == ("peloton", "ok"):
-                # Shared class catalog, incremental — usually one request per category.
-                self._step(user, results, "catalog", "Peloton class catalog",
-                           lambda: _catalog_incremental(user),
-                           lambda r: f"{sum(c['created'] for c in r['categories'].values())} new classes")
+                # Shared class catalog: a full sync once a week (refreshes ratings on older
+                # classes and retires removed ones), otherwise incremental — usually one
+                # request per category.
+                from workouts.catalog import catalog_job_running, full_sync_due
+                if catalog_job_running(user):
+                    self._out(user, "Peloton class catalog… skipped — a catalog sync is already running.")
+                elif opts.get("catalog_full") or full_sync_due(user):
+                    self._step(user, results, "catalog", "Peloton class catalog (weekly full sync)",
+                               lambda: _catalog_sync(user, full=True), _catalog_summary)
+                else:
+                    self._step(user, results, "catalog", "Peloton class catalog",
+                               lambda: _catalog_sync(user, full=False), _catalog_summary)
 
         if do_garmin:
             # Garmin activities — new since last sync
@@ -156,10 +175,16 @@ class Command(BaseCommand):
         return True
 
 
-def _catalog_incremental(user):
-    from workouts.catalog import sync_catalog
-    result = sync_catalog(user, full=False)
-    errors = [f"{cat}: {c['error']}" for cat, c in result["categories"].items() if c["error"]]
-    if errors:
-        return {"error": "; ".join(errors), **result}
-    return result
+def _catalog_sync(user, full):
+    """sync_catalog puts a top-level "error" in its result when any category failed."""
+    from workouts.catalog import run_recorded_full_sync, sync_catalog
+    return run_recorded_full_sync(user) if full else sync_catalog(user, full=False)
+
+
+def _catalog_summary(r):
+    cats = r["categories"].values()
+    line = f"{sum(c['created'] for c in cats)} new classes"
+    gone = sum(c.get("marked_unavailable", 0) for c in cats)
+    if any("marked_unavailable" in c for c in cats):
+        line += f", {gone} retired · {r['total_classes']} available"
+    return line
