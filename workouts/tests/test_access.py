@@ -99,13 +99,13 @@ class AccessTests(TwoUserTestCase):
     def test_nav_shows_only_granted_groups(self):
         self.grant("nutrition")
         html = self.client_b.get(reverse("today")).content.decode()
-        self.assertIn('href="/nutrition/" class="nav-link nav-group-toggle"', html)
-        for group in ("Training <span", "Body <span", "Insights <span"):
-            self.assertNotIn(group, html)
+        self.assertIn('data-nav-group="nutrition"', html)
+        for group in ("training", "body", "insights"):
+            self.assertNotIn(f'data-nav-group="{group}"', html)
         self.assertNotIn("Garmin Sync New", html)
         self.assertNotIn('id="chat-sidebar"', html)
         owner_html = self.client_a.get(reverse("today")).content.decode()
-        self.assertIn("Training <span", owner_html)
+        self.assertIn('data-nav-group="training"', owner_html)
 
     def test_unknown_route_still_404s(self):
         self.assertEqual(self.client_b.get("/no-such-page/").status_code, 404)

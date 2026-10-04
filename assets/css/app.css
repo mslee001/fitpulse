@@ -121,3 +121,12 @@
   }
   body { @apply bg-base-200 text-base-content font-sans antialiased; }
 }
+
+@layer components {
+  /* daisyUI menus leave link color alone, so main.css's teal link rule (legacy
+     layer) would color every menu item. Goes away with main.css (prompt 12). */
+  .menu a { color: inherit; text-decoration: none; }
+
+  /* Stats chat answers: <ul class="chat-list"> from format_chat_answer. */
+  .chat-list { @apply list-disc pl-5 space-y-1; }
+}
