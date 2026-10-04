@@ -192,7 +192,12 @@ def withings_oauth_callback(request):
             with transaction.atomic():
                 client._save_tokens()
         except IntegrityError:
-            messages.error(request, "That Withings account is already connected to another FitPulse user.")
+            if userid and WithingsAuth.objects.filter(userid=userid).exclude(user=request.user).exists():
+                messages.error(request, "That Withings account is already connected to another FitPulse user.")
+            else:
+                logger.exception("Saving WithingsAuth failed for user %s", request.user.pk)
+                messages.error(request, "Withings connection failed because of a database error. "
+                                        "Try again, and tell Megan if it keeps happening.")
             return redirect(nxt)
 
         Integration.ensure_for_user(request.user)

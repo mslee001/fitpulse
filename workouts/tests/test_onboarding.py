@@ -146,9 +146,24 @@ class OnboardingTests(TwoUserTestCase):
     @patch("workouts.services.peloton_client.PelotonClient.fetch_me",
            return_value={"id": "p-bob", "username": "bob"})
     def test_peloton_account_already_used_by_someone_else(self, fetch_me):
+        from django.contrib.messages import get_messages
         PelotonAuth.objects.create(user=self.b, session_id="b", peloton_user_id="p-bob")
-        self.client_c.post(reverse("set_peloton_auth"), {"session_id": "cookie"})
+        resp = self.client_c.post(reverse("set_peloton_auth"), {"session_id": "cookie"})
         self.assertFalse(PelotonAuth.objects.filter(user=self.carol).exists())
+        msg = " ".join(str(m) for m in get_messages(resp.wsgi_request))
+        self.assertIn("Peloton account @bob", msg)          # names whose session the cookie is
+        self.assertIn("signed in to onepeloton.com as yourself", msg)
+
+    @patch("workouts.services.peloton_client.PelotonClient.fetch_me",
+           return_value={"id": "p-carol", "username": "carol"})
+    def test_database_error_is_not_reported_as_a_duplicate_account(self, fetch_me):
+        from django.contrib.messages import get_messages
+        from django.db import IntegrityError
+        with patch("workouts.models.PelotonAuth.objects.update_or_create", side_effect=IntegrityError("dup pk")):
+            resp = self.client_c.post(reverse("set_peloton_auth"), {"session_id": "cookie"})
+        msg = " ".join(str(m) for m in get_messages(resp.wsgi_request))
+        self.assertIn("database error", msg)
+        self.assertNotIn("already connected", msg)
 
     def test_open_redirects_are_refused(self):
         with patch("workouts.services.peloton_client.PelotonClient.fetch_me",
