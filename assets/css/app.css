@@ -173,6 +173,18 @@
   .nw-activity      { @apply mb-2 text-xl font-bold leading-snug; }
   .nw-reason        { @apply m-0 text-sm leading-relaxed text-muted; }
 
+  /* Placeholder art for Garmin workouts without a class image (workout cards, detail
+     header). Picked by discipline: garmin-default-img--{{ discipline }}. */
+  .garmin-default-img              { background: linear-gradient(135deg, #0f1923 0%, #1a2a3a 100%); }
+  .garmin-default-img--running     { background: linear-gradient(135deg, #0d1b2a 0%, #1b3a5c 100%); }
+  .garmin-default-img--walking     { background: linear-gradient(135deg, #0d2a1a 0%, #1b5c3a 100%); }
+  .garmin-default-img--strength    { background: linear-gradient(135deg, #2a0d0d 0%, #5c1b1b 100%); }
+  .garmin-default-img--cycling     { background: linear-gradient(135deg, #1a0d2a 0%, #3a1b5c 100%); }
+  .garmin-default-img--yoga,
+  .garmin-default-img--stretching  { background: linear-gradient(135deg, #0d2a2a 0%, #1b5c5c 100%); }
+  .garmin-default-img--hiking      { background: linear-gradient(135deg, #1a1a0d 0%, #3a3a1b 100%); }
+  .garmin-default-img--swimming    { background: linear-gradient(135deg, #0d1a2a 0%, #1b3a5c 100%); }
+
   /* daisyUI menus leave link color alone, so main.css's teal link rule (legacy
      layer) would color every menu item. Goes away with main.css (prompt 12). */
   .menu a { color: inherit; text-decoration: none; }

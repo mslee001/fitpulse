@@ -138,21 +138,6 @@ a:hover { text-decoration: underline; }
 
 /* ── Workout cards ───────────────────────────── */
 
-.garmin-default-img {
-  display: flex; align-items: center; justify-content: center;
-  font-size: 2.4rem;
-  background: linear-gradient(135deg, #0f1923 0%, #1a2a3a 100%);
-}
-.garmin-default-img.detail-hero-img { font-size: 3.5rem; }
-.garmin-default-img--running   { background: linear-gradient(135deg, #0d1b2a 0%, #1b3a5c 100%); }
-.garmin-default-img--walking   { background: linear-gradient(135deg, #0d2a1a 0%, #1b5c3a 100%); }
-.garmin-default-img--strength  { background: linear-gradient(135deg, #2a0d0d 0%, #5c1b1b 100%); }
-.garmin-default-img--cycling   { background: linear-gradient(135deg, #1a0d2a 0%, #3a1b5c 100%); }
-.garmin-default-img--yoga      { background: linear-gradient(135deg, #0d2a2a 0%, #1b5c5c 100%); }
-.garmin-default-img--stretching{ background: linear-gradient(135deg, #0d2a2a 0%, #1b5c5c 100%); }
-.garmin-default-img--hiking    { background: linear-gradient(135deg, #1a1a0d 0%, #3a3a1b 100%); }
-.garmin-default-img--swimming  { background: linear-gradient(135deg, #0d1a2a 0%, #1b3a5c 100%); }
-
 .load-more { text-align: center; margin-top: 2rem; }
 
 /* ── Charts ──────────────────────────────────── */
@@ -194,57 +179,6 @@ a:hover { text-decoration: underline; }
 
 /* ── Detail layout ───────────────────────────── */
 
-.detail-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 2rem;
-  align-items: start;
-}
-
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 0.75rem;
-}
-.metric-card {
-  background: var(--bg-card);
-  border: 1px solid var(--fp-border);
-  border-radius: var(--r);
-  padding: 1rem 1.25rem;
-}
-.metric-card--hero { border-top: 2px solid var(--accent); }
-.metric-label {
-  font-family: var(--font-sans);
-  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
-  color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;
-}
-.metric-value {
-  font-family: var(--font-sans);
-  font-size: 1.9rem; font-weight: 800; line-height: 1; color: var(--text);
-}
-.metric-unit { font-size: 0.85rem; color: var(--text-muted); }
-
-.detail-sidebar {
-  background: var(--bg-card);
-  border: 1px solid var(--fp-border);
-  border-radius: var(--r);
-  padding: 1.25rem;
-  position: sticky; top: calc(var(--nav-h) + 1rem);
-}
-.sidebar-title {
-  font-family: var(--font-sans);
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em;
-  color: var(--text-muted); text-transform: uppercase; margin-bottom: 1rem;
-}
-.history-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-  padding: 0.75rem 0; border-bottom: 1px solid var(--fp-border);
-}
-.history-item:last-of-type { border-bottom: none; }
-.history-item-content { flex: 1; min-width: 0; text-decoration: none; display: block; }
-.history-item-date { font-size: 0.85rem; color: var(--text); font-weight: 600; }
-.history-item-stats { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
-
 /* ── Sidebar compare button ──────────────────── */
 .compare-btn {
   flex-shrink: 0;
@@ -256,14 +190,6 @@ a:hover { text-decoration: underline; }
   transition: color 0.15s, border-color 0.15s;
 }
 .compare-btn:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
-
-.compare-sidebar-bar {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: var(--bg-raised);
-  border: 1px solid var(--fp-border);
-  border-radius: var(--r);
-}
 
 /* ── Discipline cards ────────────────────────── */
 
@@ -320,64 +246,13 @@ a:hover { text-decoration: underline; }
 
 /* ── Discipline tag ──────────────────────────── */
 
-.discipline-tag {
-  display: inline-block;
-  font-family: var(--font-sans);
-  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-muted);
-  margin-bottom: 0.4rem;
-}
-
 .page-header-row {
   display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem;
 }
 
-.detail-hero-img {
-  width: 200px; height: 120px; flex-shrink: 0;
-  border-radius: var(--r);
-  background: var(--bg-raised) center/cover no-repeat;
-}
-
 /* ── HR zone bars ────────────────────────────── */
 
-.hr-zones { display: flex; flex-direction: column; gap: 0.6rem; }
-
-.hr-zone-row {
-  display: grid;
-  grid-template-columns: 110px 1fr 60px;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.hr-zone-label {
-  font-family: var(--font-sans);
-  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em;
-}
-
-.hr-zone-bar-wrap {
-  background: var(--bg); border-radius: 3px; height: 10px; overflow: hidden;
-}
-
-.hr-zone-bar {
-  height: 100%; border-radius: 3px;
-  transition: width 0.6s ease;
-}
-
-.hr-zone-time {
-  font-family: var(--font-mono);
-  font-size: 0.8rem; color: var(--text-muted); text-align: right;
-}
-
 /* Rows that also show % of total (generic detail page) */
-.hr-zone-row--pct { grid-template-columns: 110px 1fr 60px 52px; }
-@media (max-width: 480px) {
-  .hr-zone-row--pct { grid-template-columns: 76px 1fr 44px 44px; gap: 0.5rem; }
-}
-
-.hr-zone-pct {
-  font-family: var(--font-mono);
-  font-size: 0.75rem; color: var(--text-dim); text-align: right;
-}
 
 /* ── Segment list (strength class structure) ─── */
 
@@ -413,30 +288,14 @@ a:hover { text-decoration: underline; }
 
 /* ── Splits table styling ────────────────────── */
 
-.pace-cell { color: var(--accent-alt); }
 .muted { color: var(--text-dim) !important; }
 
 /* ── Compare header improvements ─────────────── */
 
 /* ── Metric sub-label (avg/max below value) ───── */
 
-.metric-sub {
-  font-family: var(--font-mono);
-  font-size: 0.72rem; color: var(--text-dim); margin-top: 0.35rem;
-}
-
 /* ── Performance comparison table ─────────────── */
 
-.comparison-table td:first-child {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  width: 140px;
-}
-.comparison-table td { vertical-align: middle; }
-.comparison-table .mono { font-family: var(--font-mono); font-size: 0.88rem; }
-.comparison-table .comp-this { color: var(--text); font-weight: 600; }
-.comparison-table .comp-avg  { color: var(--text-muted); }
-.comparison-table .comp-best { color: var(--accent-green); }
 .chart-sub {
   font-family: var(--font-sans);
   font-size: 0.72rem; color: var(--text-dim); letter-spacing: 0.04em;
@@ -444,322 +303,33 @@ a:hover { text-decoration: underline; }
 
 /* ── Muscle group tag ─────────────────────────── */
 
-.muscle-tag {
-  display: inline-block;
-  padding: 0.15rem 0.55rem;
-  font-family: var(--font-sans);
-  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; border-radius: 3px;
-  background: var(--bg-raised); color: var(--text-muted);
-  border: 1px solid var(--fp-border);
-}
-.muscle-tag--upper  { color: var(--accent-alt);   border-color: var(--accent-alt);   background: color-mix(in oklab, var(--accent-alt) 7%, transparent); }
-.muscle-tag--lower  { color: var(--accent-green);  border-color: var(--accent-green);  background: color-mix(in oklab, var(--accent-green) 7%, transparent); }
-.muscle-tag--core   { color: var(--accent);        border-color: var(--accent);        background: color-mix(in oklab, var(--accent) 7%, transparent); }
-.muscle-tag--full   { color: #CE93D8;              border-color: #CE93D8;              background: #ce93d812; }
-.muscle-tag--cardio { color: var(--accent-red);    border-color: var(--accent-red);    background: color-mix(in oklab, var(--accent-red) 7%, transparent); }
-
 /* ── Enhanced segment cards ───────────────────── */
-
-.segment-card {
-  background: var(--bg-card);
-  border: 1px solid var(--fp-border);
-  border-radius: var(--r);
-  padding: 1rem 1.25rem;
-  margin-bottom: 0.5rem;
-  transition: border-color 0.15s;
-}
-.segment-card:hover { border-color: var(--border-accent); }
-
-.segment-card-header {
-  display: flex; align-items: center; gap: 0.6rem;
-  margin-bottom: 0.5rem;
-}
-.segment-card-icon {
-  width: 24px; height: 24px; border-radius: 4px; object-fit: cover;
-  opacity: 0.8;
-}
-.segment-card-name {
-  font-family: var(--font-sans);
-  font-size: 0.95rem; font-weight: 700; color: var(--text); flex: 1;
-}
-.segment-card-dur {
-  font-family: var(--font-mono);
-  font-size: 0.78rem; color: var(--text-muted);
-}
-.segment-card-bar-wrap {
-  background: var(--bg); border-radius: 3px; height: 4px;
-  overflow: hidden; margin-bottom: 0.75rem;
-}
-.segment-card-bar {
-  height: 100%; border-radius: 3px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-alt));
-  transition: width 0.5s ease;
-}
 
 /* ── Subsegment exercise list ─────────────────── */
 
-.subsegment-list {
-  display: flex; flex-direction: column;
-  border-top: 1px solid var(--fp-border);
-  margin-top: 0.25rem;
-}
-.subsegment-row {
-  display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid var(--fp-border);
-  font-size: 0.82rem;
-}
-.subsegment-row:last-child { border-bottom: none; }
-.subsegment-row--rest { opacity: 0.5; font-style: italic; }
-.subsegment-name { flex: 1; color: var(--text); }
-.subsegment-type {
-  font-family: var(--font-sans);
-  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
-  color: var(--text-dim); text-transform: uppercase;
-}
-.subsegment-dur {
-  font-family: var(--font-mono);
-  font-size: 0.75rem; color: var(--text-muted); text-align: right;
-  min-width: 40px;
-}
-
 /* ── Splits table scroll wrapper ──────────────── */
-
-.splits-scroll { overflow-x: auto; }
-.splits-scroll .data-table th,
-.splits-scroll .data-table td { white-space: nowrap; }
 
 /* ── Recent workouts sidebar list ─────────────── */
 
-.recent-section { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--fp-border); }
-.sidebar-scroll-list {
-  max-height: 260px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--fp-border) transparent;
-}
-.recent-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-  padding: 0.6rem 0; border-bottom: 1px solid var(--fp-border);
-}
-.recent-item:last-child { border-bottom: none; }
-.recent-item-content { flex: 1; min-width: 0; text-decoration: none; display: block; }
-.recent-item-date { font-size: 0.8rem; color: var(--text); font-weight: 600; }
-.recent-item-title {
-  font-size: 0.75rem; color: var(--text-dim);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  max-width: 180px;
-}
-.recent-item-stats {
-  font-family: var(--font-mono);
-  font-size: 0.75rem; color: var(--text-muted);
-  margin-top: 0.15rem; display: flex; gap: 0.6rem; flex-wrap: wrap;
-}
-
 /* ── Muscle group bars ────────────────────────── */
-
-.muscle-group-list { display: flex; flex-direction: column; gap: 0.55rem; }
-
-.muscle-group-row {
-  display: grid;
-  grid-template-columns: 110px 1fr 42px 36px;
-  align-items: center;
-  gap: 0.6rem;
-}
-.muscle-group-name {
-  font-family: var(--font-sans);
-  font-size: 0.82rem; font-weight: 700; color: var(--text);
-}
-.muscle-group-bar-wrap {
-  background: var(--bg); border-radius: 3px; height: 8px; overflow: hidden;
-}
-.muscle-group-bar {
-  height: 100%; border-radius: 3px; transition: width 0.6s ease;
-}
-.mg-1 { background: var(--text-dim); }
-.mg-2 { background: var(--accent-alt); }
-.mg-3 { background: var(--accent-green); }
-.muscle-group-pct {
-  font-family: var(--font-mono);
-  font-size: 0.75rem; color: var(--text-muted); text-align: right;
-}
-.muscle-group-bucket {
-  font-size: 0.6rem; letter-spacing: -1px; text-align: center;
-  color: var(--text-dim);
-}
 
 /* ── Best split highlight ─────────────────────── */
 
-.split-best td { background: color-mix(in oklab, var(--accent-green) 3%, transparent) !important; }
-.split-best .split-star { color: var(--accent-green); }
-.split-star { color: transparent; font-size: 0.7rem; margin-left: 2px; }
-
 /* ── Effort points badge ──────────────────────── */
-
-.effort-pts-card { border-top-color: var(--accent-green) !important; }
-.effort-pts-value { color: var(--accent-green) !important; }
 
 /* ── PR banner ────────────────────────────────── */
 
-.pr-banner {
-  display: flex; align-items: center; gap: 0.75rem;
-  background: linear-gradient(135deg, color-mix(in oklab, var(--accent-green) 8%, transparent), color-mix(in oklab, var(--accent-green) 2%, transparent));
-  border: 1px solid color-mix(in oklab, var(--accent-green) 25%, transparent);
-  border-radius: var(--r);
-  padding: 0.85rem 1.1rem;
-  margin-bottom: 1.5rem;
-}
-.pr-banner-icon { font-size: 1.5rem; }
-.pr-banner-text {
-  font-family: var(--font-sans);
-  font-size: 1rem; font-weight: 700; color: var(--accent-green);
-  letter-spacing: 0.05em; text-transform: uppercase;
-}
-.pr-banner-sub {
-  font-family: var(--font-mono);
-  font-size: 0.7rem; color: var(--text-muted); margin-top: 0.1rem;
-}
-
 /* ── Leaderboard card ─────────────────────────── */
-
-.leaderboard-card {
-  display: flex; align-items: center; gap: 1rem;
-  padding: 1rem 1.25rem;
-  background: var(--bg-raised); border: 1px solid var(--fp-border);
-  border-radius: var(--r); margin-bottom: 1rem;
-}
-.leaderboard-rank-num {
-  font-family: var(--font-sans);
-  font-size: 2.2rem; font-weight: 900; color: var(--accent-alt);
-  line-height: 1;
-}
-.leaderboard-rank-of {
-  font-family: var(--font-mono);
-  font-size: 0.7rem; color: var(--text-muted); margin-top: 0.1rem;
-}
-.leaderboard-pct-bar {
-  flex: 1; height: 6px; background: var(--bg);
-  border-radius: 3px; overflow: hidden;
-}
-.leaderboard-pct-fill {
-  height: 100%; background: var(--accent-alt);
-  border-radius: 3px; transition: width 0.6s ease;
-}
-.leaderboard-pct-label {
-  font-family: var(--font-sans);
-  font-size: 0.82rem; font-weight: 700; color: var(--text-muted);
-  white-space: nowrap;
-}
 
 /* ── Class info card ──────────────────────────── */
 
-.class-info-card {
-  padding: 1rem 1.25rem;
-  background: var(--bg-raised); border: 1px solid var(--fp-border);
-  border-radius: var(--r); margin-bottom: 1rem;
-}
-.class-description {
-  font-family: var(--font-sans);
-  font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;
-  margin-bottom: 0.6rem;
-}
-.class-difficulty {
-  display: flex; align-items: center; gap: 0.5rem;
-}
-.difficulty-label {
-  font-family: var(--font-sans);
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--text-dim);
-}
-.difficulty-pips { display: flex; gap: 2px; }
-.difficulty-pip {
-  width: 10px; height: 10px; border-radius: 2px;
-  background: var(--fp-border);
-}
-.difficulty-pip--filled { background: var(--accent); }
-.difficulty-num {
-  font-family: var(--font-mono);
-  font-size: 0.72rem; color: var(--text-muted);
-}
-
 /* ── Achievements row ─────────────────────────── */
-
-.achievements-row {
-  display: flex; flex-wrap: wrap; gap: 0.6rem;
-  padding: 1rem 0 0.25rem;
-}
-.achievement-badge {
-  display: flex; align-items: center; gap: 0.55rem;
-  background: var(--bg-raised); border: 1px solid var(--border-accent);
-  border-radius: var(--r); padding: 0.5rem 0.75rem;
-  min-width: 0;
-}
-.achievement-badge img {
-  width: 32px; height: 32px; object-fit: contain; flex-shrink: 0;
-}
-.achievement-badge-text {}
-.achievement-badge-name {
-  font-family: var(--font-sans);
-  font-size: 0.82rem; font-weight: 700; color: var(--text);
-}
-.achievement-badge-desc {
-  font-family: var(--font-mono);
-  font-size: 0.62rem; color: var(--text-muted); margin-top: 0.1rem;
-}
-.achievement-badge-count {
-  font-family: var(--font-mono);
-  font-size: 0.6rem; color: var(--accent); margin-top: 0.1rem;
-}
 
 /* ── Movement tracker table ───────────────────── */
 
-.movement-table-wrap { overflow-x: auto; }
-
-.movement-table {
-  width: 100%; border-collapse: collapse;
-  font-family: var(--font-mono); font-size: 0.78rem;
-}
-.movement-table th {
-  font-family: var(--font-sans);
-  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-dim);
-  text-align: left; padding: 0.35rem 0.75rem;
-  border-bottom: 1px solid var(--fp-border);
-}
-.movement-table td {
-  padding: 0.55rem 0.75rem;
-  border-bottom: 1px solid var(--bg);
-  color: var(--text);
-  vertical-align: middle;
-}
-.movement-table tr:hover td { background: var(--bg-hover); }
-
 /* Hand-entered exercise log: compact fixed number columns, name/notes share the rest.
    min-width makes it scroll inside .movement-table-wrap on phones instead of squashing. */
-.manual-log-table { table-layout: fixed; min-width: 48rem; }
-.manual-log-table th, .manual-log-table td { padding-left: 0.4rem; padding-right: 0.4rem; }
-.manual-log-table .col-num { width: 4.25rem; }
-.manual-log-table .col-weight { width: 5rem; }
-.manual-log-table .col-volume { width: 10.5rem; text-align: right; }
-.manual-log-table .col-effort { width: 8.5rem; }
-.manual-log-table .form-select { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.4rem 0.35rem; }
-.weight-rec {
-  margin-top: 0.2rem; font-family: var(--font-sans);
-  font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted);
-  cursor: help;
-}
-.weight-rec--up { color: var(--accent); }
-.manual-log-table .volume-hint { font-size: 0.66rem; color: var(--text-dim); white-space: normal; }
-.manual-log-table .form-input { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.4rem 0.5rem; }
-.movement-table tr.movement-hit td { color: var(--text); }
-.movement-table tr.movement-miss td { opacity: 0.65; }
 
-.movement-name-cell {
-  font-family: var(--font-sans);
-  font-size: 0.88rem; font-weight: 700;
-  color: var(--text);
-}
 .movement-tag {
   display: inline-block; margin-left: 0.4rem;
   font-family: var(--font-sans);
@@ -768,48 +338,8 @@ a:hover { text-decoration: underline; }
   background: color-mix(in oklab, var(--accent) 8%, transparent); border: 1px solid color-mix(in oklab, var(--accent) 19%, transparent);
   border-radius: 3px; padding: 0 0.35rem;
 }
-.movement-target-icon {
-  font-size: 0.75rem;
-  margin-right: 0.2rem;
-}
-.weight-cat-heavy { color: var(--accent-red); }
-.weight-cat-medium { color: var(--accent-alt); }
-.weight-cat-light { color: var(--accent-green); }
-.weight-cat-other { color: var(--text-muted); }
-
-.movement-summary-row {
-  display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem;
-  margin-bottom: 1rem;
-}
-.movement-summary-item {
-  font-family: var(--font-sans);
-}
-.movement-summary-num {
-  font-size: 1.4rem; font-weight: 900; color: var(--text);
-}
-.movement-summary-label {
-  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--text-muted); margin-top: -0.1rem;
-}
 
 /* Tracker tier badge */
-.tier-badge {
-  display: inline-flex; align-items: center; gap: 0.3rem;
-  font-family: var(--font-sans);
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 0.15rem 0.6rem;
-  border-radius: 3px;
-}
-.tier-badge--gold {
-  color: #FFD700; background: #ffd70015; border: 1px solid #ffd70040;
-}
-.tier-badge--silver {
-  color: #C0C0C0; background: #c0c0c015; border: 1px solid #c0c0c040;
-}
-.tier-badge--bronze {
-  color: #CD7F32; background: #cd7f3215; border: 1px solid #cd7f3240;
-}
 
 /* ── Compare stats table ─────────────────────── */
 .compare-stats-table td:first-child {
@@ -856,12 +386,8 @@ a:hover { text-decoration: underline; }
 /* ── Light mode overrides for hardcoded colors ── */
 
 /* Tier badges: gold/silver need darkening on light bg */
-[data-theme="light"] .tier-badge--gold   { color: #7a5c00; background: #ffd70020; border-color: #ffd70055; }
-[data-theme="light"] .tier-badge--silver { color: #505060; background: #c0c0c020; border-color: #c0c0c055; }
-[data-theme="light"] .tier-badge--bronze { color: #6e3d10; background: #cd7f3220; border-color: #cd7f3255; }
 
 /* Muscle "full body" tag: lavender is borderline on white */
-[data-theme="light"] .muscle-tag--full { color: #7a30a0; border-color: #7a30a0; background: #7a30a010; }
 
 /* ── Interventions ─────────────────────────────── */
 
@@ -1709,8 +1235,6 @@ a:hover { text-decoration: underline; }
   .review-layout { grid-template-columns: 1fr !important; }
 
   /* ── Detail pages (cycling, run, strength, etc.): sidebar below ── */
-  .detail-layout { grid-template-columns: minmax(0, 1fr); }
-  .detail-sidebar { position: static; }
 
   /* ── Nutrition targets: single column ── */
   .targets-layout { grid-template-columns: 1fr !important; }
@@ -1804,7 +1328,4 @@ a:hover { text-decoration: underline; }
 }
 
 /* Difficulty in context (catalog.DifficultyRanker) + your effort per minute */
-.class-difficulty { flex-wrap: wrap; }
-.class-difficulty + .class-difficulty { margin-top: 0.4rem; }
-.difficulty-context { font-size: 0.78rem; color: var(--text-muted); }
-.difficulty-note { margin: 0.5rem 0 0; font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; }
+

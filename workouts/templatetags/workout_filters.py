@@ -468,6 +468,13 @@ def dict_get(d, key):
 
 
 @register.filter
+def discipline_color(slug):
+    """A discipline's DISCIPLINE_COLORS hex (for inline color/border styles)."""
+    from workouts.views import DISCIPLINE_COLORS
+    return DISCIPLINE_COLORS.get(slug or "", "#888888")
+
+
+@register.filter
 def nutrition_rows(_unused):
     """Returns (label, key, color) tuples for nutrition progress bars."""
     # Fixed chart slots (assets/css/app.css): Calories 1, Protein 2, Fat 3, Fiber 4, Carbs 5.
