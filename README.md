@@ -122,7 +122,16 @@ Tokens are saved to `~/.garminconnect/` and auto-refresh on subsequent syncs. Yo
 
 FitPulse saves the tokens, subscribes to weigh-in notifications, and imports your history. There's also a CLI flow: `venv/bin/python3 manage.py withings_login [--user USERNAME]` (uses `WITHINGS_REDIRECT_URI`).
 
-**8. Set up Google Health (optional)**
+**8. Set up welcome emails (optional)**
+
+New household members can get a welcome email with a link to choose their password. FitPulse sends it from a Gmail account:
+
+1. Turn on 2-Step Verification for the Gmail account, then create an app password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+2. Add `EMAIL_HOST_USER` (the Gmail address) and `EMAIL_HOST_PASSWORD` (the 16-character app password) to `.env`, and to Render's environment for production
+
+Without these, emails print to the server console instead of being sent, and you hand over the temporary password yourself.
+
+**9. Set up Google Health (optional)**
 
 1. Create a Google Cloud project, enable the Google Health API, and create OAuth 2.0 credentials
 2. Add `GOOGLE_HEALTH_CLIENT_ID` and `GOOGLE_HEALTH_CLIENT_SECRET` to `.env`
@@ -135,11 +144,12 @@ Refresh tokens expire after 7 days while the project is in Testing status, so **
 
 ## Adding a Household Member
 
-1. As the owner, go to **Settings → Users** (`/settings/users/`) → **New user**. Pick a starting set of features (for example "Nutrition only"); you can change individual features later.
-2. Copy the temporary password. It's shown once and never stored, so send it to them yourself.
-3. If they'll use Google Health: add their Google account as a test user in the Google Cloud console (see setup step 8), then tick **Google test user added** on their page in Users.
-4. They log in, choose a new password, and land on **Get Started**, which walks them through connecting their accounts and filling in their profiles. Their history imports in the background.
-5. On their page in Users you can turn AI on or off, set a monthly AI budget, change features, reset their password, or deactivate the account.
+1. As the owner, go to **Settings → Users** (`/settings/users/`) → **New user**. Enter their username and email, and pick a starting set of features (for example "Nutrition only"); you can change individual features later.
+2. They get a welcome email with a link to choose their password (it works once and expires after 3 days) and an outline of what Get Started will ask for. No password is ever sent by email.
+3. FitPulse also shows a temporary password once, as a fallback if the email doesn't arrive. It's never stored, so if you need it, send it to them yourself; they'll choose a new one when they log in.
+4. If they'll use Google Health: add their Google account as a test user in the Google Cloud console (see setup step 9), then tick **Google test user added** on their page in Users.
+5. They land on **Get Started**, which walks them through connecting their accounts and filling in their profiles. Their history imports in the background.
+6. On their page in Users you can change their email and resend the welcome link, turn AI on or off, set a monthly AI budget, change features, reset their password, or deactivate the account.
 
 ---
 

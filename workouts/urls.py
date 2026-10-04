@@ -164,6 +164,7 @@ urlpatterns = [
          name="admin_user_reset_onboarding"),
     path("settings/users/<int:pk>/gh-test-user/", admin_views.admin_user_gh_test_user,
          name="admin_user_gh_test_user"),
+    path("settings/users/<int:pk>/welcome/", admin_views.admin_user_welcome, name="admin_user_welcome"),
     # Get Started onboarding + Withings web OAuth
     path("get-started/", onboarding_views.get_started, name="get_started"),
     path("get-started/skip/<str:source>/", onboarding_views.gs_skip, name="gs_skip"),
