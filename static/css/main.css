@@ -47,6 +47,12 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Tailwind's Preflight (base layer, below this legacy layer) resets browser
+   defaults this file relied on. Form controls inherited body line-height (1.6)
+   and grew taller; put back the browser's "normal". Zero specificity, so every
+   rule below still wins. Goes away with this file (Tailwind 12). */
+:where(button, input, select, textarea) { line-height: normal; }
+
 html { font-size: 16px; }
 
 body {
@@ -2789,7 +2795,7 @@ a:hover { text-decoration: underline; }
 
 /* ── Auth ─────────────────────────────────────────────────── */
 .login-wrap { max-width: 360px; margin: 80px auto; padding: 24px; }
-.login-wrap h1 { text-align: center; margin-bottom: 24px; letter-spacing: 2px; }
+.login-wrap h1 { text-align: center; margin-bottom: 24px; letter-spacing: 2px; font-size: 2em; font-weight: 700; }  /* browser default, removed by Preflight */
 .login-form { display: flex; flex-direction: column; gap: 12px; }
 .login-form label { font-size: 0.85em; opacity: 0.7; }
 .login-form input { padding: 10px; font-size: 1em; }
@@ -3237,6 +3243,7 @@ a:hover { text-decoration: underline; }
 }
 
 .chat-msg-assistant ul.chat-list {
+  list-style: disc;  /* browser default, removed by Preflight */
   margin: 0.2em 0 0.6em;
   padding-left: 1.1em;
   display: flex;
@@ -3364,7 +3371,7 @@ a:hover { text-decoration: underline; }
 .gs-card { margin-bottom: 1.25rem; }
 .gs-card-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
 .gs-copy { font-family: 'Barlow', sans-serif; font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; }
-.gs-copy ol { padding-left: 1.25rem; }
+.gs-copy ol { padding-left: 1.25rem; list-style: decimal; }  /* Preflight removes list markers */
 .gs-copy li { margin-bottom: 0.35rem; }
 .gs-line { font-size: 0.9rem; margin: 0 0 0.6rem; }
 .gs-inline summary { cursor: pointer; color: var(--text-muted); font-size: 0.82rem; display: inline; }

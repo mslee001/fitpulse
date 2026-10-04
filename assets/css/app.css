@@ -1,0 +1,24 @@
+/* FitPulse styles: Tailwind CSS 4 + daisyUI 5.
+   Build: scripts/css.sh build. Never edit static/css/app.css by hand. */
+
+/* Layer order. "legacy" sits above Tailwind's reset but below every utility and
+   daisyUI class, so old pages keep working and converted markup wins. */
+@layer theme, base, legacy, components, utilities;
+
+@import "tailwindcss" source(none);
+@import "../../static/css/main.css" layer(legacy);
+
+/* Where Tailwind looks for class names. source(none) above turns off automatic
+   detection, which would scan the whole repo (including untracked files) and make
+   the build depend on files that aren't committed. */
+@source "../../templates";
+@source "../../workouts";
+
+@plugin "./vendor/daisyui.mjs" {
+  themes: false;
+  logs: false;
+  /* TEMPORARY (removed in 02): these daisyUI components share class names with
+     today's markup (btn, card, badge, stat-value) and would restyle every page
+     before the themes and renames exist. */
+  exclude: button, card, badge, stat;
+}
