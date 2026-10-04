@@ -3432,3 +3432,7 @@ a:hover { text-decoration: underline; }
 .difficulty-context { font-size: 0.78rem; color: var(--text-muted); }
 .difficulty-note { margin: 0.5rem 0 0; font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; }
 .workout-difficulty { font-size: 0.75rem; color: var(--text-muted); margin: 0.15rem 0 0.35rem; }
+
+/* Training plan pace (form zones list, review pace card) */
+.tp-zones { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; padding-left: 0; }
+.tp-pace { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid var(--border); font-size: 0.86rem; }

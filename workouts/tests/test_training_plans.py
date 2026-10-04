@@ -603,3 +603,131 @@ class JsonReplyTests(TwoUserTestCase):
         with patch("workouts.llm.requests.post", return_value=self._reply("Sure! Here it is:\n{\"ok\": true}")):
             self.assertEqual(llm.call_json("p", user=self.a, feature="ai_program_tools", model=llm.SONNET),
                              {"ok": True})
+
+
+ZONES_L4 = [  # Peloton Level 4 zone paces, decimal min/mi (from json_response_examples)
+    {"name": "Recovery", "fast_pace": 16.13, "slow_pace": 20.0}, {"name": "Easy", "fast_pace": 14.38, "slow_pace": 15.47},
+    {"name": "Moderate", "fast_pace": 13.2, "slow_pace": 14.17}, {"name": "Challenging", "fast_pace": 12.0, "slow_pace": 13.03},
+    {"name": "Hard", "fast_pace": 11.07, "slow_pace": 11.46}, {"name": "Very Hard", "fast_pace": 9.5, "slow_pace": 10.55},
+    {"name": "Max", "fast_pace": 4.48, "slow_pace": 9.41},
+]
+
+
+class PaceTests(PlanTestCase):
+    def paced_run(self, d, minutes=30, miles=2.6, level=4, wid=None):
+        w = self.run_workout(self.a, d, minutes=minutes, wid=wid or f"paced-{d}")
+        w.distance_miles = miles
+        w.avg_pace_seconds = round(minutes * 60 / miles)
+        w.performance_graph_json = {"pace_level": f"Level {level}", "pace_zones": ZONES_L4}
+        w.save()
+        return w
+
+    def test_zone_for_pace_uses_the_chart(self):
+        self.assertEqual(tp.zone_for_pace(4, 11.2 * 60), "Hard")            # 5.36 mph, Hard 5.1–5.4
+        self.assertEqual(tp.zone_for_pace(4, 11.8 * 60), "Challenging")     # 5.08 mph
+        self.assertEqual(tp.zone_for_pace(4, 3600 / 4.15), "Easy")           # in the chart's 4.1–4.2 rounding gap
+        self.assertEqual(tp.zone_for_pace(4, 8.0 * 60), "Max")
+        self.assertEqual(tp.zone_for_pace(10, 4.5 * 60), "faster than Max") # 13.3 mph
+
+    def test_race_pace_level(self):
+        self.assertEqual(tp.race_pace_level("5k", round(1680 / 3.10686)), 6)    # 28:00 5K → Hard at Level 6
+        self.assertEqual(tp.race_pace_level("10k", round(2400 / 6.21371)), 10)  # 40:00 10K → Challenging at 10
+        self.assertIsNone(tp.race_pace_level("5k", round(900 / 3.10686)))       # 15:00 5K is beyond Level 10
+
+    def test_latest_pace_level_from_performance_graph(self):
+        self.paced_run(TODAY - timedelta(days=20), level=3, wid="old")
+        self.paced_run(TODAY - timedelta(days=2), level=4, wid="new")
+        level = tp.latest_pace_level(self.a)
+        self.assertEqual(level["level"], 4)
+        self.assertEqual(level["zones"][4]["name"], "Hard")
+
+    def test_race_estimate_riegel(self):
+        self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=3.0)
+        est = tp.race_estimate(self.a, "5k", TODAY)
+        self.assertEqual(est["seconds"], round(1800 * (3.10686 / 3.0) ** 1.06))
+
+    def test_profile_goal_pace_gap_zone_and_long_run(self):
+        self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=3.0)
+        inputs = self.inputs(goal="5k", target_time="28:00")
+        p = inputs["pace"]
+        self.assertEqual(p["goal_pace_s"], round(1680 / 3.10686))            # 9:01/mi
+        self.assertEqual(p["goal_zone"], "Max")                      # 6.66 mph at Level 4
+        self.assertEqual(p["race_level"], 6)
+        self.assertGreater(p["gap_pct"], 0)
+        self.assertEqual(p["long_run_min"], 45)                              # 1.25 × 28 min → 35, floor 45
+        self.assertEqual(self.inputs(goal="10k", target_time="55:00")["pace"]["long_run_min"], 70)
+
+    def test_forty_minute_race_long_run(self):
+        self.assertEqual(self.inputs(goal="10k", target_time="40:00")["pace"]["long_run_min"], 50)
+
+    def test_level_override_uses_the_chart_for_that_level(self):
+        self.paced_run(TODAY - timedelta(days=3))
+        p = self.inputs(goal="5k", target_time="28:00", pace_level="6")["pace"]
+        self.assertEqual((p["level"], p["detected_level"], p["goal_zone"]), (6, 4, "Hard"))
+
+    def test_context_has_pace_section(self):
+        self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=3.0)
+        text = tp.build_fitness_context(self.a, self.inputs(goal="5k", target_time="28:00"), today=TODAY)
+        self.assertIn("PACE", text)
+        self.assertIn("Peloton pace level: Level 4", text)
+        self.assertIn("Hard 11:07–11:46", text)
+        self.assertIn("Race-pace level: Level 6", text)
+        self.assertIn("2 levels to climb", text)
+        self.assertIn("Goal: 5K in 28:00 = 9:01/mi", text)
+        self.assertIn("Long run target: build to at least 45 min", text)
+
+    def test_stretch_goal_flag(self):
+        self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=2.5)      # ≈ 38-min 5K estimate
+        p = self.inputs(goal="5k", target_time="25:00")["pace"]
+        self.assertTrue(p["stretch"])
+
+    def test_validate_keeps_pace_zone_and_warns_on_short_long_run(self):
+        inputs = self.inputs(goal="10k", target_time="40:00")                  # long run target 50 min
+        _, allowed = tp.catalog_menu(inputs)
+        spec = full_spec()
+        for wk in spec["weeks"]:
+            wk["slots"][0]["pace_zone"] = "hard"
+            wk["slots"][1]["duration_min"] = 45
+        spec["weeks"][1]["slots"].append(spec_slot(5, tid="t_str", disc="stretching", minutes=20, pace_zone="Easy"))
+        clean, warnings = tp.validate_spec(spec, inputs, allowed)
+        self.assertEqual(clean["weeks"][0]["slots"][0]["pace_zone"], "Hard")
+        stretch = next(s for s in clean["weeks"][1]["slots"] if s["discipline"] == "stretching")
+        self.assertEqual(stretch["pace_zone"], "")
+        self.assertTrue(any("peaks at 45 min" in w for w in warnings))
+
+    def test_picker_prefers_pace_target_classes_for_tread_runs(self):
+        PelotonClass.objects.filter(class_type_id="t_end", duration_seconds=1800).update(is_available=False)
+        make_class("nopace-new", "t_end", 30, aired_days_ago=1)
+        for i in range(3):
+            c = make_class(f"paced-{i}", "t_end", 30, aired_days_ago=30 + i)
+            c.has_tread_pace_target = True
+            c.save()
+        with patch.object(tp, "MIN_TYPE_CLASSES", 1):
+            inputs = self.inputs()
+            _, allowed = tp.catalog_menu(inputs)
+            spec = full_spec()
+            spec["weeks"][0]["slots"] = [spec_slot(3, intensity="moderate")]
+            clean, _ = tp.validate_spec(spec, inputs, allowed)
+            picks = tp.pick_classes(self.a, clean, inputs, today=TODAY)
+        self.assertTrue(picks["1-3-0"]["ride_id"].startswith("paced-"))
+
+    def test_prompt_has_pace_rules_only_with_a_target(self):
+        from workouts.ai import _training_plan_prompt
+        with_target = _training_plan_prompt(self.inputs(goal="10k", target_time="40:00"), "", "")
+        self.assertIn("13. LONG RUN: build the weekly long run to at least 50 min", with_target)
+        self.assertIn("11. PACE", with_target)
+        without = _training_plan_prompt(self.inputs(goal="10k", target_time=""), "", "")
+        self.assertNotIn("11. PACE", without)
+        self.assertIn('"pace_zone"', without)
+
+    def test_notes_include_zone(self):
+        self.assertEqual(tp.slot_notes({"purpose": "race-pace practice", "pace_zone": "Hard"}, "Becs Gentry"),
+                         "race-pace practice · Hard zone · Becs Gentry")
+
+    def test_form_shows_pace_card(self):
+        self.paced_run(TODAY - timedelta(days=3))
+        page = self.client_a.get(reverse("program_training_plan_new"))
+        self.assertContains(page, "Your Peloton pace level")
+        self.assertContains(page, "Level 4")
+        self.assertContains(page, "11:07–11:46/mi")
+        self.assertContains(page, '"chart"')

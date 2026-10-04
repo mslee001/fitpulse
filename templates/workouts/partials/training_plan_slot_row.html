@@ -2,7 +2,7 @@
 <div class="tp-row" id="tp-row-{{ r.key }}">
   <div class="tp-row-spec">
     <span class="tp-day">{{ r.day_name }}</span>
-    <span>{{ r.slot.class_type }} · {{ r.slot.duration_min }} min · <span class="tp-int tp-int--{{ r.slot.intensity }}">{{ r.slot.intensity }}</span>{% if r.slot.setting == "outdoor" %} · outdoor{% endif %}{% if r.slot.optional %} · optional{% endif %}</span>
+    <span>{{ r.slot.class_type }} · {{ r.slot.duration_min }} min · <span class="tp-int tp-int--{{ r.slot.intensity }}">{{ r.slot.intensity }}</span>{% if r.slot.pace_zone %} · {{ r.slot.pace_zone }} zone{% endif %}{% if r.slot.setting == "outdoor" %} · outdoor{% endif %}{% if r.slot.optional %} · optional{% endif %}</span>
   </div>
   <div class="tp-row-class">
     {% if r.cls %}

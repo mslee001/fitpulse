@@ -26,6 +26,7 @@ def _form_values(inputs):
     if inputs.get("target_time"):
         v["target_time"] = tp._fmt_hms(inputs["target_time"])
     v["level"] = inputs.get("level_choice", "auto")
+    v["pace_level"] = inputs.get("pace_level_choice", "auto")
     return v
 
 
@@ -54,14 +55,23 @@ def program_training_plan_new(request):
     else:
         values = {"goal": "5k", "start_date": tp.default_start().isoformat(), "max_weekday_min": 45,
                   "max_weekend_min": 75, "setting": "tread", "mode": "standalone", "strength_per_week": 2,
-                  "level": "auto", "days": [], "weeks": 8}
+                  "level": "auto", "pace_level": "auto", "days": [], "weeks": 8}
         src = request.GET.get("from")
         if src and src.isdigit():
             prior = _drafts(request).filter(pk=src).first()
             if prior:
                 values.update(_form_values(prior.inputs_json))
     assessment = tp.assess_running_level(request.user)
+    pace_level = tp.latest_pace_level(request.user)
     return render(request, "workouts/program_training_plan_new.html", {
+        "pace_level": pace_level, "pace_levels": tp.PACE_LEVELS,
+        "pace_zones_display": [(z["name"], tp._mph_to_pace(z["hi"]), tp._mph_to_pace(z["lo"]))
+                               for z in tp.chart_zones(pace_level["level"])
+                               if z["name"] not in ("Recovery", "Max")] if pace_level else [],
+        "pace_json": json.dumps({"chart": tp.PELOTON_PACE_CHART, "zoneOrder": tp.PACE_ZONES,
+                                 "level": (pace_level or {}).get("level"), "raceZone": tp.RACE_PACE_ZONE,
+                                 "miles": tp.RACE_MILES, "longMultiple": tp.LONG_RUN_RACE_MULTIPLE,
+                                 "longFloor": tp.LONG_RUN_FLOOR_MIN}),
         "catalog_empty": catalog_empty, "is_owner": is_owner(request.user),
         "errors": errors, "values": values, "assessment": assessment,
         "goals": tp.GOALS, "levels": tp.LEVELS, "days": tp.DAY_NAMES.items(),
@@ -126,7 +136,7 @@ def program_training_plan_draft(request, pk):
     if draft.status == "ready":
         start, race = tp.plan_dates(draft.inputs_json)
         ctx.update({
-            "weeks": _review_weeks(draft), "start": start, "race": race,
+            "weeks": _review_weeks(draft), "start": start, "race": race, "pace": _pace_summary(draft),
             "goal_label": tp.GOALS.get(draft.inputs_json.get("goal"), ""),
             "companion": (Program.objects.for_user(request.user)
                           .filter(pk=draft.inputs_json.get("companion_program_id")).first()),
@@ -134,6 +144,30 @@ def program_training_plan_draft(request, pk):
                              if draft.inputs_json.get("mode") == "standalone" else []),
         })
     return render(request, "workouts/program_training_plan_draft.html", ctx)
+
+
+def _pace_summary(draft):
+    """Display lines for the review page's pace card (from inputs["pace"] + the spec)."""
+    inputs, spec = draft.inputs_json, draft.spec_json
+    p = inputs.get("pace") or {}
+    lines = []
+    if p.get("level"):
+        lines.append(f"Peloton pace level {p['level']}")
+    if p.get("goal_pace_s"):
+        goal = f"Goal pace {tp._fmt_pace(p['goal_pace_s'])}"
+        if p.get("goal_zone"):
+            goal += f" ({p['goal_zone']} zone at Level {p['level']})"
+        lines.append(goal)
+        if p.get("race_level"):
+            lines.append(f"Race-pace level {p['race_level']}")
+    est = p.get("estimate")
+    if est:
+        lines.append(f"Current estimate {tp._fmt_hms(est['seconds'])} from training runs"
+                     + (f" · {p['gap_pct']}% to go" if p.get("gap_pct") and p["gap_pct"] > 0 else ""))
+    longest = max((sl["duration_min"] for _, sl in tp.iter_slots(spec) if sl["discipline"] == "running"), default=0)
+    if longest:
+        lines.append(f"Longest run {longest} min" + (f" (target {p['long_run_min']}+)" if p.get("long_run_min") else ""))
+    return {"lines": lines, "guidance": spec.get("pace_guidance", ""), "stretch": p.get("stretch")}
 
 
 def program_training_plan_status(request, pk):

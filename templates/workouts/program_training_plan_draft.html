@@ -25,6 +25,13 @@
     <ul class="tp-evidence">{% for w in draft.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
   </details>
   {% endif %}
+  {% if pace.lines %}
+  <div class="tp-pace">
+    <span class="difficulty-label">Pace</span> {{ pace.lines|join:" · " }}
+    {% if pace.stretch %}<span class="badge badge-muted">Stretch goal</span>{% endif %}
+    {% if pace.guidance %}<p class="stat-sub" style="margin:0.35rem 0 0">{{ pace.guidance }}</p>{% endif %}
+  </div>
+  {% endif %}
   {% for p in other_active %}
   <p class="stat-sub" style="margin:0.6rem 0 0">You also have an active cycle of {{ p.name }}. End it from its page if this plan replaces it.</p>
   {% endfor %}
