@@ -622,7 +622,7 @@ EMAIL_HOST_PASSWORD=...                     # Google app password for it
 DJANGO_DEBUG=True
 ```
 
-`WITHINGS_CALLBACK_URL` is also read by the web connect flow (it subscribes the webhook right after OAuth). The Withings web flow's callback, `https://fitpulse-jp2p.onrender.com/auth/withings/callback/` (plus `http://localhost:8000/auth/withings/callback/` if the dashboard allows a second one), must be registered in the Withings developer dashboard's app settings — Withings rejects unregistered callbacks.
+`WITHINGS_CALLBACK_URL` is also read by the web connect flow (it subscribes the webhook right after OAuth). Both `https://fitpulse-jp2p.onrender.com/auth/withings/callback/` (OAuth redirect) and `https://fitpulse-jp2p.onrender.com/api/withings/webhook/` (notifications) must be listed in the Withings developer dashboard's Callback URLs. A subscribe to an unlisted webhook URL fails with status 293 ("The callback URL is either absent or incorrect"), as does a webhook that doesn't answer Withings' HEAD reachability check with 2xx (`withings_webhook` accepts HEAD for this). Withings no longer accepts `localhost` callbacks.
 
 Must be set on Render separately from local `.env` — a missing `GOOGLE_HEALTH_CLIENT_ID`/`SECRET` in production surfaces as token-refresh failures ("Could not determine client ID from request") only once real webhook traffic actually reaches the sync code, not at deploy time.
 
