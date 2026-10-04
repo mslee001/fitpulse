@@ -200,18 +200,55 @@ class OnboardingTests(TwoUserTestCase):
             self.client_c.get(reverse("withings_oauth_callback"), {"state": state, "code": "c"})
         self.assertFalse(WithingsAuth.objects.filter(user=self.carol).exists())
 
+    def _inline_threads(self):
+        """Run background-thread targets inline (and leave the test's DB connection open)."""
+        fake = lambda target, args, daemon: type("T", (), {"start": lambda _s: target(*args)})()
+        return (patch("workouts.background.threading.Thread", side_effect=fake),
+                patch("workouts.background.close_old_connections"))
+
     def test_withings_success(self):
         state = self.start_withings()
+        threads, conns = self._inline_threads()
         with patch("workouts.services.withings_client.WithingsClient.request_tokens", self._token("777")), \
                 patch("workouts.services.withings_client.WithingsClient.subscribe_webhook") as subscribe, \
-                patch("workouts.onboarding_views.settings.WITHINGS_CALLBACK_URL", "https://x/api/withings/webhook/", create=True):
+                patch("workouts.onboarding_views.settings.WITHINGS_CALLBACK_URL", "https://x/api/withings/webhook/", create=True), \
+                threads, conns:
             subscribe.side_effect = lambda url, appli=1: WithingsAuth.objects.filter(user=self.carol).update(
                 webhook_subscription_active=True)
             resp = self.client_c.get(reverse("withings_oauth_callback"), {"state": state, "code": "c"})
         self.assertRedirects(resp, "/get-started/#withings", fetch_redirect_response=False)
+        subscribe.assert_called_once_with("https://x/api/withings/webhook/")
         self.assertEqual(WithingsAuth.objects.get(user=self.carol).userid, "777")
         self.assertTrue(Integration.objects.get(user=self.carol, key="withings").is_authenticated)
         self.assertEqual(self.step("withings").status, "done")
+
+    def test_withings_subscribe_runs_outside_the_callback_request(self):
+        # Withings HEAD-checks the callback URL before answering the subscribe; doing it
+        # inside this request deadlocks a single-worker server (production 293s).
+        state = self.start_withings()
+        with patch("workouts.services.withings_client.WithingsClient.request_tokens", self._token("778")), \
+                patch("workouts.services.withings_client.WithingsClient.subscribe_webhook") as subscribe, \
+                patch("workouts.onboarding_views.settings.WITHINGS_CALLBACK_URL", "https://x/api/withings/webhook/", create=True), \
+                patch("workouts.background.threading.Thread") as thread:
+            self.client_c.get(reverse("withings_oauth_callback"), {"state": state, "code": "c"})
+        subscribe.assert_not_called()                 # not inline
+        from workouts.background import _subscribe_withings
+        self.assertIs(thread.call_args.kwargs["target"], _subscribe_withings)
+        thread.return_value.start.assert_called_once()
+
+    def test_withings_subscribe_failure_is_recorded(self):
+        from workouts.background import _subscribe_withings
+        from workouts.models import WebhookError
+        WithingsAuth.objects.create(user=self.carol, userid="779", access_token="a", refresh_token="r",
+                                    token_expires_at=NOW + timedelta(hours=1))
+        with patch("workouts.services.withings_client.WithingsClient.subscribe_webhook",
+                   side_effect=RuntimeError("Withings subscribe failed: 293")), \
+                patch("workouts.background.close_old_connections"):
+            _subscribe_withings(self.carol.pk, "https://x/api/withings/webhook/")
+        err = WebhookError.objects.get(source="withings_subscribe")
+        self.assertEqual(err.user, self.carol)
+        self.assertIn("293", err.summary)
+        self.assertEqual(self.step("withings").status, "todo")
 
     def test_withings_callback_is_not_public(self):
         self.assertNotIn("/auth/withings/callback/", PUBLIC_PATHS)

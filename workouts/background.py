@@ -43,6 +43,39 @@ def start_backfill(user, source):
     return job
 
 
+def start_withings_subscribe(user, callback_url):
+    """Subscribe the user's Withings account to weigh-in notifications in a
+    background thread.
+
+    It can't run inside the OAuth callback request: Withings checks the
+    callback URL with a HEAD request *before* answering the subscribe call,
+    and production's single gunicorn worker is busy with that very request, so
+    the check queues until Withings gives up and answers 293 ("callback URL is
+    either absent or incorrect"). Seen in production 2026-10-03. From a thread,
+    the worker is free to answer the check. Success marks the user's
+    WithingsAuth subscribed; failure is recorded at /settings/integrations/errors/."""
+    thread = threading.Thread(target=_subscribe_withings, args=(user.pk, callback_url), daemon=True)
+    thread.start()
+    return thread
+
+
+def _subscribe_withings(user_pk, callback_url):
+    from django.contrib.auth import get_user_model
+    from .services.withings_client import WithingsClient
+
+    close_old_connections()
+    user = get_user_model().objects.get(pk=user_pk)
+    try:
+        WithingsClient(user).subscribe_webhook(callback_url)
+    except Exception as exc:
+        logger.warning("Withings webhook subscribe failed for user %s: %s", user_pk, exc)
+        WebhookError.record(source="withings_subscribe", user=user,
+                            summary=f"Couldn't turn on Withings weigh-in updates: {str(exc)[:200]}",
+                            detail=traceback.format_exc())
+    finally:
+        close_old_connections()
+
+
 def _error_from(result):
     if not isinstance(result, dict):
         return ""

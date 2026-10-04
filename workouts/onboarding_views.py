@@ -14,7 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .access import access_for
-from .background import ALL_SYNC, latest_job, start_backfill
+from .background import ALL_SYNC, latest_job, start_backfill, start_withings_subscribe
 from .models import AthleteProfile, Integration, NutritionProfile, UserSettings
 from .onboarding import DATA_SOURCES, can_finish, missing_steps, steps_for
 
@@ -203,16 +203,16 @@ def withings_oauth_callback(request):
         Integration.ensure_for_user(request.user)
         Integration.objects.for_user(request.user).filter(key="withings").update(is_enabled=True, is_authenticated=True)
         callback_url = getattr(settings, "WITHINGS_CALLBACK_URL", "")
-        try:
-            if not callback_url:
-                raise RuntimeError("WITHINGS_CALLBACK_URL isn't set")
-            client.subscribe_webhook(callback_url)
-        except Exception as e:
-            logger.warning("Withings webhook subscribe failed for user %s: %s", request.user.pk, e)
-            messages.warning(request, f"Withings connected, but automatic weigh-in updates couldn't be "
-                                      f"turned on ({e}). Ask Megan to check it.")
+        if callback_url:
+            # In the background — see start_withings_subscribe for why it can't run here.
+            start_withings_subscribe(request.user, callback_url)
+        else:
+            logger.warning("WITHINGS_CALLBACK_URL isn't set; can't subscribe user %s", request.user.pk)
+            messages.warning(request, "Withings connected, but automatic weigh-in updates can't be turned on "
+                                      "because WITHINGS_CALLBACK_URL isn't set. Ask Megan to check it.")
         start_backfill(request.user, "withings")
-        messages.success(request, "Withings connected. Importing your weigh-ins…")
+        messages.success(request, "Withings connected. Turning on weigh-in updates and importing your "
+                                  "weigh-ins — refresh in a minute to see it finish.")
     except Exception as e:
         logger.exception("Withings OAuth callback failed")
         messages.error(request, f"Withings connection failed: {e}")
