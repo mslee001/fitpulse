@@ -47,7 +47,7 @@ def _reconcile_programs_safe(user):
     (cool-down walks/stretches) — run after syncs, since a recovery session usually
     syncs after its workout. Never raises: must not break a sync."""
     try:
-        return _programs.reconcile_program_extras()
+        return _programs.reconcile_program_extras(user)
     except Exception:
         logger.exception("program reconcile (any-class slots / recoveries) failed")
         return None
@@ -239,7 +239,7 @@ def _run_peloton_sync_all(user):
     page = 0
     total_created = total_updated = total_on_peloton = 0
     try:
-        client = _client()
+        client = _client(user)
         while True:
             raw = client.get_workouts(limit=limit, page=page)
             data = raw.get("data", [])
@@ -294,7 +294,7 @@ def _run_peloton_sync_new(user, days=None):
     page = 0
     total_created = total_updated = 0
     try:
-        client = _client()
+        client = _client(user)
         while True:
             raw = client.get_workouts(limit=limit, page=page, sort_by="-created")
             data = raw.get("data", [])
@@ -2881,7 +2881,7 @@ def _run_withings_sync_new(user) -> dict:
 
     total_created = total_updated = 0
     try:
-        client = _withings_client()
+        client = _withings_client(user)
         measurements = client.get_measurements(lastupdate=lastupdate)
         if measurements:
             total_created, total_updated = _upsert_measurements(user, measurements)
@@ -2907,7 +2907,7 @@ def _run_withings_sync_all(user) -> dict:
         return {**_integration_disabled_result("withings"), "created": 0, "updated": 0}
     total_created = total_updated = 0
     try:
-        client = _withings_client()
+        client = _withings_client(user)
         measurements = client.get_measurements()
         if measurements:
             total_created, total_updated = _upsert_measurements(user, measurements)
@@ -2928,7 +2928,7 @@ def _run_withings_sync_range(user, start: date, end: date) -> dict:
     """Pull measurements for a specific date range (inclusive). Returns summary dict."""
     total_created = total_updated = 0
     try:
-        client = _withings_client()
+        client = _withings_client(user)
         start_epoch = int(datetime(start.year, start.month, start.day, tzinfo=timezone.utc).timestamp())
         end_epoch   = int(datetime(end.year,   end.month,   end.day,   23, 59, 59, tzinfo=timezone.utc).timestamp())
         measurements = client.get_measurements(start_date=start_epoch, end_date=end_epoch)
