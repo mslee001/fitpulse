@@ -31,6 +31,10 @@ class PelotonNetworkError(Exception):
 # outlive it, and it keeps refreshes to about one a day.
 _REFRESH_MARGIN = timedelta(minutes=60)
 
+# The archive API caps pages at 100. A larger limit still returns 100 items but
+# computes page_count from the requested limit — never trust page_count.
+CATALOG_PAGE_SIZE = 100
+
 _EXPIRED_TOKEN_MSG = ("That Peloton sign-in token expired or was already used. "
                       "Copy a new one and paste it again.")
 
@@ -672,3 +676,11 @@ class PelotonClient:
     def get_browse_categories(self) -> list:
         data = self._get("/api/browse_categories", params={"library_type": "on_demand"})
         return data.get("browse_categories", [])
+
+    def get_archived_classes(self, category: str, page: int) -> dict:
+        """One page of the on-demand class library for a browse category
+        (lowercase slug — "Running" returns total 0), newest first."""
+        return self._get("/api/v2/ride/archived", params={
+            "browse_category": category.lower(), "content_format": "audio,video",
+            "limit": CATALOG_PAGE_SIZE, "page": page,
+            "sort_by": "original_air_time", "desc": "true"})

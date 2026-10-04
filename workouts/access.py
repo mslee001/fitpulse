@@ -119,6 +119,7 @@ CORE_URL_NAMES = {   # any logged-in, active user
 }
 OWNER_URL_NAMES = {  # superusers only
     "sync_garmin_new", "sync_garmin_all", "sync_garmin_wellness", "garmin_activity_history",
+    "catalog_sync_start",
 }
 ADMIN_URL_NAMES = {      # superusers only: /settings/users/
     "admin_users", "admin_user_new", "admin_user_detail", "admin_user_feature_toggle", "admin_user_ai",

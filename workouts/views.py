@@ -1257,7 +1257,16 @@ def integrations_settings_page(request):
     integrations = Integration.objects.for_user(request.user)
     if not request.user.is_superuser:
         integrations = integrations.exclude(key="garmin")
+    catalog = catalog_job = None
+    if request.user.is_superuser:
+        from .background import latest_job
+        from .catalog import catalog_status
+        from .onboarding_views import is_owner
+        if is_owner(request.user):
+            catalog, catalog_job = catalog_status(), latest_job(request.user, "catalog")
     return render(request, "workouts/integrations_settings.html", {
+        "catalog": catalog,
+        "catalog_job": catalog_job,
         "integrations": integrations,
         "peloton_auth": PelotonAuth.for_user(request.user),
         "now": timezone.now(),

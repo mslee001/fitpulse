@@ -103,6 +103,20 @@
           </form>
         </div>
       </details>
+
+      {% if catalog %}
+      <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);font-size:0.82rem">
+        <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+          <span style="color:var(--text-dim);min-width:120px">Class catalog</span>
+          <span style="color:var(--text-muted)">{% if catalog.total %}{{ catalog.total }} classes{% if catalog.last_synced %} · last synced {{ catalog.last_synced|date:"M j" }}{% endif %}{% else %}empty{% endif %}</span>
+          <form hx-post="{% url 'catalog_sync_start' %}" hx-target="#catalog-status" hx-swap="innerHTML" style="margin-left:auto">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-ghost">Refresh catalog</button>
+          </form>
+        </div>
+        <div id="catalog-status">{% include "workouts/partials/gs_sync_status.html" with job=catalog_job source="catalog" %}</div>
+      </div>
+      {% endif %}
     </div>
 
     <div class="chart-card">

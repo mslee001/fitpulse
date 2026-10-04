@@ -1680,6 +1680,85 @@ models.signals.post_save.connect(_create_user_access, sender=settings.AUTH_USER_
                                  dispatch_uid="workouts_create_user_access")
 
 
+# ---------------------------------------------------------------------------
+# Peloton class catalog — public Peloton data shared by every user. These three
+# models are the one deliberate exception to "every row has an owner": they
+# describe Peloton's library, not anyone's training. Synced by workouts/catalog.py.
+# ---------------------------------------------------------------------------
+
+class PelotonClassType(models.Model):
+    """Peloton class type lookup (from the class_types list on every archive
+    page). Global — not user-owned."""
+    id = models.CharField(primary_key=True, max_length=64)
+    name = models.CharField(max_length=120)
+    display_name = models.CharField(max_length=120, blank=True)
+    discipline = models.CharField(max_length=40, db_index=True)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.display_name or self.name} ({self.discipline})"
+
+
+class PelotonInstructor(models.Model):
+    """Peloton instructor (from the instructors list on archive pages). Global — not user-owned."""
+    id = models.CharField(primary_key=True, max_length=64)
+    name = models.CharField(max_length=120)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
+class PelotonClass(models.Model):
+    """One on-demand Peloton class (a "ride"). Global — not user-owned; synced
+    by workouts/catalog.py from /api/v2/ride/archived."""
+    ride_id = models.CharField(primary_key=True, max_length=64)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    discipline = models.CharField(max_length=40, db_index=True)        # fitness_discipline; pilates is "strength"
+    # ",strength,pilates," — the browse categories it was seen under. A delimited
+    # string, not JSON, so categories__contains=",pilates," works on SQLite too.
+    categories = models.CharField(max_length=200, blank=True, db_index=True)
+    class_type_id = models.CharField(max_length=64, blank=True, db_index=True)  # ride_type_id (primary type)
+    class_type_ids = models.JSONField(default=list, blank=True)
+    instructor_id = models.CharField(max_length=64, blank=True)
+    instructor_name = models.CharField(max_length=120, blank=True)     # denormalized from PelotonInstructor
+    duration_seconds = models.PositiveIntegerField(db_index=True)
+    length_seconds = models.PositiveIntegerField(null=True, blank=True)
+    # Member-rated 1–10, each rater judging against their own fitness — compare
+    # only within one class type + duration, never across types.
+    difficulty_estimate = models.FloatField(null=True, blank=True)
+    difficulty_level = models.CharField(max_length=20, blank=True)    # Peloton tag; set on <10% of classes
+    difficulty_rating_count = models.PositiveIntegerField(default=0)
+    overall_rating_avg = models.FloatField(null=True, blank=True)
+    overall_rating_count = models.PositiveIntegerField(default=0)
+    original_air_time = models.DateTimeField(db_index=True)
+    is_outdoor = models.BooleanField(default=False)
+    has_tread_pace_target = models.BooleanField(default=False)
+    equipment_tags = models.JSONField(default=list, blank=True)
+    is_explicit = models.BooleanField(default=False)
+    language = models.CharField(max_length=20, blank=True, default="english")
+    image_url = models.URLField(max_length=500, blank=True)
+    is_available = models.BooleanField(default=True, db_index=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [models.Index(fields=["discipline", "class_type_id", "duration_seconds"])]
+
+    def __str__(self):
+        return f"{self.title} ({self.ride_id})"
+
+    @property
+    def duration_min(self):
+        return round(self.duration_seconds / 60)
+
+    @property
+    def peloton_url(self):
+        return f"https://members.onepeloton.com/classes/player/{self.ride_id}"
+
+
 class SyncJob(models.Model):
     """A background first-time backfill (see background.start_backfill), polled by
     the Get Started page while it runs."""

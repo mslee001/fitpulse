@@ -173,6 +173,7 @@ urlpatterns = [
     path("get-started/finish/", onboarding_views.gs_finish, name="gs_finish"),
     path("get-started/status/<str:source>/", onboarding_views.gs_sync_status, name="gs_sync_status"),
     path("get-started/retry/<str:source>/", onboarding_views.gs_retry, name="gs_retry"),
+    path("settings/catalog/sync/", onboarding_views.catalog_sync_start, name="catalog_sync_start"),
     path("auth/withings/connect/", onboarding_views.withings_oauth_connect, name="withings_oauth_connect"),
     path("auth/withings/callback/", onboarding_views.withings_oauth_callback, name="withings_oauth_callback"),
 ]
