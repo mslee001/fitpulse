@@ -1,21 +1,38 @@
 """
 Peloton API client.
 
-Auth note: The old /auth/login endpoint is dead (403). This client uses the
-session cookie approach — credentials are stored per user in the PelotonAuth
-table. Rotate via /settings/integrations/ when sync starts returning 403.
+Auth: Peloton's web app signs in through Auth0 (auth.onepeloton.com). Each user
+pastes a refresh token once (see partials/peloton_token_help.html); this client
+trades it for 48-hour Bearer access tokens and saves every rotated refresh
+token on the user's PelotonAuth row. The old session cookie and /auth/login
+no longer work against the API.
 """
+
+import logging
+from datetime import timedelta
 
 import requests
 from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 class PelotonAuthError(Exception):
-    """Raised when the Peloton session cookie is missing or expired."""
+    """The user's Peloton sign-in is missing, expired or was rejected."""
 
 
 class PelotonNetworkError(Exception):
-    """Peloton couldn't be reached (retryable), as opposed to a rejected cookie."""
+    """Peloton couldn't be reached (retryable), as opposed to a rejected sign-in."""
+
+
+# Refresh when the access token has less than this left — a long sync can't
+# outlive it, and it keeps refreshes to about one a day.
+_REFRESH_MARGIN = timedelta(minutes=60)
+
+_EXPIRED_TOKEN_MSG = ("That Peloton sign-in token expired or was already used. "
+                      "Copy a new one and paste it again.")
 
 
 # Movement names in a class's segment data that aren't exercises — pacing cues,
@@ -70,47 +87,149 @@ class PelotonClient:
         from workouts.models import PelotonAuth
         self.user = user
         auth = PelotonAuth.for_user(user)
-        if not auth:
-            raise PelotonAuthError(
-                "No PelotonAuth row in DB. "
-                "Run: venv/bin/python3 manage.py migrate_peloton_creds  "
-                "(or paste credentials at /settings/integrations/)"
-            )
+        if not auth or not auth.refresh_token:
+            raise PelotonAuthError("Peloton isn't connected. Connect Peloton at /settings/integrations/")
+        self._auth_pk = auth.pk
+        self._access_token = auth.access_token
+        self._access_expires_at = auth.access_expires_at
         self.session = requests.Session()
-        self.session.cookies.set("peloton_session_id", auth.session_id)
         self.session.headers.update({"peloton-platform": "web"})
         self.user_id = auth.peloton_user_id
 
+    # -------------------------------------------------------------------------
+    # Auth
+    # -------------------------------------------------------------------------
+
     @staticmethod
-    def fetch_me(session_id: str) -> dict:
-        """Validate a pasted peloton_session_id cookie against /api/me. Returns
-        {"id", "username"} — the only keys read from the response. Raises
-        PelotonAuthError for a rejected cookie, PelotonNetworkError otherwise."""
+    def exchange_refresh_token(refresh_token: str) -> dict:
+        """Trade a refresh token for an access token at Peloton's Auth0.
+
+        Returns {"access_token", "refresh_token", "expires_at"}; "refresh_token"
+        is None when Auth0 didn't rotate (keep the old one). The token passed in
+        is spent either way. Never logs token values. Raises PelotonAuthError
+        when Auth0 rejects it, PelotonNetworkError on connection errors,
+        timeouts or 5xx."""
+        try:
+            resp = requests.post(
+                settings.PELOTON_AUTH_TOKEN_URL,
+                json={"grant_type": "refresh_token", "client_id": settings.PELOTON_WEB_CLIENT_ID,
+                      "refresh_token": refresh_token},
+                timeout=20,
+            )
+        except requests.RequestException as e:
+            raise PelotonNetworkError("Couldn't reach Peloton just now. Try again in a minute.") from e
+        if resp.status_code >= 500:
+            raise PelotonNetworkError(f"Peloton's sign-in service returned an error ({resp.status_code}). "
+                                      "Try again in a minute.")
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {}
+        if resp.status_code != 200 or not body.get("access_token"):
+            logger.warning("Peloton token refresh rejected: %s %s", resp.status_code, body.get("error", ""))
+            raise PelotonAuthError(_EXPIRED_TOKEN_MSG)
+        expires_in = int(body.get("expires_in") or 0)
+        return {
+            "access_token": body["access_token"],
+            "refresh_token": body.get("refresh_token") or None,
+            "expires_at": timezone.now() + timedelta(seconds=max(expires_in - 60, 0)),
+        }
+
+    @staticmethod
+    def fetch_me(access_token: str) -> dict:
+        """Check an access token against /api/me. Returns {"id", "username"} —
+        the only keys read from the response. Raises PelotonAuthError for a
+        rejected token, PelotonNetworkError otherwise."""
         try:
             resp = requests.get(
                 f"{PelotonClient.BASE_URL}/api/me",
-                cookies={"peloton_session_id": session_id},
-                headers={"peloton-platform": "web"},
+                headers={"Authorization": f"Bearer {access_token}", "peloton-platform": "web"},
                 timeout=15,
             )
         except requests.RequestException as e:
             raise PelotonNetworkError("Couldn't reach Peloton just now. Try again in a minute.") from e
         if resp.status_code in (401, 403):
-            raise PelotonAuthError("That cookie didn't work. It may have expired. Copy it again.")
+            raise PelotonAuthError("Peloton didn't accept that sign-in. Copy a new token and paste it again.")
         if resp.status_code >= 400:
             raise PelotonNetworkError(f"Peloton returned an error ({resp.status_code}). Try again in a minute.")
         data = resp.json()
         if not data.get("id"):
-            raise PelotonAuthError("That cookie didn't work. It may have expired. Copy it again.")
+            raise PelotonAuthError("Peloton didn't accept that sign-in. Copy a new token and paste it again.")
         return {"id": data["id"], "username": data.get("username") or ""}
+
+    def _token_fresh(self, token, expires_at):
+        return bool(token) and expires_at is not None and expires_at - timezone.now() > _REFRESH_MARGIN
+
+    def _use_token(self, token, expires_at):
+        self._access_token, self._access_expires_at = token, expires_at
+        self.session.headers["Authorization"] = f"Bearer {token}"
+
+    def _ensure_token(self, force=False):
+        """Make sure the session carries a usable access token, refreshing it
+        (and saving the rotated refresh token) when it's close to expiry.
+
+        Double-checked: the per-user lock serializes threads in this process,
+        and select_for_update re-reads the row so a thread that waited uses the
+        token the first one just saved instead of spending a refresh token
+        twice (a reused refresh token can make Auth0 revoke the whole family).
+
+        Known, accepted gap: if the process dies after Auth0 answers but before
+        the commit, the rotated token is lost and the user has to reconnect.
+        The save happens straight after the response to keep that window tiny.
+        """
+        from workouts.locks import user_lock
+        from workouts.models import PelotonAuth, WebhookError
+
+        if not force and self._token_fresh(self._access_token, self._access_expires_at):
+            self.session.headers["Authorization"] = f"Bearer {self._access_token}"
+            return
+        failure = None
+        with user_lock("peloton_token", self.user.id):
+            try:
+                with transaction.atomic():
+                    auth = PelotonAuth.objects.select_for_update().get(pk=self._auth_pk)
+                    if not force and self._token_fresh(auth.access_token, auth.access_expires_at):
+                        self._use_token(auth.access_token, auth.access_expires_at)
+                        return
+                    if force and auth.access_token and auth.access_token != self._access_token:
+                        # Someone refreshed since this client's token was rejected — try theirs first.
+                        self._use_token(auth.access_token, auth.access_expires_at)
+                        return
+                    if not auth.refresh_token:
+                        raise PelotonAuthError("no refresh token saved")
+                    tokens = self.exchange_refresh_token(auth.refresh_token)
+                    now = timezone.now()
+                    auth.access_token = tokens["access_token"]
+                    auth.access_expires_at = tokens["expires_at"]
+                    if tokens["refresh_token"]:
+                        auth.refresh_token = tokens["refresh_token"]
+                    auth.refresh_rotated_at = now
+                    auth.auth_failed_at = None
+                    auth.auth_error = ""
+                    auth.save(update_fields=["access_token", "access_expires_at", "refresh_token",
+                                             "refresh_rotated_at", "auth_failed_at", "auth_error",
+                                             "last_updated"])
+                    self._use_token(auth.access_token, auth.access_expires_at)
+            except PelotonAuthError as e:
+                failure = e
+        if failure is not None:
+            PelotonAuth.objects.filter(pk=self._auth_pk).update(
+                auth_failed_at=timezone.now(), auth_error=str(failure)[:300])
+            WebhookError.record(source="peloton_auth", summary=f"Peloton sign-in refresh failed: {failure}"[:300],
+                                detail="", user=self.user)
+            raise PelotonAuthError("Peloton sign-in expired. Reconnect at /settings/integrations/") from failure
 
     def _get(self, path: str, params: dict = None) -> dict:
         url = f"{self.BASE_URL}{path}"
-        response = self.session.get(url, params=params)
-        if response.status_code == 403:
+        self._ensure_token()
+        response = self.session.get(url, params=params, timeout=30)
+        if response.status_code == 401:
+            self._ensure_token(force=True)
+            response = self.session.get(url, params=params, timeout=30)
+        if response.status_code in (401, 403):
             raise PelotonAuthError(
-                "Peloton returned 403 — your session cookie has expired. "
-                "Rotate it at /settings/integrations/"
+                f"Peloton returned {response.status_code} — the sign-in may have ended. "
+                "Reconnect at /settings/integrations/"
             )
         response.raise_for_status()
         return response.json()

@@ -118,6 +118,13 @@ def _gh_freshness(auth):
     return "red" if days >= 7 else "amber" if days >= 6 else "ok"
 
 
+def _peloton_dot(auth):
+    """None (not connected) / "red" (sign-in ended, reconnect needed) / "ok"."""
+    if auth is None:
+        return None
+    return "red" if auth.needs_reconnect else "ok"
+
+
 def _connections(user):
     """Per-integration status — whether connected, never what was synced."""
     gh = GoogleHealthAuth.for_user(user)
@@ -136,6 +143,7 @@ def _connections(user):
             "webhook_active": auths["withings"].webhook_subscription_active
             if integration.key == "withings" and auths["withings"] else None,
             "peloton_username": auth.peloton_username if integration.key == "peloton" and auth else "",
+            "peloton_reconnect": auth.needs_reconnect if integration.key == "peloton" and auth else False,
             "job": job.refreshed() if job else None,
         })
     return rows
@@ -169,7 +177,7 @@ def admin_users(request):
         access = access_for(u)
         gh = GoogleHealthAuth.for_user(u)
         dots = [
-            ("Peloton", "ok" if PelotonAuth.for_user(u) else None),
+            ("Peloton", _peloton_dot(PelotonAuth.for_user(u))),
             ("Withings", "ok" if WithingsAuth.for_user(u) else None),
             ("Google Health", _gh_freshness(gh)),
         ]

@@ -3385,3 +3385,8 @@ a:hover { text-decoration: underline; }
   .admin-grid { grid-template-columns: 1fr; }
   .gs-inline-form .form-input { min-width: 0 !important; width: 100%; }
 }
+
+/* Peloton sign-in token instructions (partials/peloton_token_help.html) */
+.peloton-snippet { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.5rem 0 0.25rem; }
+.peloton-snippet-code { flex: 1; min-width: 0; margin: 0; padding: 0.55rem 0.7rem; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--r); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-all; }
+.peloton-token-help p { margin: 0.5rem 0; }

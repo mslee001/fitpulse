@@ -82,13 +82,7 @@ def _require_same_user(user, workout) -> None:
 # Per-user non-blocking locks for the Google Health syncs (see
 # _run_google_health_wellness_sync / _run_google_health_exercise_sync), so one
 # user's in-flight sync never blocks — or gets skipped because of — another's.
-_user_locks: dict[tuple[str, int], threading.Lock] = {}
-_user_locks_guard = threading.Lock()
-
-
-def user_lock(name: str, user_id: int) -> threading.Lock:
-    with _user_locks_guard:
-        return _user_locks.setdefault((name, user_id), threading.Lock())
+from .locks import user_lock  # noqa: E402,F401 — re-exported; PelotonClient uses it too
 
 
 def _integration_disabled_result(key: str) -> dict:

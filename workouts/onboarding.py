@@ -47,7 +47,7 @@ def steps_for(user):
     withings = WithingsAuth.for_user(user)
     google = GoogleHealthAuth.for_user(user)
     sources = [
-        ("peloton", "Peloton", bool(peloton and peloton.peloton_user_id), ""),
+        ("peloton", "Peloton", bool(peloton and peloton.peloton_user_id and peloton.has_tokens), ""),
         ("withings", "Withings scale", bool(withings and withings.webhook_subscription_active), ""),
         ("google_health", "Google Health", google is not None,
          "" if access.google_test_user_added or google else "Waiting on Megan"),

@@ -93,8 +93,12 @@ class Command(BaseCommand):
             self._out(user, f"Skipped — last sync was less than {stale_hours}h ago.")
             return True
 
+        peloton_auth = PelotonAuth.for_user(user)
         do_peloton = (not opts["skip_peloton"] and _integration_enabled(user, "peloton")
-                      and PelotonAuth.for_user(user) is not None)
+                      and peloton_auth is not None and not peloton_auth.needs_reconnect)
+        if peloton_auth and peloton_auth.needs_reconnect and not opts["skip_peloton"]:
+            # A rejected refresh token never comes back; retrying would only log errors.
+            self._out(user, "Peloton needs reconnecting at /settings/integrations/ — skipped.")
         do_garmin = user.is_superuser and _integration_enabled(user, "garmin")
         do_google = (_integration_enabled(user, "google_health")
                      and GoogleHealthAuth.for_user(user) is not None)

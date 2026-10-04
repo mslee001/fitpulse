@@ -1233,23 +1233,31 @@ class WithingsAuth(models.Model):
 
 class PelotonAuth(models.Model):
     """
-    One row per user. Stores Peloton session credentials in Postgres so both
-    laptop and hosted app can sync. Peloton has no OAuth — the session cookie
-    is extracted manually from browser DevTools and pasted into /settings/integrations/.
-    Cookies last weeks to months; rotate when sync starts returning 403.
+    One row per user. Peloton's web app signs in through Auth0; the user pastes
+    a refresh token copied from a private browser window (see
+    partials/peloton_token_help.html) and PelotonClient trades it for 48-hour
+    access tokens. Refresh tokens rotate: every refresh returns a new one and
+    spends the old, so the new one is saved immediately (PelotonClient._ensure_token).
+    The pasted token itself is spent on connect and never stored.
     """
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                 related_name="peloton_auth")
-    session_id = models.CharField(max_length=512, help_text="peloton_session_id cookie")
     # The Peloton account id (named peloton_user_id so it can't be confused
     # with the Django `user` FK above, whose attribute is user_id).
     peloton_user_id = models.CharField(max_length=64, help_text="Peloton user ID")
     peloton_username = models.CharField(max_length=64, blank=True)   # from /api/me, for "Connected as @…"
+    refresh_token = models.TextField(blank=True)            # latest rotated token; the pasted one is never stored
+    access_token = models.TextField(blank=True)
+    access_expires_at = models.DateTimeField(null=True, blank=True)
+    refresh_rotated_at = models.DateTimeField(null=True, blank=True)   # last time a refresh token was saved (paste or rotation)
+    connected_at = models.DateTimeField(null=True, blank=True)         # last paste — how long a token family lasts
+    auth_failed_at = models.DateTimeField(null=True, blank=True)       # set on invalid_grant; cleared on reconnect
+    auth_error = models.CharField(max_length=300, blank=True)
     last_updated = models.DateTimeField(auto_now=True)
     notes = models.CharField(
         max_length=500,
         blank=True,
-        help_text="Optional — e.g. 'extracted from Chrome 2026-06-26'",
+        help_text="Optional — e.g. 'copied from Chrome 2026-10-03'",
     )
 
     class Meta:
@@ -1271,10 +1279,12 @@ class PelotonAuth(models.Model):
         return cls.objects.filter(user=user).first()
 
     @property
-    def masked_session_id(self):
-        if not self.session_id or len(self.session_id) < 8:
-            return "(empty)"
-        return f"…{self.session_id[-4:]}"
+    def has_tokens(self):
+        return bool(self.refresh_token)
+
+    @property
+    def needs_reconnect(self):
+        return not self.refresh_token or self.auth_failed_at is not None
 
 
 class GoogleHealthAuth(models.Model):

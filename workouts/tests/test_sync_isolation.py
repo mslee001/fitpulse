@@ -108,7 +108,7 @@ class SyncIsolationTests(TwoUserTestCase):
 
     def test_sync_daily_keeps_going_after_one_users_failure(self):
         for u in (self.a, self.b):
-            PelotonAuth.objects.create(user=u, session_id=f"cookie-{u.username}", peloton_user_id=f"p-{u.username}")
+            PelotonAuth.objects.create(user=u, refresh_token=f"rt-{u.username}", peloton_user_id=f"p-{u.username}")
         Integration.objects.filter(user=self.a, key="garmin").update(is_enabled=False)
         Integration.objects.filter(key="google_health").update(is_enabled=False)
         calls = []
@@ -116,7 +116,7 @@ class SyncIsolationTests(TwoUserTestCase):
         def peloton(user, days=None):
             calls.append(user.username)
             if user == self.a:
-                raise RuntimeError("cookie expired")
+                raise RuntimeError("sign-in expired")
             return {"done": True, "created": 1, "updated": 0}
 
         out = StringIO()

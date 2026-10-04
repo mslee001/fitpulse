@@ -1,0 +1,28 @@
+{# How to copy a Peloton sign-in (Auth0 refresh) token. Shared by Get Started and the Integrations Peloton card. #}
+<div class="gs-copy peloton-token-help">
+  <ol>
+    <li>On a <strong>computer</strong>, open a <strong>private/incognito window</strong> and sign in at <strong>members.onepeloton.com</strong>.</li>
+    <li>Open developer tools → <strong>Console</strong>. Chrome/Edge: ⌥⌘J on Mac, Ctrl+Shift+J on Windows. Safari: first turn on Settings → Advanced → "Show features for web developers", then Develop → Show JavaScript Console.</li>
+    <li>Paste this line and press Enter. It copies your Peloton sign-in token to the clipboard. (Chrome may ask you to type <code>allow pasting</code> first.)
+      <div class="peloton-snippet">
+        <pre class="peloton-snippet-code">{% verbatim %}copy(JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.includes('::https://api.onepeloton.com/::')))).body.refresh_token){% endverbatim %}</pre>
+        <button type="button" class="btn btn-sm btn-ghost peloton-snippet-copy">Copy</button>
+      </div>
+    </li>
+    <li>Paste it below and click <strong>Connect</strong>, then <strong>close the private window</strong>. Don't sign out of Peloton there first, just close it.</li>
+  </ol>
+  <p><strong>Why a private window:</strong> FitPulse keeps its own sign-in fresh. If it shared one with your normal browser, the two would eventually log each other out.</p>
+  <p>Treat this token like a password. FitPulse renews it automatically; you'll only need to do this again if Peloton ends the sign-in, and FitPulse will tell you when that happens.</p>
+</div>
+<script>
+  document.querySelectorAll('.peloton-snippet-copy:not([data-bound])').forEach(function (btn) {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', function () {
+      var code = btn.parentElement.querySelector('.peloton-snippet-code').textContent;
+      navigator.clipboard.writeText(code).then(function () {
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+      });
+    });
+  });
+</script>

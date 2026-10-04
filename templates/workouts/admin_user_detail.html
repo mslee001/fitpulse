@@ -107,6 +107,7 @@
           <td>{% if c.integration.is_enabled %}yes{% else %}<span class="muted">no</span>{% endif %}</td>
           <td>
             {% if c.connected %}yes{% if c.peloton_username %} (@{{ c.peloton_username }}){% endif %}{% else %}<span class="muted">no</span>{% endif %}
+            {% if c.peloton_reconnect %}<span class="conn-dot conn-dot--red" style="margin-left:0.3rem"></span> reconnect needed{% endif %}
             {% if c.gh_days is not None %}<span class="conn-dot conn-dot--{{ c.gh_freshness }}" style="margin-left:0.3rem"></span> {{ c.gh_days }}d ago{% endif %}
             {% if c.webhook_active is not None %}<br><span class="muted" style="font-size:0.75rem">webhook {% if c.webhook_active %}on{% else %}off{% endif %}</span>{% endif %}
           </td>
