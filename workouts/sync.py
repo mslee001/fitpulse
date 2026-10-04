@@ -20,7 +20,7 @@ from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone as tz
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from . import programs as _programs
 from .models import BodyMeasurement, CachedWorkout, DailyStats, Integration, UserSettings, WebhookError
@@ -2974,10 +2974,15 @@ def sync_google_health_all(request):
 
 
 @csrf_exempt
-@require_POST
+@require_http_methods(["POST", "HEAD"])
 def withings_webhook(request):
     """
     POST /api/withings/webhook/
+
+    HEAD is answered 200: Withings sends a HEAD request to check the callback
+    URL is reachable before it registers a subscription, and rejects the
+    subscribe with status 293 ("callback URL is either absent or incorrect")
+    if it gets anything else.
 
     Withings notify-then-fetch: the payload carries userid + time window,
     not measurement values. We fetch the measurements inline and run the
@@ -2987,6 +2992,9 @@ def withings_webhook(request):
     of consecutive non-200 responses, so we swallow internal errors here.
     """
     from workouts.models import WithingsAuth
+
+    if request.method == "HEAD":
+        return HttpResponse(status=200)
 
     userid = request.POST.get("userid", "")
     appli = request.POST.get("appli", "")

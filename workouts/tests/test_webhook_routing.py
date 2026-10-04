@@ -54,6 +54,13 @@ class WithingsWebhookTests(TwoUserTestCase):
         client_cls.assert_not_called()
         self.assertFalse(BodyMeasurement.objects.exists())
 
+    def test_head_check_gets_200_without_touching_anything(self):
+        # Withings HEADs the callback URL before registering a subscription.
+        resp = self.client.head("/api/withings/webhook/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(BodyMeasurement.objects.exists())
+        self.assertEqual(self.client.get("/api/withings/webhook/").status_code, 405)
+
     def test_two_users_cannot_share_a_withings_account(self):
         WithingsAuth.objects.filter(user=self.b).delete()
         with self.assertRaises(IntegrityError), transaction.atomic():
