@@ -75,7 +75,7 @@
       <div class="gs-copy">
         <p>Connect your Withings scale so weigh-ins show up automatically. Click <strong>Connect Withings</strong>, sign in to Withings, and approve access. You'll come straight back here. New weigh-ins arrive within a few minutes of stepping on the scale.</p>
       </div>
-      {% if withings_auth %}<p class="gs-line muted">Signed in, but automatic weigh-in updates aren't on yet — try connecting again.</p>{% endif %}
+      {% if withings_auth %}<p class="gs-line muted">Signed in. Automatic weigh-in updates aren't confirmed yet — refresh in a minute. If this stays, click Connect Withings again.</p>{% endif %}
       {% include "workouts/partials/gs_withings_button.html" with label="Connect Withings" %}
       {% include "workouts/partials/gs_sync_status.html" with job=jobs.withings source="withings" %}
       <form method="post" action="{% url 'gs_skip' 'withings' %}" class="gs-skip">{% csrf_token %}<button class="btn-link">I don't have a Withings scale — skip</button></form>
