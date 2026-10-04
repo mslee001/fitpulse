@@ -250,6 +250,159 @@ def runway_line(inputs):
 
 
 # ---------------------------------------------------------------------------
+# Pace: current Peloton pace level, recent paces, race estimate, goal pace
+# ---------------------------------------------------------------------------
+
+RACE_MILES = {"5k": 3.10686, "10k": 6.21371, "half": 13.1094, "full": 26.2188}
+PACE_ZONES = ["Recovery", "Easy", "Moderate", "Challenging", "Hard", "Very Hard", "Max"]
+PACE_LEVELS = list(range(1, 11))   # Peloton Tread pace levels
+RIEGEL_EXPONENT = 1.06             # Riegel race-time prediction: T2 = T1 × (D2 / D1) ^ 1.06
+LONG_RUN_RACE_MULTIPLE = 1.25      # 5K/10K: peak long run ≥ this × race time…
+LONG_RUN_FLOOR_MIN = 45            # …and never less than this
+STRETCH_PCT_PER_4_WEEKS = 5        # needing more improvement than this per 4 weeks reads as a stretch goal
+
+
+def _fmt_min_pace(decimal_min):
+    """Peloton zone paces are decimal minutes per mile (14.38 → '14:23')."""
+    total = round(decimal_min * 60)
+    return f"{total // 60}:{total % 60:02d}"
+
+
+def latest_pace_level(user):
+    """The Peloton pace level and zone paces from the user's most recent Tread run
+    that recorded them (the performance graph carries only the user's own level).
+    {"level", "zones": [{"name", "fast", "slow"} decimal min/mi], "date", "title"} or None."""
+    for w in (CachedWorkout.objects.for_user(user).filter(discipline="running", source="peloton")
+              .exclude(performance_graph_json__isnull=True).order_by("-created_at")[:40]):
+        pg = w.performance_graph_json or {}
+        label, zones = pg.get("pace_level"), pg.get("pace_zones") or []
+        m = re.search(r"(\d+)", label or "")
+        if m and zones:
+            return {"level": int(m.group(1)), "date": _local_date(w.created_at), "title": w.title,
+                    "zones": [{"name": z.get("name"), "fast": z.get("fast_pace"), "slow": z.get("slow_pace")}
+                              for z in zones if z.get("fast_pace") and z.get("slow_pace")]}
+    return None
+
+
+def zone_for_pace(zones, pace_s):
+    """Which zone a pace (seconds/mile) falls in at this level. In a gap between
+    two zones → the faster one. Faster than every zone → "faster than Very Hard"."""
+    m = pace_s / 60
+    named = [z for z in zones if z["name"] in PACE_ZONES and z["name"] != "Max"]
+    if not named:
+        return ""
+    for z in named:
+        if z["fast"] <= m <= z["slow"]:
+            return z["name"]
+    faster = [z for z in named if z["slow"] < m]      # zones entirely faster than this pace
+    slower = [z for z in named if z["fast"] > m]      # zones entirely slower
+    if not faster:      # nothing is faster than this pace
+        return f"faster than {min(named, key=lambda z: z['fast'])['name']}"
+    if not slower:      # nothing is slower
+        return f"slower than {max(named, key=lambda z: z['slow'])['name']}"
+    return max(faster, key=lambda z: z["slow"])["name"]   # the nearest faster zone
+
+
+def race_estimate(user, goal, today=None):
+    """Rough current race time from recent training runs (Riegel formula), the
+    fastest prediction over runs of 15+ min with a distance in the last 8 weeks.
+    Training runs aren't all-out, so this tends to be conservative."""
+    miles = RACE_MILES.get(goal)
+    if not miles:
+        return None
+    today = today or timezone.localdate()
+    best = None
+    for w in _runs(user, today - timedelta(days=56)):
+        if not w.distance_miles or w.distance_miles < 1 or _minutes(w) < 15:
+            continue
+        predicted = (w.duration_seconds or 0) * (miles / w.distance_miles) ** RIEGEL_EXPONENT
+        if best is None or predicted < best["seconds"]:
+            best = {"seconds": round(predicted), "from_miles": round(w.distance_miles, 2),
+                    "from_seconds": w.duration_seconds, "from_date": _local_date(w.created_at).isoformat()}
+    return best
+
+
+def pace_profile(user, inputs, today=None):
+    """Everything the plan needs about pace, JSON-ready (stored in inputs)."""
+    today = today or timezone.localdate()
+    level = latest_pace_level(user)
+    runs8 = [w for w in _runs(user, today - timedelta(days=56)) if w.avg_pace_seconds and _minutes(w) >= 20]
+    paces = sorted(w.avg_pace_seconds for w in runs8)
+    profile = {
+        "detected_level": level["level"] if level else None,
+        "level": level["level"] if level else None,
+        "zones": level["zones"] if level else [],
+        "level_from": f"{level['date']:%b %-d} · {level['title']}" if level else "",
+        "typical_pace_s": round(median(paces)) if paces else None,
+        "fastest_pace_s": paces[0] if paces else None,
+        "estimate": race_estimate(user, inputs.get("goal"), today),
+        "goal_pace_s": None, "goal_zone": "", "gap_pct": None, "stretch": False, "long_run_min": None,
+    }
+    choice = inputs.get("pace_level_choice")
+    if choice and choice != "auto":
+        profile["level"] = int(choice)
+        if profile["level"] != profile["detected_level"]:
+            profile["zones"] = []      # we only know the zone paces of the level Peloton last reported
+    miles = RACE_MILES.get(inputs.get("goal"))
+    target = inputs.get("target_time")
+    if miles and target:
+        profile["goal_pace_s"] = round(target / miles)
+        if profile["zones"]:
+            profile["goal_zone"] = zone_for_pace(profile["zones"], profile["goal_pace_s"])
+        est = profile["estimate"]
+        if est:
+            profile["gap_pct"] = round(100 * (est["seconds"] - target) / est["seconds"], 1)
+            weeks = inputs.get("weeks") or 1
+            profile["stretch"] = profile["gap_pct"] > STRETCH_PCT_PER_4_WEEKS * weeks / 4
+    if inputs.get("goal") in ("5k", "10k"):
+        race_s = target or (profile["estimate"] or {}).get("seconds")
+        if race_s:
+            profile["long_run_min"] = max(LONG_RUN_FLOOR_MIN, math.ceil(LONG_RUN_RACE_MULTIPLE * race_s / 60 / 5) * 5)
+    return profile
+
+
+def pace_lines(inputs):
+    """PACE section of the fitness context (empty when there's nothing to say)."""
+    p = inputs.get("pace") or {}
+    out = []
+    if p.get("level"):
+        line = f"- Peloton pace level: Level {p['level']}"
+        if p.get("detected_level") and p["level"] != p["detected_level"]:
+            line += f" (chosen by the user; Peloton last reported Level {p['detected_level']})"
+        elif p.get("level_from"):
+            line += f" (from {p['level_from']})"
+        out.append(line)
+    if p.get("zones"):
+        out.append("- Their zones at that level (min/mi): " + "; ".join(
+            f"{z['name']} {_fmt_min_pace(z['fast'])}–{_fmt_min_pace(z['slow'])}"
+            for z in p["zones"] if z["name"] not in ("Recovery", "Max")))
+    if p.get("typical_pace_s"):
+        out.append(f"- Runs of 20+ min, last 8 weeks: typical average pace {_fmt_pace(p['typical_pace_s'])}, "
+                   f"fastest {_fmt_pace(p['fastest_pace_s'])}")
+    est = p.get("estimate")
+    goal_label = RACE_LABELS.get(inputs.get("goal"), "")
+    if est:
+        out.append(f"- Estimated current {goal_label} from training runs: {_fmt_hms(est['seconds'])} "
+                   f"(Riegel formula from {est['from_miles']} mi in {_fmt_hms(est['from_seconds'])} on "
+                   f"{est['from_date']}; training runs aren't all-out, so this is likely conservative)")
+    if p.get("goal_pace_s"):
+        line = f"- Goal: {goal_label} in {_fmt_hms(inputs['target_time'])} = {_fmt_pace(p['goal_pace_s'])}"
+        if p.get("gap_pct") is not None:
+            line += (f", {p['gap_pct']}% faster than the estimate" if p["gap_pct"] > 0
+                     else f", already within the estimate ({-p['gap_pct']}% slower)")
+        if p.get("goal_zone"):
+            line += f"; at Level {p['level']} goal pace sits in their {p['goal_zone']} zone"
+        out.append(line)
+        if p.get("stretch"):
+            out.append(f"- STRETCH GOAL: that's more than ~{STRETCH_PCT_PER_4_WEEKS}% improvement per 4 weeks "
+                       "of plan.")
+    if p.get("long_run_min"):
+        out.append(f"- Long run target: build to at least {p['long_run_min']} min at easy pace "
+                   f"(longer than the race itself builds the endurance to hold pace to the finish).")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Inputs
 # ---------------------------------------------------------------------------
 
@@ -386,6 +539,14 @@ def clean_inputs(user, post, today=None):
     if len(notes) > 500:
         errors.append("Notes can be at most 500 characters.")
     inputs["notes"] = notes[:500]
+
+    pace_choice = post.get("pace_level") or "auto"
+    if pace_choice != "auto" and not (str(pace_choice).isdigit() and int(pace_choice) in PACE_LEVELS):
+        errors.append("Choose a pace level from 1 to 10.")
+        pace_choice = "auto"
+    inputs["pace_level_choice"] = pace_choice
+    if not errors:
+        inputs["pace"] = pace_profile(user, inputs, today)
     return inputs, errors
 
 
@@ -601,6 +762,12 @@ def build_fitness_context(user, inputs, today=None) -> str:
                     bit += " (optional)"
                 parts.append(bit)
             out.append(f"- {label}: " + "; ".join(parts))
+
+    pace = pace_lines(inputs)
+    if pace:
+        out.append("")
+        out.append("PACE")
+        out.extend(pace)
 
     a = inputs.get("level_assessment") or {}
     out.append("")
@@ -875,12 +1042,15 @@ def validate_spec(spec, inputs, allowed):
                     continue
                 run_days.add(day)
             intensity = s.get("intensity") if s.get("intensity") in INTENSITIES else "moderate"
+            zone = next((z for z in PACE_ZONES if z.lower() == str(s.get("pace_zone") or "").strip().lower()), "")
+            if disc not in ("running", "walking"):
+                zone = ""
             optional = bool(s.get("optional"))
             if inputs["mode"] == "alongside" and disc == "yoga":
                 optional = True
             slots_out.append({
                 "day": day, "order": 0, "discipline": disc, "class_type": entry["name"], "class_type_id": tid,
-                "duration_min": duration, "intensity": intensity, "setting": setting,
+                "duration_min": duration, "intensity": intensity, "setting": setting, "pace_zone": zone,
                 "purpose": str(s.get("purpose") or "")[:200], "optional": optional,
             })
         per_day = Counter()
@@ -894,9 +1064,19 @@ def validate_spec(spec, inputs, allowed):
     if total and dropped / total > MAX_DROPPED_SHARE:
         raise PlanSpecInvalid(f"The AI's plan needed {dropped} of {total} sessions dropped. "
                               + "; ".join(warnings[:4]))
+    long_min = (inputs.get("pace") or {}).get("long_run_min")
+    if long_min:
+        longest = max((sl["duration_min"] for wk in clean_weeks for sl in wk["slots"]
+                       if sl["discipline"] == "running"), default=0)
+        reachable = min(long_min, inputs["max_weekend_min"] if inputs.get("long_day") in (6, 7, None)
+                        else inputs["max_weekday_min"])
+        if longest < reachable:
+            warnings.append(f"The longest run peaks at {longest} min; for this race, building to {long_min}+ min "
+                            "at easy pace would help you hold pace to the finish.")
     clean = {"plan_name": str(spec.get("plan_name") or "Training plan")[:120],
              "summary": str(spec.get("summary") or ""),
              "assumptions": [str(a) for a in (spec.get("assumptions") or []) if a][:8],
+             "pace_guidance": str(spec.get("pace_guidance") or "")[:400],
              "weeks": clean_weeks}
     return clean, warnings
 
@@ -1030,6 +1210,11 @@ def rank_candidates(spec_slot, week, ctx, exclude=()):
     if not chosen:
         chosen = left
 
+    if disc == "running" and setting != "outdoor":
+        # Tread classes with pace targets show your zone paces on screen — what pace work needs.
+        paced = [c for c in chosen if c.has_tread_pace_target]
+        if len(paced) >= MIN_LEFT:
+            chosen = paced
     rated = [c for c in chosen if _smoothed(c) >= MIN_RATING]
     if len(rated) >= MIN_LEFT:
         chosen = rated
@@ -1190,6 +1375,13 @@ def reset_and_regenerate(draft):
 # Creating the Program (05)
 # ---------------------------------------------------------------------------
 
+def slot_notes(spec_slot, instructor=""):
+    """"easy aerobic minutes · Easy zone · Becs Gentry" — purpose, pace zone, instructor."""
+    parts = [spec_slot.get("purpose") or "",
+             f"{spec_slot['pace_zone']} zone" if spec_slot.get("pace_zone") else "", instructor or ""]
+    return " · ".join(p for p in parts if p)
+
+
 def create_program_from_draft(draft, name):
     """Save a ready draft as a ride-id-pinned plan and start its run on the plan's
     start date. Doesn't touch any other program's run."""
@@ -1207,9 +1399,7 @@ def create_program_from_draft(draft, name):
             pick = picks.get(slot_key(wk["number"], slot)) or {}
             c = classes.get(pick.get("ride_id"))
             duration = c.duration_min if c else (pick.get("duration_min") or slot["duration_min"])
-            notes = slot["purpose"]
-            if c and c.instructor_name:
-                notes = f"{notes} · {c.instructor_name}" if notes else c.instructor_name
+            notes = slot_notes(slot, c.instructor_name if c else "")
             slots.append({
                 "day": slot["day"], "order": slot["order"],
                 "title": c.title if c else f"{slot['class_type']} · {duration} min",
@@ -1237,6 +1427,8 @@ def create_program_from_draft(draft, name):
             "mode": inputs["mode"], "companion_program_id": inputs.get("companion_program_id"),
             "draft_id": draft.pk, "generated_at": draft.updated_at.isoformat() if draft.updated_at else "",
             "model": draft.ai_model, "level": inputs.get("level"), "weeks": inputs["weeks"],
+            "pace_level": (inputs.get("pace") or {}).get("level"),
+            "goal_pace_s": (inputs.get("pace") or {}).get("goal_pace_s"),
         }
         program.save(update_fields=["description", "goal_json"])
         start_run(program, start)
@@ -1260,9 +1452,8 @@ def swap_program_slot(slot):
     if not ranked:
         return None
     c = ranked[0]
-    purpose = slot.spec_json.get("purpose", "")
     slot.peloton_ride_id, slot.title, slot.alt_ride_ids = c.ride_id, c.title, []
     slot.duration_min = c.duration_min
-    slot.notes = f"{purpose} · {c.instructor_name}" if purpose and c.instructor_name else (purpose or c.instructor_name)
+    slot.notes = slot_notes(slot.spec_json, c.instructor_name)
     slot.save(update_fields=["peloton_ride_id", "title", "alt_ride_ids", "duration_min", "notes"])
     return c

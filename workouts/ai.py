@@ -3393,6 +3393,26 @@ def _training_plan_prompt(inputs, context_text, menu_text):
     weeks = inputs["weeks"]
     race_name = RACE_LABELS.get(inputs["goal"], "")
     example_name = f"{race_name} in {weeks} Weeks" if race_name else f"{weeks}-Week Running Base"
+    pace = inputs.get("pace") or {}
+    pace_rules = ""
+    if pace.get("goal_pace_s"):
+        pace_rules += """
+11. PACE: the goal is to move them from their current pace (PACE section) to goal
+    pace by race day. Easy and long runs stay in the Easy–Moderate zones. Each week's
+    quality sessions practice goal pace and faster: tempo/progression running around
+    goal pace (usually Challenging–Hard), intervals at and above it (Hard–Very Hard),
+    getting longer or more frequent as the plan builds. Use Intervals/Speed class
+    types for the fast work once the level gate allows them.
+12. If PACE says STRETCH GOAL, keep the ramp limits anyway — don't add hard sessions
+    to chase the time — and say in assumptions that the target is ambitious for this
+    runway, citing the numbers."""
+    if pace.get("long_run_min"):
+        pace_rules += f"""
+13. LONG RUN: build the weekly long run to at least {pace['long_run_min']} min at easy pace
+    (longer than the race builds the endurance to hold pace to the finish), reaching it
+    no later than 2–3 weeks before race day, within the ramp limits and the max session
+    length. If the max session length or the runway makes that impossible, go as long as
+    allowed and say so in assumptions."""
 
     return f"""You are building a {weeks}-week training plan for one person, made only of Peloton
 classes. You write the structure; software picks the actual classes afterwards, so
@@ -3458,7 +3478,7 @@ PLANNING RULES
 9. Respect available days and max session lengths exactly. One running session per
    day at most.
 10. If their notes mention pain or an injury, keep intensity lower than you otherwise
-    would and say so in assumptions. Don't give medical instructions.
+    would and say so in assumptions. Don't give medical instructions.{pace_rules}
 
 WRITING RULES
 - summary: 2–3 sentences. Name the starting point using numbers from FITNESS CONTEXT
@@ -3470,18 +3490,24 @@ WRITING RULES
   minutes", "race-pace practice") — no motivation lines.
 - assumptions: things you inferred because data was missing, each one sentence.
   If FITNESS CONTEXT lacks something you needed, say so here instead of guessing.
+- pace_zone (running/walking sessions only, else null): the Peloton pace zone the
+  session mostly targets — Recovery, Easy, Moderate, Challenging, Hard, Very Hard or Max.
+- pace_guidance: 1–2 sentences on pacing through the plan, e.g. when to try the next
+  Peloton pace level (when Hard-zone efforts start to feel controlled). Empty string
+  if PACE has no Peloton pace level.
 
 Return ONLY JSON, no prose, in exactly this shape:
 {{
   "plan_name": "{example_name}",
   "summary": "...",
   "assumptions": ["..."],
+  "pace_guidance": "...",
   "weeks": [
     {{"number": 1, "phase": "base", "focus": "one short line",
      "slots": [
        {{"day": 1, "order": 0, "discipline": "running", "class_type": "Endurance",
         "class_type_id": "19efefbcf7394ff8bac0ac89a674c545", "duration_min": 30,
-        "intensity": "easy", "setting": "tread", "purpose": "...", "optional": false}}
+        "intensity": "easy", "setting": "tread", "pace_zone": "Easy", "purpose": "...", "optional": false}}
      ]}}
   ]
 }}
