@@ -622,15 +622,17 @@ class PaceTests(PlanTestCase):
         w.save()
         return w
 
-    def zones(self):
-        return [{"name": z["name"], "fast": z["fast_pace"], "slow": z["slow_pace"]} for z in ZONES_L4]
+    def test_zone_for_pace_uses_the_chart(self):
+        self.assertEqual(tp.zone_for_pace(4, 11.2 * 60), "Hard")            # 5.36 mph, Hard 5.1–5.4
+        self.assertEqual(tp.zone_for_pace(4, 11.8 * 60), "Challenging")     # 5.08 mph
+        self.assertEqual(tp.zone_for_pace(4, 3600 / 4.15), "Easy")           # in the chart's 4.1–4.2 rounding gap
+        self.assertEqual(tp.zone_for_pace(4, 8.0 * 60), "Max")
+        self.assertEqual(tp.zone_for_pace(10, 4.5 * 60), "faster than Max") # 13.3 mph
 
-    def test_zone_for_pace(self):
-        z = self.zones()
-        self.assertEqual(tp.zone_for_pace(z, 11.2 * 60), "Hard")
-        self.assertEqual(tp.zone_for_pace(z, 11.8 * 60), "Hard")            # gap → the faster neighbour
-        self.assertEqual(tp.zone_for_pace(z, 8.0 * 60), "faster than Very Hard")
-        self.assertEqual(tp.zone_for_pace(z, 13.5 * 60), "Moderate")
+    def test_race_pace_level(self):
+        self.assertEqual(tp.race_pace_level("5k", round(1680 / 3.10686)), 6)    # 28:00 5K → Hard at Level 6
+        self.assertEqual(tp.race_pace_level("10k", round(2400 / 6.21371)), 10)  # 40:00 10K → Challenging at 10
+        self.assertIsNone(tp.race_pace_level("5k", round(900 / 3.10686)))       # 15:00 5K is beyond Level 10
 
     def test_latest_pace_level_from_performance_graph(self):
         self.paced_run(TODAY - timedelta(days=20), level=3, wid="old")
@@ -649,7 +651,8 @@ class PaceTests(PlanTestCase):
         inputs = self.inputs(goal="5k", target_time="28:00")
         p = inputs["pace"]
         self.assertEqual(p["goal_pace_s"], round(1680 / 3.10686))            # 9:01/mi
-        self.assertEqual(p["goal_zone"], "faster than Very Hard")     # 9:01 vs Very Hard 9:30–10:33
+        self.assertEqual(p["goal_zone"], "Max")                      # 6.66 mph at Level 4
+        self.assertEqual(p["race_level"], 6)
         self.assertGreater(p["gap_pct"], 0)
         self.assertEqual(p["long_run_min"], 45)                              # 1.25 × 28 min → 35, floor 45
         self.assertEqual(self.inputs(goal="10k", target_time="55:00")["pace"]["long_run_min"], 70)
@@ -657,17 +660,19 @@ class PaceTests(PlanTestCase):
     def test_forty_minute_race_long_run(self):
         self.assertEqual(self.inputs(goal="10k", target_time="40:00")["pace"]["long_run_min"], 50)
 
-    def test_level_override_drops_unknown_zones(self):
+    def test_level_override_uses_the_chart_for_that_level(self):
         self.paced_run(TODAY - timedelta(days=3))
         p = self.inputs(goal="5k", target_time="28:00", pace_level="6")["pace"]
-        self.assertEqual((p["level"], p["detected_level"], p["zones"], p["goal_zone"]), (6, 4, [], ""))
+        self.assertEqual((p["level"], p["detected_level"], p["goal_zone"]), (6, 4, "Hard"))
 
     def test_context_has_pace_section(self):
         self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=3.0)
         text = tp.build_fitness_context(self.a, self.inputs(goal="5k", target_time="28:00"), today=TODAY)
         self.assertIn("PACE", text)
         self.assertIn("Peloton pace level: Level 4", text)
-        self.assertIn("Hard 11:04–11:28", text)
+        self.assertIn("Hard 11:07–11:46", text)
+        self.assertIn("Race-pace level: Level 6", text)
+        self.assertIn("2 levels to climb", text)
         self.assertIn("Goal: 5K in 28:00 = 9:01/mi", text)
         self.assertIn("Long run target: build to at least 45 min", text)
 
@@ -724,4 +729,5 @@ class PaceTests(PlanTestCase):
         page = self.client_a.get(reverse("program_training_plan_new"))
         self.assertContains(page, "Your Peloton pace level")
         self.assertContains(page, "Level 4")
-        self.assertContains(page, "11:04–11:28/mi")
+        self.assertContains(page, "11:07–11:46/mi")
+        self.assertContains(page, '"chart"')

@@ -3492,9 +3492,11 @@ WRITING RULES
   If FITNESS CONTEXT lacks something you needed, say so here instead of guessing.
 - pace_zone (running/walking sessions only, else null): the Peloton pace zone the
   session mostly targets — Recovery, Easy, Moderate, Challenging, Hard, Very Hard or Max.
-- pace_guidance: 1–2 sentences on pacing through the plan, e.g. when to try the next
-  Peloton pace level (when Hard-zone efforts start to feel controlled). Empty string
-  if PACE has no Peloton pace level.
+- pace_guidance: 1–3 sentences mapping their Peloton pace level from the current level
+  toward the race-pace level in PACE — roughly which weeks to try each step up (when
+  Hard-zone efforts start to feel controlled), no faster than the ramp rules allow. If
+  the race-pace level is out of reach in this runway, say where they can realistically
+  get to. Empty string if PACE has no Peloton pace level.
 
 Return ONLY JSON, no prose, in exactly this shape:
 {{

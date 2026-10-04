@@ -65,11 +65,13 @@ def program_training_plan_new(request):
     pace_level = tp.latest_pace_level(request.user)
     return render(request, "workouts/program_training_plan_new.html", {
         "pace_level": pace_level, "pace_levels": tp.PACE_LEVELS,
-        "pace_zones_display": [(z["name"], tp._fmt_min_pace(z["fast"]), tp._fmt_min_pace(z["slow"]))
-                               for z in (pace_level or {}).get("zones", []) if z["name"] not in ("Recovery", "Max")],
-        "pace_json": json.dumps({"zones": (pace_level or {}).get("zones", []), "level": (pace_level or {}).get("level"),
+        "pace_zones_display": [(z["name"], tp._mph_to_pace(z["hi"]), tp._mph_to_pace(z["lo"]))
+                               for z in tp.chart_zones(pace_level["level"])
+                               if z["name"] not in ("Recovery", "Max")] if pace_level else [],
+        "pace_json": json.dumps({"chart": tp.PELOTON_PACE_CHART, "zoneOrder": tp.PACE_ZONES,
+                                 "level": (pace_level or {}).get("level"), "raceZone": tp.RACE_PACE_ZONE,
                                  "miles": tp.RACE_MILES, "longMultiple": tp.LONG_RUN_RACE_MULTIPLE,
-                                 "longFloor": tp.LONG_RUN_FLOOR_MIN, "zoneOrder": tp.PACE_ZONES}),
+                                 "longFloor": tp.LONG_RUN_FLOOR_MIN}),
         "catalog_empty": catalog_empty, "is_owner": is_owner(request.user),
         "errors": errors, "values": values, "assessment": assessment,
         "goals": tp.GOALS, "levels": tp.LEVELS, "days": tp.DAY_NAMES.items(),
@@ -156,6 +158,8 @@ def _pace_summary(draft):
         if p.get("goal_zone"):
             goal += f" ({p['goal_zone']} zone at Level {p['level']})"
         lines.append(goal)
+        if p.get("race_level"):
+            lines.append(f"Race-pace level {p['race_level']}")
     est = p.get("estimate")
     if est:
         lines.append(f"Current estimate {tp._fmt_hms(est['seconds'])} from training runs"

@@ -262,6 +262,63 @@ LONG_RUN_FLOOR_MIN = 45            # …and never less than this
 STRETCH_PCT_PER_4_WEEKS = 5        # needing more improvement than this per 4 weeks reads as a stretch goal
 
 
+# Peloton Tread running pace chart: mph range per zone and level (Recovery … Max).
+# Fixed by Peloton; zones are treated as contiguous (each runs up to the next zone's
+# lower bound), since the 0.1-mph gaps in the printed chart are just rounding.
+PELOTON_PACE_CHART = {
+    1:  [(1.0, 3.0), (3.1, 3.3), (3.4, 3.6), (3.7, 4.0), (4.1, 4.4), (4.5, 4.9), (5.0, 12.5)],
+    2:  [(1.0, 3.2), (3.3, 3.6), (3.7, 3.9), (4.0, 4.3), (4.4, 4.7), (4.8, 5.2), (5.3, 12.5)],
+    3:  [(1.0, 3.5), (3.6, 3.9), (4.0, 4.2), (4.3, 4.6), (4.7, 5.1), (5.2, 5.6), (5.7, 12.5)],
+    4:  [(1.0, 3.7), (3.8, 4.1), (4.2, 4.5), (4.6, 5.0), (5.1, 5.4), (5.5, 6.1), (6.2, 12.5)],
+    5:  [(1.0, 4.1), (4.2, 4.5), (4.6, 4.9), (5.0, 5.4), (5.5, 6.0), (6.1, 6.6), (6.7, 12.5)],
+    6:  [(1.0, 4.5), (4.6, 4.9), (5.0, 5.4), (5.5, 6.0), (6.1, 6.6), (6.7, 7.3), (7.4, 12.5)],
+    7:  [(1.0, 5.0), (5.1, 5.5), (5.6, 6.0), (6.1, 6.7), (6.8, 7.3), (7.4, 8.1), (8.2, 12.5)],
+    8:  [(1.0, 5.7), (5.8, 6.2), (6.3, 6.8), (6.9, 7.5), (7.6, 8.2), (8.3, 9.1), (9.2, 12.5)],
+    9:  [(1.0, 6.5), (6.6, 7.2), (7.3, 7.8), (7.9, 8.6), (8.7, 9.4), (9.5, 10.4), (10.5, 12.5)],
+    10: [(1.0, 7.6), (7.7, 8.4), (8.5, 9.0), (9.1, 10.0), (10.1, 10.9), (11.0, 12.2), (12.3, 12.5)],
+}
+# The zone a race is usually run in — goal pace should sit here at the level you
+# reach by race day. A coaching heuristic, not a Peloton rule.
+RACE_PACE_ZONE = {"5k": "Hard", "10k": "Challenging", "half": "Challenging", "full": "Moderate"}
+
+
+def chart_zones(level):
+    """[{"name", "lo", "hi"} mph] for a Peloton level, from PELOTON_PACE_CHART."""
+    return [{"name": name, "lo": lo, "hi": hi} for name, (lo, hi) in zip(PACE_ZONES, PELOTON_PACE_CHART[level])]
+
+
+def _mph_to_pace(mph):
+    sec = round(3600 / mph)
+    return f"{sec // 60}:{sec % 60:02d}"
+
+
+def zone_for_pace(level, pace_s):
+    """The zone a pace (seconds/mile) falls in at a Peloton level: the last zone
+    whose lower speed bound it reaches. "faster than Max" above 12.5 mph."""
+    mph = 3600 / pace_s
+    zones = chart_zones(level)
+    if mph > zones[-1]["hi"]:
+        return "faster than Max"
+    if mph < zones[0]["lo"]:
+        return "slower than Recovery"
+    return [z for z in zones if mph >= z["lo"]][-1]["name"]
+
+
+def race_pace_level(goal, pace_s):
+    """The lowest Peloton level at which goal pace is no harder than the zone that
+    race is usually run in (RACE_PACE_ZONE) — the level to grow into by race day.
+    None when even Level 10 isn't enough."""
+    zone = RACE_PACE_ZONE.get(goal)
+    if not zone:
+        return None
+    limit = PACE_ZONES.index(zone)
+    for level in PACE_LEVELS:
+        z = zone_for_pace(level, pace_s)
+        if z in PACE_ZONES and PACE_ZONES.index(z) <= limit:
+            return level
+    return None
+
+
 def _fmt_min_pace(decimal_min):
     """Peloton zone paces are decimal minutes per mile (14.38 → '14:23')."""
     total = round(decimal_min * 60)
@@ -282,25 +339,6 @@ def latest_pace_level(user):
                     "zones": [{"name": z.get("name"), "fast": z.get("fast_pace"), "slow": z.get("slow_pace")}
                               for z in zones if z.get("fast_pace") and z.get("slow_pace")]}
     return None
-
-
-def zone_for_pace(zones, pace_s):
-    """Which zone a pace (seconds/mile) falls in at this level. In a gap between
-    two zones → the faster one. Faster than every zone → "faster than Very Hard"."""
-    m = pace_s / 60
-    named = [z for z in zones if z["name"] in PACE_ZONES and z["name"] != "Max"]
-    if not named:
-        return ""
-    for z in named:
-        if z["fast"] <= m <= z["slow"]:
-            return z["name"]
-    faster = [z for z in named if z["slow"] < m]      # zones entirely faster than this pace
-    slower = [z for z in named if z["fast"] > m]      # zones entirely slower
-    if not faster:      # nothing is faster than this pace
-        return f"faster than {min(named, key=lambda z: z['fast'])['name']}"
-    if not slower:      # nothing is slower
-        return f"slower than {max(named, key=lambda z: z['slow'])['name']}"
-    return max(faster, key=lambda z: z["slow"])["name"]   # the nearest faster zone
 
 
 def race_estimate(user, goal, today=None):
@@ -331,8 +369,8 @@ def pace_profile(user, inputs, today=None):
     profile = {
         "detected_level": level["level"] if level else None,
         "level": level["level"] if level else None,
-        "zones": level["zones"] if level else [],
         "level_from": f"{level['date']:%b %-d} · {level['title']}" if level else "",
+        "race_level": None, "race_zone": RACE_PACE_ZONE.get(inputs.get("goal"), ""),
         "typical_pace_s": round(median(paces)) if paces else None,
         "fastest_pace_s": paces[0] if paces else None,
         "estimate": race_estimate(user, inputs.get("goal"), today),
@@ -341,14 +379,13 @@ def pace_profile(user, inputs, today=None):
     choice = inputs.get("pace_level_choice")
     if choice and choice != "auto":
         profile["level"] = int(choice)
-        if profile["level"] != profile["detected_level"]:
-            profile["zones"] = []      # we only know the zone paces of the level Peloton last reported
     miles = RACE_MILES.get(inputs.get("goal"))
     target = inputs.get("target_time")
     if miles and target:
         profile["goal_pace_s"] = round(target / miles)
-        if profile["zones"]:
-            profile["goal_zone"] = zone_for_pace(profile["zones"], profile["goal_pace_s"])
+        if profile["level"]:
+            profile["goal_zone"] = zone_for_pace(profile["level"], profile["goal_pace_s"])
+        profile["race_level"] = race_pace_level(inputs.get("goal"), profile["goal_pace_s"])
         est = profile["estimate"]
         if est:
             profile["gap_pct"] = round(100 * (est["seconds"] - target) / est["seconds"], 1)
@@ -372,10 +409,10 @@ def pace_lines(inputs):
         elif p.get("level_from"):
             line += f" (from {p['level_from']})"
         out.append(line)
-    if p.get("zones"):
-        out.append("- Their zones at that level (min/mi): " + "; ".join(
-            f"{z['name']} {_fmt_min_pace(z['fast'])}–{_fmt_min_pace(z['slow'])}"
-            for z in p["zones"] if z["name"] not in ("Recovery", "Max")))
+    if p.get("level"):
+        out.append(f"- Their zones at Level {p['level']} (Peloton pace chart, min/mi): " + "; ".join(
+            f"{z['name']} {_mph_to_pace(z['hi'])}–{_mph_to_pace(z['lo'])}"
+            for z in chart_zones(p["level"]) if z["name"] not in ("Recovery", "Max")))
     if p.get("typical_pace_s"):
         out.append(f"- Runs of 20+ min, last 8 weeks: typical average pace {_fmt_pace(p['typical_pace_s'])}, "
                    f"fastest {_fmt_pace(p['fastest_pace_s'])}")
@@ -393,6 +430,17 @@ def pace_lines(inputs):
         if p.get("goal_zone"):
             line += f"; at Level {p['level']} goal pace sits in their {p['goal_zone']} zone"
         out.append(line)
+        if p.get("race_level"):
+            line = (f"- Race-pace level: Level {p['race_level']} — the lowest level where goal pace is within the "
+                    f"{p['race_zone']} zone, where a {goal_label} is usually run")
+            if p.get("level"):
+                steps = p["race_level"] - p["level"]
+                line += (f"; from Level {p['level']} that's {steps} level{'s' if steps != 1 else ''} to climb over "
+                         f"{inputs.get('weeks')} weeks" if steps > 0 else f"; they're already at or past it")
+            out.append(line)
+        elif p.get("race_zone"):
+            out.append(f"- Race-pace level: beyond Level 10 — goal pace is harder than the {p['race_zone']} zone "
+                       "at every Peloton level")
         if p.get("stretch"):
             out.append(f"- STRETCH GOAL: that's more than ~{STRETCH_PCT_PER_4_WEEKS}% improvement per 4 weeks "
                        "of plan.")
