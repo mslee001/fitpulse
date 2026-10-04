@@ -222,7 +222,7 @@ class ValidateTests(PlanTestCase):
     def test_bad_duration_snapped(self):
         clean, warnings = self.validate(full_spec(extra={2: [spec_slot(1, minutes=33)]}))
         self.assertEqual(clean["weeks"][1]["slots"][0]["duration_min"], 30)
-        self.assertTrue(any("33 min → 30 min" in w for w in warnings))
+        self.assertTrue(any(w.startswith("Rounded 1 session length") and "Week 2 Mon 33→30" in w for w in warnings))
 
     def test_weekday_max_caps_duration(self):
         clean, _ = self.validate(full_spec(extra={2: [spec_slot(1, minutes=60)]}))
@@ -655,10 +655,14 @@ class PaceTests(PlanTestCase):
         self.assertEqual(p["race_level"], 6)
         self.assertGreater(p["gap_pct"], 0)
         self.assertEqual(p["long_run_min"], 45)                              # 1.25 × 28 min → 35, floor 45
-        self.assertEqual(self.inputs(goal="10k", target_time="55:00")["pace"]["long_run_min"], 70)
+        for i in range(3):
+            make_class(f"end60-{i}", "t_end", 60)
+        self.assertEqual(self.inputs(goal="10k", target_time="55:00")["pace"]["long_run_min"], 60)  # 68.75 → 60
 
-    def test_forty_minute_race_long_run(self):
-        self.assertEqual(self.inputs(goal="10k", target_time="40:00")["pace"]["long_run_min"], 50)
+    def test_forty_minute_race_long_run_is_a_real_class_length(self):
+        for i in range(3):
+            make_class(f"end60-{i}", "t_end", 60)
+        self.assertEqual(self.inputs(goal="10k", target_time="40:00")["pace"]["long_run_min"], 45)  # 50 → 45, not 60
 
     def test_level_override_uses_the_chart_for_that_level(self):
         self.paced_run(TODAY - timedelta(days=3))
@@ -682,18 +686,18 @@ class PaceTests(PlanTestCase):
         self.assertTrue(p["stretch"])
 
     def test_validate_keeps_pace_zone_and_warns_on_short_long_run(self):
-        inputs = self.inputs(goal="10k", target_time="40:00")                  # long run target 50 min
+        inputs = self.inputs(goal="10k", target_time="40:00")                  # long run target 45 min
         _, allowed = tp.catalog_menu(inputs)
         spec = full_spec()
         for wk in spec["weeks"]:
             wk["slots"][0]["pace_zone"] = "hard"
-            wk["slots"][1]["duration_min"] = 45
+            wk["slots"][1]["duration_min"] = 30
         spec["weeks"][1]["slots"].append(spec_slot(5, tid="t_str", disc="stretching", minutes=20, pace_zone="Easy"))
         clean, warnings = tp.validate_spec(spec, inputs, allowed)
         self.assertEqual(clean["weeks"][0]["slots"][0]["pace_zone"], "Hard")
         stretch = next(s for s in clean["weeks"][1]["slots"] if s["discipline"] == "stretching")
         self.assertEqual(stretch["pace_zone"], "")
-        self.assertTrue(any("peaks at 45 min" in w for w in warnings))
+        self.assertTrue(any("peaks at 30 min" in w for w in warnings))
 
     def test_picker_prefers_pace_target_classes_for_tread_runs(self):
         PelotonClass.objects.filter(class_type_id="t_end", duration_seconds=1800).update(is_available=False)
@@ -714,7 +718,8 @@ class PaceTests(PlanTestCase):
     def test_prompt_has_pace_rules_only_with_a_target(self):
         from workouts.ai import _training_plan_prompt
         with_target = _training_plan_prompt(self.inputs(goal="10k", target_time="40:00"), "", "")
-        self.assertIn("13. LONG RUN: build the weekly long run to at least 50 min", with_target)
+        self.assertIn("13. LONG RUN: build the weekly long run to at least 45 min", with_target)
+        self.assertIn("in-between lengths like 25, 35 or 40 min", with_target)
         self.assertIn("11. PACE", with_target)
         without = _training_plan_prompt(self.inputs(goal="10k", target_time=""), "", "")
         self.assertNotIn("11. PACE", without)
@@ -731,3 +736,43 @@ class PaceTests(PlanTestCase):
         self.assertContains(page, "Level 4")
         self.assertContains(page, "11:07–11:46/mi")
         self.assertContains(page, '"chart"')
+
+
+
+class LengthAndTextTests(PlanTestCase):
+    def test_snap_rounds_up_in_build_weeks_and_down_early(self):
+        self.assertEqual(tp._snap_duration([20, 30, 45], 25, 45), 20)                 # nearest, tie → shorter
+        self.assertEqual(tp._snap_duration([20, 30, 45], 25, 45, prefer_up=True), 30)
+        self.assertEqual(tp._snap_duration([20, 30, 45], 35, 45, prefer_up=True), 45)
+        self.assertEqual(tp._snap_duration([20, 30, 45], 35, 40, prefer_up=True), 30) # day max wins
+        self.assertEqual(tp._snap_duration([20, 30, 45], 30, 45, prefer_up=True), 30)
+
+    def test_validate_rounds_by_phase_and_groups_the_note(self):
+        inputs = self.inputs()          # 7 weeks → early weeks 1–3
+        _, allowed = tp.catalog_menu(inputs)
+        spec = full_spec()
+        spec["weeks"][0]["slots"][0]["duration_min"] = 25       # early → 20
+        spec["weeks"][4]["slots"][0]["duration_min"] = 25       # build → 30
+        spec["weeks"][5]["phase"] = "taper"
+        spec["weeks"][5]["slots"][0]["duration_min"] = 25       # taper → 20
+        clean, warnings = tp.validate_spec(spec, inputs, allowed)
+        self.assertEqual([clean["weeks"][i]["slots"][0]["duration_min"] for i in (0, 4, 5)], [20, 30, 20])
+        notes = [w for w in warnings if w.startswith("Rounded")]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("Week 1 Wed 25→20, Week 5 Wed 25→30, Week 6 Wed 25→20", notes[0])
+
+    def test_level_already_covering_goal_pace(self):
+        inputs = self.inputs(goal="5k", target_time="40:00", pace_level="4")   # 12:52/mi = Challenging at 4
+        self.assertEqual(inputs["pace"]["race_level"], 2)
+        text = tp.build_fitness_context(self.a, inputs, today=TODAY)
+        self.assertIn("current Level 4 already covers goal pace", text)
+        self.assertNotIn("Race-pace level: Level 2", text)
+        from workouts.training_plan_views import _pace_summary
+        draft = PlanDraft(user=self.a, inputs_json=inputs, spec_json={"weeks": []})
+        self.assertIn("Level 4 already covers goal pace", _pace_summary(draft)["lines"])
+
+    def test_clip_never_cuts_mid_word(self):
+        text = "Start easy in the Easy zone through week 4. Then add Challenging work. Reach Level 5 by week 7."
+        self.assertEqual(tp._clip(text, 60), "Start easy in the Easy zone through week 4.")
+        self.assertEqual(tp._clip("word " * 30, 22), "word word word word…")
+        self.assertEqual(tp._clip("short", 100), "short")

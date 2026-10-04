@@ -29,7 +29,7 @@
   <div class="tp-pace">
     <span class="difficulty-label">Pace</span> {{ pace.lines|join:" · " }}
     {% if pace.stretch %}<span class="badge badge-muted">Stretch goal</span>{% endif %}
-    {% if pace.guidance %}<p class="stat-sub" style="margin:0.35rem 0 0">{{ pace.guidance }}</p>{% endif %}
+    {% if pace.guidance %}<p class="tp-pace-guidance">{{ pace.guidance }}</p>{% endif %}
   </div>
   {% endif %}
   {% for p in other_active %}

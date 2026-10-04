@@ -394,8 +394,26 @@ def pace_profile(user, inputs, today=None):
     if inputs.get("goal") in ("5k", "10k"):
         race_s = target or (profile["estimate"] or {}).get("seconds")
         if race_s:
-            profile["long_run_min"] = max(LONG_RUN_FLOOR_MIN, math.ceil(LONG_RUN_RACE_MULTIPLE * race_s / 60 / 5) * 5)
+            raw = max(LONG_RUN_FLOOR_MIN, LONG_RUN_RACE_MULTIPLE * race_s / 60)
+            profile["long_run_min"] = _nearest_run_length(inputs, raw)
     return profile
+
+
+def run_lengths_for_form():
+    """Offered tread running lengths ≥ LONG_RUN_FLOOR_MIN, for the form's live long-run text."""
+    return sorted(m for m in {round(sec / 60) for sec in menu_queryset("running", "tread")
+                              .values_list("duration_seconds", flat=True).distinct()} if m >= LONG_RUN_FLOOR_MIN)
+
+
+def _nearest_run_length(inputs, minutes):
+    """The offered running class length nearest a target (ties → shorter, never
+    under LONG_RUN_FLOOR_MIN) — a 50-min target is a 45-min class, not a 60."""
+    lengths = sorted({round(sec / 60) for sec in menu_queryset("running", inputs.get("setting"))
+                      .values_list("duration_seconds", flat=True).distinct()})
+    lengths = [m for m in lengths if m >= LONG_RUN_FLOOR_MIN]
+    if not lengths:
+        return math.ceil(minutes / 5) * 5
+    return min(lengths, key=lambda m: (abs(m - minutes), m))
 
 
 def pace_lines(inputs):
@@ -430,13 +448,17 @@ def pace_lines(inputs):
         if p.get("goal_zone"):
             line += f"; at Level {p['level']} goal pace sits in their {p['goal_zone']} zone"
         out.append(line)
-        if p.get("race_level"):
+        if p.get("race_level") and p.get("level") and p["race_level"] <= p["level"]:
+            out.append(f"- Pace level: their current Level {p['level']} already covers goal pace (it's their "
+                       f"{p['goal_zone']} zone — no harder than the {p['race_zone']} zone a {goal_label} is usually "
+                       f"run in). No level change is needed; stay at Level {p['level']}.")
+        elif p.get("race_level"):
             line = (f"- Race-pace level: Level {p['race_level']} — the lowest level where goal pace is within the "
                     f"{p['race_zone']} zone, where a {goal_label} is usually run")
             if p.get("level"):
                 steps = p["race_level"] - p["level"]
-                line += (f"; from Level {p['level']} that's {steps} level{'s' if steps != 1 else ''} to climb over "
-                         f"{inputs.get('weeks')} weeks" if steps > 0 else f"; they're already at or past it")
+                line += f"; from Level {p['level']} that's {steps} level{'s' if steps != 1 else ''} to climb over " \
+                        f"{inputs.get('weeks')} weeks"
             out.append(line)
         elif p.get("race_zone"):
             out.append(f"- Race-pace level: beyond Level 10 — goal pace is harder than the {p['race_zone']} zone "
@@ -956,16 +978,31 @@ def _day_max(inputs, day):
     return inputs["max_weekend_min"] if day in (6, 7) else inputs["max_weekday_min"]
 
 
-def _snap_duration(offered, wanted, day_max):
-    """Nearest offered duration (ties → shorter), then capped by the day's max.
-    None when nothing fits."""
-    if not offered:
+def _snap_duration(offered, wanted, day_max, prefer_up=False):
+    """An offered class length for a wanted one. In between two lengths: the
+    longer when prefer_up (build weeks — keeps the progression moving), else the
+    nearer (ties → shorter). Never over the day's max; None when nothing fits."""
+    fits = [m for m in offered if m <= day_max]
+    if not fits:
         return None
-    best = min(offered, key=lambda m: (abs(m - wanted), m))
-    if best > day_max:
-        under = [m for m in offered if m <= day_max]
-        return max(under) if under else None
-    return best
+    if wanted in fits:
+        return wanted
+    longer = [m for m in fits if m > wanted]
+    if prefer_up and longer:
+        return min(longer)
+    return min(fits, key=lambda m: (abs(m - wanted), m))
+
+
+def _clip(text, limit):
+    """Shorten to the last full sentence (or word) within limit — never mid-word."""
+    text = str(text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    if end >= limit // 2:
+        return cut[:end + 1]
+    return cut[:cut.rfind(" ")].rstrip(",;:") + "…" if " " in cut else cut + "…"
 
 
 def _resolve_type(slot, allowed):
@@ -1018,6 +1055,7 @@ def validate_spec(spec, inputs, allowed):
         raise PlanSpecInvalid(f"The AI's plan is missing week(s) {', '.join(map(str, missing))}.")
 
     total = dropped = 0
+    rounded = []          # "Week 3 Sun 35→30" — reported as one line
     clean_weeks = []
     for n in range(1, weeks_wanted + 1):
         wk = by_number[n]
@@ -1067,13 +1105,14 @@ def validate_spec(spec, inputs, allowed):
                 wanted = int(s.get("duration_min"))
             except (TypeError, ValueError):
                 wanted = offered[0]
-            duration = _snap_duration(offered, wanted, _day_max(inputs, day))
+            prefer_up = disc == "running" and n > early and phase not in ("lighter", "taper", "race")
+            duration = _snap_duration(offered, wanted, _day_max(inputs, day), prefer_up)
             if duration is None:
                 warnings.append(f"{label}: dropped {entry['name']} — no length fits the day's max.")
                 dropped += 1
                 continue
             if duration != wanted:
-                warnings.append(f"{label}: {entry['name']} {wanted} min → {duration} min (closest available).")
+                rounded.append(f"{label} {wanted}→{duration}")
             if disc == "running" and n <= early and not early_ok(level, entry["name"], duration):
                 new_tid, new_entry = _gate_replacement(allowed, level, entry["name"], duration, setting)
                 if new_tid is None:
@@ -1099,7 +1138,7 @@ def validate_spec(spec, inputs, allowed):
             slots_out.append({
                 "day": day, "order": 0, "discipline": disc, "class_type": entry["name"], "class_type_id": tid,
                 "duration_min": duration, "intensity": intensity, "setting": setting, "pace_zone": zone,
-                "purpose": str(s.get("purpose") or "")[:200], "optional": optional,
+                "purpose": _clip(s.get("purpose"), 200), "optional": optional,
             })
         per_day = Counter()
         for slot in slots_out:
@@ -1107,11 +1146,15 @@ def validate_spec(spec, inputs, allowed):
             per_day[slot["day"]] += 1
         if not any(sl["discipline"] == "running" for sl in slots_out) and n != inputs.get("race_week"):
             raise PlanSpecInvalid(f"Week {n} ended up with no runs. " + "; ".join(warnings[:4]))
-        clean_weeks.append({"number": n, "phase": phase, "focus": str(wk.get("focus") or "")[:160],
+        clean_weeks.append({"number": n, "phase": phase, "focus": _clip(wk.get("focus"), 160),
                             "slots": slots_out})
     if total and dropped / total > MAX_DROPPED_SHARE:
         raise PlanSpecInvalid(f"The AI's plan needed {dropped} of {total} sessions dropped. "
                               + "; ".join(warnings[:4]))
+    if rounded:
+        warnings.insert(0, f"Rounded {len(rounded)} session length{'s' if len(rounded) != 1 else ''} to Peloton "
+                           f"class lengths (up in build weeks, down early on and in lighter/taper weeks): "
+                           + ", ".join(rounded) + " min.")
     long_min = (inputs.get("pace") or {}).get("long_run_min")
     if long_min:
         longest = max((sl["duration_min"] for wk in clean_weeks for sl in wk["slots"]
@@ -1124,7 +1167,7 @@ def validate_spec(spec, inputs, allowed):
     clean = {"plan_name": str(spec.get("plan_name") or "Training plan")[:120],
              "summary": str(spec.get("summary") or ""),
              "assumptions": [str(a) for a in (spec.get("assumptions") or []) if a][:8],
-             "pace_guidance": str(spec.get("pace_guidance") or "")[:400],
+             "pace_guidance": _clip(spec.get("pace_guidance"), 900),
              "weeks": clean_weeks}
     return clean, warnings
 
