@@ -566,6 +566,27 @@ class JsonReplyTests(TwoUserTestCase):
         with self.assertRaises(ValueError):
             llm.parse_json_text("I can't help with that.")
 
+    def test_expect_dict_skips_list_fragments_in_prose(self):
+        text = 'Using your days [1, 3, 5, 6] as given:\n{"plan_name": "10K", "weeks": []}'
+        self.assertEqual(llm.parse_json_text(text), [1, 3, 5, 6])          # what broke plan generation
+        self.assertEqual(llm.parse_json_text(text, expect=dict), {"plan_name": "10K", "weeks": []})
+        with self.assertRaises(ValueError):
+            llm.parse_json_text("[1, 2, 3]", expect=dict)
+
+    def test_plan_spec_requires_an_object_and_sends_a_system_prompt(self):
+        with patch("workouts.llm.requests.post",
+                   return_value=self._reply('Days [1, 3]:\n{"weeks": [], "plan_name": "x"}')) as post:
+            from workouts.ai import generate_training_plan_spec
+            with patch("workouts.ai._training_plan_prompt", return_value="p"):
+                raw = generate_training_plan_spec(self.a, {}, "", "")
+        self.assertEqual(raw["plan_name"], "x")
+        self.assertIn("exactly one JSON object", post.call_args.kwargs["json"]["system"])
+        with patch("workouts.llm.requests.post", return_value=self._reply("[1, 2, 3]")), \
+             patch("workouts.ai._training_plan_prompt", return_value="p"):
+            with self.assertRaises(llm.AIBadJSON) as ctx:
+                generate_training_plan_spec(self.a, {}, "", "")
+        self.assertEqual(ctx.exception.text, "[1, 2, 3]")    # the reply is kept for Webhook Errors
+
     def _reply(self, text, stop="end_turn"):
         from unittest.mock import MagicMock
         r = MagicMock()

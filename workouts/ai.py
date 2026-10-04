@@ -3490,6 +3490,10 @@ setting ∈ tread | outdoor (only when the menu lists both; otherwise use the on
 discipline ∈ the first column of the CLASS MENU (running, walking, stretching, strength, pilates, yoga, cycling)."""
 
 
+_TRAINING_PLAN_SYSTEM = ("You write training plans as data for software to read. Reply with exactly one JSON "
+                         "object matching the requested shape — no introduction, no explanation, no code fence.")
+
+
 def generate_training_plan_spec(user, inputs, context_text, menu_text) -> dict:
     """Sonnet writes the plan structure as class specs (feature ai_program_tools).
     Input ≈ 6–9k tokens, output ≈ 3–10k (more for long standalone plans) →
@@ -3498,8 +3502,7 @@ def generate_training_plan_spec(user, inputs, context_text, menu_text) -> dict:
     unreadable or cut-off reply."""
     prompt = _training_plan_prompt(inputs, context_text, menu_text)
     raw = llm.call_json(prompt, user=user, feature="ai_program_tools", model=llm.SONNET,
-                        max_tokens=16000, timeout=300)   # long plans run past 8k tokens; this runs in a thread
-    if not isinstance(raw, dict):
-        raise ValueError("The AI returned something other than a plan.")
+                        max_tokens=16000, timeout=300,   # long plans run past 8k tokens; this runs in a thread
+                        system=_TRAINING_PLAN_SYSTEM, expect=dict)
     raw["model"] = llm.SONNET
     return raw
