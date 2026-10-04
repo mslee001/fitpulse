@@ -145,7 +145,7 @@
             <span class="pcell-title">{{ cell.slot.title }}</span>
             <span class="pcell-sub">
               {{ cell.entry.workout.created_at|date:"M j, Y" }}
-              {% if cell.entry.workout.effort_points %} &middot; {{ cell.entry.workout.effort_points }} pts{% endif %}
+              {% if cell.entry.workout.effort_points %} &middot; {{ cell.entry.workout.effort_points }} pts{% if cell.entry.workout.effort_per_min %} ({{ cell.entry.workout.effort_per_min }}/min){% endif %}{% endif %}
             </span>
             {% for r in cell.recoveries %}
             <span class="pcell-recovery" title="{{ r.workout.title }} &middot; {{ r.workout.created_at|date:'g:i A' }}">

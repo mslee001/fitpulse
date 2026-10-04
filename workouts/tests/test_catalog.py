@@ -148,3 +148,57 @@ class CatalogAccessTests(TwoUserTestCase):
     def test_integrations_card_owner_only(self):
         self.assertContains(self.client_a.get(reverse("integrations_settings")), "Refresh catalog")
         self.assertNotContains(self.client_b.get(reverse("integrations_settings")), "Refresh catalog")
+
+
+class DifficultyInContextTests(TwoUserTestCase):
+    def setUp(self):
+        super().setUp()
+        from workouts.models import PelotonClassType
+        PelotonClassType.objects.create(id="t1", name="Endurance", discipline="running")
+        now = timezone.now()
+        for i, d in enumerate([5.0, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0]):
+            PelotonClass.objects.create(ride_id=f"r{i}", title=f"30 min Endurance {i}", discipline="running",
+                                        class_type_id="t1", duration_seconds=1800, difficulty_estimate=d,
+                                        original_air_time=now, last_seen_at=now)
+
+    def test_phrase_harder_and_easier(self):
+        from workouts.catalog import DifficultyRanker
+        r = DifficultyRanker()
+        hard = r.rank(PelotonClass.objects.get(pk="r8"))       # 9.5: 8 of 10 below
+        self.assertEqual(hard["phrase"], "harder than 80% of 30-min Endurance classes")
+        easy = r.rank(PelotonClass.objects.get(pk="r1"))       # 6.0: 8 of 10 above
+        self.assertEqual(easy["phrase"], "easier than 80% of 30-min Endurance classes")
+
+    def test_too_few_comparable_classes_shows_number_only(self):
+        from workouts.catalog import DifficultyRanker
+        PelotonClass.objects.filter(pk__in=["r0", "r1", "r2", "r3", "r4", "r5"]).update(is_available=False)
+        info = DifficultyRanker().rank(PelotonClass.objects.get(pk="r8"))
+        self.assertEqual((info["difficulty"], info["phrase"]), (9.5, ""))
+
+    def test_workout_not_in_catalog_uses_its_own_number(self):
+        from workouts.catalog import DifficultyRanker
+        from workouts.models import CachedWorkout
+        w = CachedWorkout(user=self.a, workout_id="w", ride_id="unknown", difficulty_estimate=6.2)
+        DifficultyRanker().annotate_workouts([w])
+        self.assertEqual((w.difficulty_info["difficulty"], w.difficulty_info["phrase"]), (6.2, ""))
+
+    def test_effort_per_min(self):
+        from workouts.models import CachedWorkout
+        w = CachedWorkout(duration_seconds=1800, performance_graph_json={"effort_zones": {"total_effort_points": 42}})
+        self.assertEqual(w.effort_per_min, 1.4)
+        self.assertIsNone(CachedWorkout(duration_seconds=1800).effort_per_min)
+        w.duration_seconds = 120
+        self.assertIsNone(w.effort_per_min)
+
+    def test_detail_and_history_show_it(self):
+        from workouts.models import CachedWorkout
+        CachedWorkout.objects.create(
+            user=self.a, workout_id="wk1", ride_id="r8", title="30 min Endurance 8", discipline="running",
+            source="peloton", created_at=timezone.now() - timedelta(days=1), duration_seconds=1800,
+            difficulty_estimate=9.5, performance_graph_json={"effort_zones": {"total_effort_points": 42}})
+        detail = self.client_a.get(reverse("workout_detail", args=["wk1"]))
+        self.assertContains(detail, "harder than 80% of 30-min Endurance classes")
+        self.assertContains(detail, "1.4 pts/min")
+        history = self.client_a.get(reverse("history"))
+        self.assertContains(history, "harder than 80%")
+        self.assertContains(history, "Effort/min")

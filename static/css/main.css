@@ -3418,3 +3418,10 @@ a:hover { text-decoration: underline; }
 @media (max-width: 720px) {
   .tp-row { grid-template-columns: 1fr; }
 }
+
+/* Difficulty in context (catalog.DifficultyRanker) + your effort per minute */
+.class-difficulty { flex-wrap: wrap; }
+.class-difficulty + .class-difficulty { margin-top: 0.4rem; }
+.difficulty-context { font-size: 0.78rem; color: var(--text-muted); }
+.difficulty-note { margin: 0.5rem 0 0; font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; }
+.workout-difficulty { font-size: 0.75rem; color: var(--text-muted); margin: 0.15rem 0 0.35rem; }

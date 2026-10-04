@@ -691,6 +691,17 @@ class CachedWorkout(models.Model):
         return ez.get("total_effort_points")
 
     @property
+    def effort_per_min(self):
+        """Effort points per minute — how hard the session was for *you* (heart-rate
+        based), without long classes scoring high just for being long. None without
+        Peloton's effort score or for sessions under 5 minutes."""
+        pts = self.effort_points
+        minutes = (self.duration_seconds or 0) / 60
+        if pts is None or minutes < 5:
+            return None
+        return round(pts / minutes, 1)
+
+    @property
     def heart_rate_avg_best(self):
         """HR average: model field if set, otherwise from performance graph."""
         if self.heart_rate_avg:

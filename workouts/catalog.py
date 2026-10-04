@@ -179,3 +179,72 @@ def catalog_status() -> dict:
     by_category = {c: qs.filter(categories__contains=f",{c},").count() for c in CATALOG_CATEGORIES}
     return {"total": qs.count(), "by_category": by_category,
             "last_synced": PelotonClass.objects.aggregate(m=Max("last_seen_at"))["m"]}
+
+
+# ---------------------------------------------------------------------------
+# Difficulty in context
+# ---------------------------------------------------------------------------
+
+MIN_RANK_CLASSES = 5    # fewer comparable classes than this → show the raw number only
+
+
+class DifficultyRanker:
+    """Where a class's member-rated difficulty sits among available classes of
+    the same type and length — the only comparison that number supports (each
+    member rates against their own fitness). Caches one sorted list per
+    (class type, duration), so ranking a page of workouts costs a few queries."""
+
+    def __init__(self):
+        self._values = {}
+        self._type_names = None
+
+    def _sorted(self, tid, seconds):
+        key = (tid, round(seconds / 60))
+        if key not in self._values:
+            self._values[key] = sorted(PelotonClass.objects.filter(
+                is_available=True, class_type_id=tid, difficulty_estimate__isnull=False,
+                duration_seconds__gte=seconds - 30, duration_seconds__lte=seconds + 30,
+            ).values_list("difficulty_estimate", flat=True))
+        return self._values[key]
+
+    def _type_name(self, tid):
+        if self._type_names is None:
+            self._type_names = dict(PelotonClassType.objects.values_list("id", "name"))
+        return self._type_names.get(tid, "")
+
+    def rank(self, cls, difficulty=None):
+        """{"difficulty", "harder_than", "easier_than", "n", "label", "phrase"} or None.
+        `cls` is a PelotonClass; `difficulty` overrides its value (e.g. a workout's own)."""
+        value = cls.difficulty_estimate if cls is not None and cls.difficulty_estimate is not None else difficulty
+        if value is None:
+            return None
+        info = {"difficulty": value, "harder_than": None, "easier_than": None, "n": 0, "label": "", "phrase": ""}
+        if cls is None or not cls.class_type_id or not cls.duration_seconds:
+            return info
+        values = self._sorted(cls.class_type_id, cls.duration_seconds)
+        n = len(values)
+        name = self._type_name(cls.class_type_id)
+        if n < MIN_RANK_CLASSES or not name:
+            return info
+        below = sum(1 for v in values if v < value)
+        above = sum(1 for v in values if v > value)
+        info.update(n=n, harder_than=round(100 * below / n), easier_than=round(100 * above / n),
+                    label=f"{round(cls.duration_seconds / 60)}-min {name} classes")
+        if info["harder_than"] >= info["easier_than"]:
+            info["phrase"] = f"harder than {info['harder_than']}% of {info['label']}"
+        else:
+            info["phrase"] = f"easier than {info['easier_than']}% of {info['label']}"
+        return info
+
+    def for_rides(self, ride_ids):
+        """{ride_id: PelotonClass} for the ones in the catalog."""
+        ids = [r for r in set(ride_ids) if r]
+        return {c.ride_id: c for c in PelotonClass.objects.filter(ride_id__in=ids)} if ids else {}
+
+    def annotate_workouts(self, workouts):
+        """Set `difficulty_info` on each CachedWorkout (None when unknown)."""
+        workouts = list(workouts)
+        classes = self.for_rides(w.ride_id for w in workouts)
+        for w in workouts:
+            w.difficulty_info = self.rank(classes.get(w.ride_id), w.difficulty_estimate)
+        return workouts

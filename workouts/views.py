@@ -163,6 +163,8 @@ def history(request):
     per_page = 20
     offset   = (page - 1) * per_page
     workouts = qs[offset: offset + per_page]
+    from .catalog import DifficultyRanker
+    workouts = DifficultyRanker().annotate_workouts(workouts)
     total    = qs.count()
     has_next = (offset + per_page) < total
 
@@ -250,9 +252,19 @@ def _workout_detail_fields(workout):
         "achievements": workout.achievements,
         "class_description": workout.class_description,
         "difficulty_estimate": workout.difficulty_estimate,
+        "difficulty_info": _difficulty_info(workout),
+        "effort_per_min": workout.effort_per_min,
+        "effort_points": workout.effort_points,
         "strava_id": workout.strava_id,
         "detail_synced": workout.detail_synced_at is not None,
     }
+
+
+def _difficulty_info(workout):
+    """The class's difficulty ranked among same-type, same-length catalog classes (see catalog.DifficultyRanker)."""
+    from .catalog import DifficultyRanker
+    ranker = DifficultyRanker()
+    return ranker.rank(ranker.for_rides([workout.ride_id]).get(workout.ride_id), workout.difficulty_estimate)
 
 
 def _get_perf_dict(workout, client):

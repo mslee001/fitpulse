@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from . import training_plans as tp
+from .catalog import DifficultyRanker
 from .models import PelotonClass, PlanDraft, Program, ProgramSlot, ProgramWorkout
 from .onboarding_views import is_owner
 
@@ -81,12 +82,14 @@ def _review_weeks(draft):
     for p in picks.values():
         ids |= {p.get("ride_id")} | set(p.get("alternates", []))
     classes = tp.classes_by_id(ids)
+    ranker = DifficultyRanker()
     companion = tp.companion_schedule(draft.user, inputs)
     _, race = tp.plan_dates(inputs)
     weeks = []
     for wk in spec.get("weeks", []):
         dates = tp.week_dates(inputs, wk["number"])
-        rows = [_slot_row_context(draft, wk["number"], slot, classes) | {"kind": "slot"} for slot in wk["slots"]]
+        rows = [_slot_row_context(draft, wk["number"], slot, classes, ranker) | {"kind": "slot"}
+                for slot in wk["slots"]]
         for c in companion.get(wk["number"], []):
             rows.append({"kind": "companion", "day": c["day"], "order": -1, "c": c})
         if race and inputs.get("race_week") == wk["number"]:
@@ -100,16 +103,16 @@ def _review_weeks(draft):
     return weeks
 
 
-def _slot_row_context(draft, week, slot, classes=None):
+def _slot_row_context(draft, week, slot, classes=None, ranker=None):
     key = tp.slot_key(week, slot)
     pick = draft.picks_json.get(key) or {"ride_id": None, "alternates": []}
     if classes is None:
         classes = tp.classes_by_id({pick.get("ride_id")} | set(pick.get("alternates", [])))
     from datetime import date
     last_taken = date.fromisoformat(pick["last_taken"]) if pick.get("last_taken") else None
+    cls = classes.get(pick.get("ride_id"))
     return {"key": key, "week": week, "slot": slot, "day": slot["day"], "order": slot["order"], "pick": pick,
-            "last_taken": last_taken,
-            "cls": classes.get(pick.get("ride_id")),
+            "last_taken": last_taken, "cls": cls, "rank": (ranker or DifficultyRanker()).rank(cls) if cls else None,
             "alternates": [classes[r] for r in pick.get("alternates", []) if r in classes],
             "day_name": tp.DAY_NAMES[slot["day"]]}
 
@@ -253,6 +256,6 @@ def program_slot_swap(request, pk):
         return HttpResponseBadRequest("Only upcoming, not-yet-done training-plan slots can be swapped.")
     new = tp.swap_program_slot(slot)
     return render(request, "workouts/partials/program_plan_cell.html", {
-        "cell": {"slot": slot, "entry": None, "swappable": True},
+        "cell": {"slot": slot, "entry": None, "swappable": True, "difficulty": DifficultyRanker().rank(new)},
         "swap_note": "" if new else "No other matching class right now.",
     })

@@ -39,6 +39,12 @@
       <div class="workout-instructor">{{ w.instructor_name }}</div>
       {% endif %}
 
+      {% if w.difficulty_info %}
+      <div class="workout-difficulty" title="Peloton members rate each class against their own fitness, so this only compares classes of the same type and length.">
+        Difficulty {{ w.difficulty_info.difficulty|floatformat:1 }}{% if w.difficulty_info.phrase %} · {{ w.difficulty_info.phrase }}{% endif %}
+      </div>
+      {% endif %}
+
       <div class="workout-stats">
         {% if w.output_watts %}
         <div class="wstat">
@@ -56,6 +62,12 @@
         <div class="wstat">
           <div class="wstat-value">{{ w.calories|floatformat:0 }}</div>
           <div class="wstat-label">Cal</div>
+        </div>
+        {% endif %}
+        {% if w.effort_per_min %}
+        <div class="wstat" title="Effort points per minute — heart-rate based, so it shows how hard this was for you">
+          <div class="wstat-value">{{ w.effort_per_min }}</div>
+          <div class="wstat-label">Effort/min</div>
         </div>
         {% endif %}
         {% if w.leaderboard_pct %}

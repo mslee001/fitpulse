@@ -9,7 +9,7 @@
       <a href="{{ r.cls.peloton_url }}" target="_blank" rel="noopener" class="tp-class-title">{{ r.cls.title }}</a>
       <span class="stat-sub">
         {{ r.cls.instructor_name|default:"" }}
-        {% if r.cls.difficulty_estimate is not None %} · difficulty {{ r.cls.difficulty_estimate|floatformat:1 }}{% endif %}
+        {% if r.rank %} · difficulty {{ r.rank.difficulty|floatformat:1 }}{% if r.rank.phrase %} ({{ r.rank.phrase }}){% endif %}{% endif %}
         {% if r.cls.overall_rating_avg is not None %} · {% widthratio r.cls.overall_rating_avg 1 100 %}% rating{% endif %}
         · aired {{ r.cls.original_air_time|date:"M j, Y" }}
       </span>

@@ -37,25 +37,38 @@
     </div>
     {% endif %}
 
-    <!-- Class info (description + difficulty) -->
-    {% if workout_detail.class_description or workout_detail.difficulty_estimate %}
+    <!-- Class info (description + difficulty + your effort) -->
+    {% with di=workout_detail.difficulty_info %}
+    {% if workout_detail.class_description or di or workout_detail.effort_per_min %}
     <div class="class-info-card">
       {% if workout_detail.class_description %}
       <div class="class-description">{{ workout_detail.class_description }}</div>
       {% endif %}
-      {% if workout_detail.difficulty_estimate %}
+      {% if di %}
       <div class="class-difficulty">
         <span class="difficulty-label">Difficulty</span>
         <div class="difficulty-pips">
-          {% for filled in workout_detail.difficulty_estimate|difficulty_pips %}
+          {% for filled in di.difficulty|difficulty_pips %}
           <div class="difficulty-pip{% if filled %} difficulty-pip--filled{% endif %}"></div>
           {% endfor %}
         </div>
-        <span class="difficulty-num">{{ workout_detail.difficulty_estimate|floatformat:1 }} / 10</span>
+        <span class="difficulty-num">{{ di.difficulty|floatformat:1 }} / 10</span>
+        {% if di.phrase %}<span class="difficulty-context">{{ di.phrase }}</span>{% endif %}
       </div>
+      {% endif %}
+      {% if workout_detail.effort_per_min %}
+      <div class="class-difficulty">
+        <span class="difficulty-label">Your effort</span>
+        <span class="difficulty-num">{{ workout_detail.effort_per_min }} pts/min</span>
+        <span class="difficulty-context">{{ workout_detail.effort_points|floatformat:0 }} effort points over {{ workout.duration_seconds|format_duration }}</span>
+      </div>
+      {% endif %}
+      {% if di %}
+      <p class="difficulty-note">Peloton members rate each class against their own fitness, so the score only compares classes of the same type and length. Your effort comes from your heart rate during this session.</p>
       {% endif %}
     </div>
     {% endif %}
+    {% endwith %}
 
     {% block detail_main %}{% endblock %}
 

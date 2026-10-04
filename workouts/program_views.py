@@ -43,6 +43,10 @@ def _run_grid(run):
     latest_run_week_id = (run.run_weeks.order_by("-sequence")
                           .values_list("id", flat=True).first())
 
+    from .catalog import DifficultyRanker
+    ranker = DifficultyRanker()
+    planned = ranker.for_rides(ProgramSlot.objects.filter(week__program=run.program)
+                               .exclude(peloton_ride_id="").values_list("peloton_ride_id", flat=True))
     rows = []
     total_workouts = 0
     total_effort = 0.0
@@ -70,7 +74,8 @@ def _run_grid(run):
             elif slot.optional and not is_open_pass:
                 continue   # never-filled optional slot in a closed pass — hide it
             cells.append({"slot": slot, "entry": e, "recoveries": recoveries,
-                          "swappable": run.end_date is None and slot_swappable(slot, e)})
+                          "swappable": run.end_date is None and slot_swappable(slot, e),
+                          "difficulty": None if e else ranker.rank(planned.get(slot.peloton_ride_id))})
         # Completed classes in the order actually taken; still-empty slots trail at
         # the end (they have no date to sort by) in their defined slot order.
         cells.sort(key=lambda c: (c["entry"] is None, c["entry"] and c["entry"].workout.created_at))
