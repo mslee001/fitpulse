@@ -385,12 +385,22 @@ class GenerateAndCreateTests(PlanTestCase):
         self.assertEqual(draft.status, "failed")
         self.assertIn("month's AI limit", draft.error)
 
-    def test_generate_bad_json(self):
+    def test_generate_bad_json_gives_a_plain_message_and_logs_the_reply(self):
+        from workouts.models import WebhookError
         draft = self.make_draft()
-        with patch.object(llm, "call_json", side_effect=ValueError("Expecting value")):
+        bad = llm.AIBadJSON("The AI's reply wasn't valid JSON (Expecting value).", "Sorry, I can't", "end_turn")
+        with patch.object(llm, "call_json", side_effect=bad):
             tp._generate(draft.pk)
         draft.refresh_from_db()
-        self.assertEqual(draft.status, "failed")
+        self.assertEqual((draft.status, draft.error), ("failed", "The AI's reply wasn't a readable plan. Try again."))
+        self.assertIn("Sorry, I can't", WebhookError.objects.get(source="training_plan", user=self.a).detail)
+
+    def test_generate_cut_off_reply(self):
+        draft = self.make_draft()
+        with patch.object(llm, "call_json", side_effect=llm.AIBadJSON("cut off", '{"weeks": [', "max_tokens")):
+            tp._generate(draft.pk)
+        draft.refresh_from_db()
+        self.assertIn("too long and got cut off", draft.error)
 
     def test_stale_generating_draft_reads_failed(self):
         draft = self.make_draft()
@@ -546,3 +556,29 @@ class TrainingPlanAccessTests(PlanTestCase):
         PlanDraft.objects.filter(pk=draft.pk).update(status="failed", error="x")
         resp = self.client_a.get(reverse("program_training_plan_status", args=[draft.pk]))
         self.assertEqual(resp["HX-Redirect"], reverse("program_training_plan_draft", args=[draft.pk]))
+
+
+class JsonReplyTests(TwoUserTestCase):
+    def test_parse_tolerates_prose_and_fences(self):
+        self.assertEqual(llm.parse_json_text('{"a": 1}'), {"a": 1})
+        self.assertEqual(llm.parse_json_text('Here is your plan:\n```json\n{"a": 1}\n```\nEnjoy!'), {"a": 1})
+        self.assertEqual(llm.parse_json_text('Here is your plan:\n{"a": [1, 2]}\nGood luck.'), {"a": [1, 2]})
+        with self.assertRaises(ValueError):
+            llm.parse_json_text("I can't help with that.")
+
+    def _reply(self, text, stop="end_turn"):
+        from unittest.mock import MagicMock
+        r = MagicMock()
+        r.json.return_value = {"model": llm.SONNET, "stop_reason": stop,
+                               "usage": {"input_tokens": 10, "output_tokens": 10},
+                               "content": [{"type": "text", "text": text}]}
+        return r
+
+    def test_call_json_reports_cut_off_and_unreadable(self):
+        with patch("workouts.llm.requests.post", return_value=self._reply('{"weeks": [{"number": 1', "max_tokens")):
+            with self.assertRaises(llm.AIBadJSON) as ctx:
+                llm.call_json("p", user=self.a, feature="ai_program_tools", model=llm.SONNET)
+        self.assertEqual(ctx.exception.stop_reason, "max_tokens")
+        with patch("workouts.llm.requests.post", return_value=self._reply("Sure! Here it is:\n{\"ok\": true}")):
+            self.assertEqual(llm.call_json("p", user=self.a, feature="ai_program_tools", model=llm.SONNET),
+                             {"ok": True})

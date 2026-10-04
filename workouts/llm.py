@@ -5,6 +5,7 @@ required keyword arguments). guard() checks that feature is allowed and the
 user's monthly budget isn't spent before any request goes out, and each
 response's token usage is logged to AIUsage."""
 import json
+import re
 import logging
 import os
 from decimal import Decimal
@@ -138,8 +139,7 @@ def log_usage(user, feature, model, usage, is_batch=False):
         logger.exception("AI usage logging failed (user=%s feature=%s)", getattr(user, "pk", None), feature)
 
 
-def call(prompt, *, user, feature, model=HAIKU, max_tokens=400, system=None, timeout=30, message_content=None):
-    """Send a single message. Returns the text response or raises."""
+def _send(prompt, *, user, feature, model, max_tokens, system, timeout, message_content):
     guard(user, feature)
     content = message_content if message_content is not None else prompt
     body = {"model": model, "max_tokens": max_tokens,
@@ -151,6 +151,13 @@ def call(prompt, *, user, feature, model=HAIKU, max_tokens=400, system=None, tim
     resp.raise_for_status()
     data = resp.json()
     log_usage(user, feature, data.get("model") or model, data.get("usage"))
+    return data
+
+
+def call(prompt, *, user, feature, model=HAIKU, max_tokens=400, system=None, timeout=30, message_content=None):
+    """Send a single message. Returns the text response or raises."""
+    data = _send(prompt, user=user, feature=feature, model=model, max_tokens=max_tokens, system=system,
+                 timeout=timeout, message_content=message_content)
     return extract_text(data["content"]).strip()
 
 
@@ -170,15 +177,55 @@ def call_raw(body, *, user, feature, timeout=30):
     return data
 
 
-def call_json(prompt, *, user, feature, **kwargs):
-    """Same as call() but strips ```json fences and parses. Raises ValueError on bad JSON."""
-    text = call(prompt, user=user, feature=feature, **kwargs)
-    if text.startswith("```"):
-        parts = text.split("```")
-        text = parts[1] if len(parts) > 1 else text
-        if text.startswith("json"):
-            text = text[4:]
-    return json.loads(text.strip())
+class AIBadJSON(ValueError):
+    """The model's reply couldn't be read as JSON. Carries the reply text (for
+    WebhookError detail — never shown to users) and the stop reason."""
+
+    def __init__(self, message, text="", stop_reason=""):
+        super().__init__(message)
+        self.text, self.stop_reason = text, stop_reason
+
+
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+
+
+def parse_json_text(text):
+    """Parse a model reply as JSON, tolerating a ```json fence anywhere and prose
+    before or after the JSON (models sometimes add "Here's the plan:" despite
+    being told not to). Raises ValueError when there's no JSON to be found."""
+    text = (text or "").strip()
+    try:
+        return json.loads(text)
+    except ValueError:
+        pass
+    m = _FENCE_RE.search(text)
+    if m:
+        try:
+            return json.loads(m.group(1).strip())
+        except ValueError:
+            pass
+    starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
+    if starts:
+        obj, _ = json.JSONDecoder().raw_decode(text[min(starts):])
+        return obj
+    raise ValueError("no JSON found in the reply")
+
+
+def call_json(prompt, *, user, feature, model=HAIKU, max_tokens=400, system=None, timeout=30,
+              message_content=None):
+    """Same as call() but parses the reply as JSON (see parse_json_text).
+    Raises AIBadJSON (a ValueError) when it can't — including when the reply
+    was cut off by max_tokens."""
+    data = _send(prompt, user=user, feature=feature, model=model, max_tokens=max_tokens, system=system,
+                 timeout=timeout, message_content=message_content)
+    text = extract_text(data["content"]).strip()
+    stop = data.get("stop_reason") or ""
+    try:
+        return parse_json_text(text)
+    except ValueError as e:
+        if stop == "max_tokens":
+            raise AIBadJSON("The AI's reply was cut off before it finished.", text, stop) from e
+        raise AIBadJSON(f"The AI's reply wasn't valid JSON ({e}).", text, stop) from e
 
 
 def submit_batch(custom_id, prompt, *, user, feature, model=SONNET, max_tokens=1024, system=None):
