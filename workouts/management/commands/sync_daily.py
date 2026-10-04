@@ -1,7 +1,8 @@
 """
 Daily sync for every active user: Peloton, Garmin activities + wellness (owner
 only), and Google Health.
-Run every morning via launchd (see scripts/sync_daily.sh).
+Scheduled as a Render Cron Job (`python manage.py sync_daily --skip-garmin`,
+twice a day); see README "Daily sync". Garmin runs only from its Sync buttons.
 Withings is push-based (webhook) and doesn't need scheduling.
 """
 import logging
@@ -39,6 +40,12 @@ class Command(BaseCommand):
             help="Skip Peloton sync (Garmin only)",
         )
         parser.add_argument(
+            "--skip-garmin",
+            action="store_true",
+            help="Skip Garmin (its tokens live only on the machine where garmin_login ran — the Render cron "
+                 "job always passes this; Garmin syncs run from the Sync buttons instead)",
+        )
+        parser.add_argument(
             "--wellness-days",
             type=int,
             default=2,
@@ -48,7 +55,7 @@ class Command(BaseCommand):
             "--if-stale",
             type=int,
             metavar="HOURS",
-            help="Only sync a user if their last sync was more than HOURS hours ago (used by fallback plist)",
+            help="Only sync a user if their last sync was more than HOURS hours ago",
         )
         add_user_argument(parser)
 
@@ -104,7 +111,7 @@ class Command(BaseCommand):
         if peloton_auth and peloton_auth.needs_reconnect and not opts["skip_peloton"]:
             # A rejected refresh token never comes back; retrying would only log errors.
             self._out(user, "Peloton needs reconnecting at /settings/integrations/ — skipped.")
-        do_garmin = user.is_superuser and _integration_enabled(user, "garmin")
+        do_garmin = not opts.get("skip_garmin") and user.is_superuser and _integration_enabled(user, "garmin")
         do_google = (_integration_enabled(user, "google_health")
                      and GoogleHealthAuth.for_user(user) is not None)
         if not (do_peloton or do_garmin or do_google):
