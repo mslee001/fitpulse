@@ -44,7 +44,7 @@ workouts/                # Main app
     google_health_login.py       # One-time interactive Google Health OAuth flow (CLI alternative to the web Reconnect button)
     google_health_register_webhook.py  # Create/patch the Google Health push-notification subscriber
     analyze_intervention.py      # Before/after analysis across wellness + body composition
-    sync_daily.py                # Automated daily sync (Peloton + Garmin activities + wellness)
+    sync_daily.py                # Scheduled daily sync (Render Cron Job): Peloton, Google Health, owner's catalog (weekly full); Garmin unless --skip-garmin
     migrate_withings_tokens.py   # One-time migration of tokens from file to DB
     sync_peloton_catalog.py      # Sync the shared class catalog (--category, --full)
     subscribe_withings_webhook.py  # Subscribe Withings push webhook
@@ -719,8 +719,10 @@ Shell snippets below assume `from django.contrib.auth.models import User; u = Us
 - **Inspect a training-plan draft** (spot-check the AI's numbers): `print(PlanDraft.objects.filter(user=u).latest('created_at').context_text)`
 - **Migrate Withings tokens from file to DB (one-time)**: `venv/bin/python3 manage.py migrate_withings_tokens [--user USERNAME]`
 - **Subscribe Withings webhook**: `venv/bin/python3 manage.py subscribe_withings_webhook [--user USERNAME]` (also `list_withings_webhooks`, `revoke_withings_webhook`; the web connect flow subscribes automatically)
+- **Scheduled daily sync**: a Render Cron Job runs `python manage.py sync_daily --skip-garmin` at `30 2,15 * * *` UTC (setup table in README → "Scheduled on Render"). The old laptop launchd jobs are retired (plists moved to `~/Library/LaunchAgents.disabled/`). Garmin is never scheduled — its tokens exist only locally in `~/.garminconnect` — so it runs only from the Sync buttons.
 - **Run daily sync manually**: `venv/bin/python3 manage.py sync_daily` — every active user in turn, each isolated (one user's failure doesn't stop the rest; output lines are prefixed `[sync_daily] [username]`); `--user USERNAME` for one user. Per user: Peloton, Garmin (owner), Google Health — each only if enabled and connected; users with nothing connected are skipped.
 - **Run daily sync only if stale**: `venv/bin/python3 manage.py sync_daily --if-stale 8`
+- **Force the weekly full catalog sync**: `venv/bin/python3 manage.py sync_daily --catalog-full` (the owner's Refresh catalog button does the same in the background)
 - **Management commands**: every command that reads or writes user data takes `--user USERNAME` (default: the owner) — `withings_login`, `google_health_login`, `analyze_intervention`, `migrate_withings_tokens`, `sync_peloton_catalog`, `*_withings_webhook(s)`, `dedupe_*`, `seed_programs`, `associate_programs`, `backfill_class_plans`, `backfill_ftp`, `sync_daily`. `seed_demo` defaults to a `demo` user (created if missing) and only clears/seeds that user. `garmin_login` and `google_health_register_webhook` are project-level.
 - **Check/clear webhook errors**: visit `/settings/integrations/errors/`, or in shell: `from workouts.models import WebhookError; WebhookError.objects.all().delete()`
 - **First-time Google Health (CLI)**: `venv/bin/python3 manage.py google_health_login [--user USERNAME]`

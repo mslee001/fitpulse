@@ -129,6 +129,15 @@ class SyncIsolationTests(TwoUserTestCase):
         self.assertIsNotNone(UserSettings.for_user(self.b).last_daily_sync_at)
         self.assertIsNone(UserSettings.for_user(self.a).last_daily_sync_at)
 
+    def test_sync_daily_skip_garmin(self):
+        out = StringIO()
+        Integration.objects.filter(user=self.a, key="garmin").update(is_enabled=True)
+        with patch("workouts.management.commands.sync_daily._run_garmin_sync_new") as garmin, \
+             patch("workouts.management.commands.sync_daily._run_wellness_sync") as wellness:
+            call_command("sync_daily", "--user", "alice", "--skip-garmin", stdout=out)
+        garmin.assert_not_called()
+        wellness.assert_not_called()
+
     def test_sync_daily_user_option_and_skips_unconnected(self):
         out = StringIO()
         with patch("workouts.management.commands.sync_daily._run_peloton_sync_new") as peloton:
