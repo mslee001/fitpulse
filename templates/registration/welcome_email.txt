@@ -1,0 +1,21 @@
+{% autoescape off %}Hi {{ user.first_name|default:user.username }},
+
+{{ owner.first_name|default:owner.username }} made you a FitPulse account — a private fitness dashboard for the household that pulls together your workouts, weigh-ins, sleep and recovery in one place.
+
+Your username: {{ user.username }}
+
+Choose your password here (the link works once and expires in {{ days }} days):
+{{ link }}
+
+After that you'll land on a Get Started page that walks you through connecting your accounts:
+
+- Peloton: you'll copy one value from your browser while logged in to onepeloton.com. This part needs a computer, not a phone — the page has step-by-step instructions.
+- Withings scale: click Connect and approve access.
+- Google Health (Fitbit / Pixel Watch): send {{ owner.first_name|default:owner.username }} the Google account email you use for it first — Google only lets people in once they've been added. When you connect, Google will warn that the app isn't verified; that's expected for a private household app.
+
+Skip anything you don't use. Your history imports in the background, so give it a few minutes.
+
+Afterwards, log in any time at {{ site }}/
+
+If the link has expired, ask {{ owner.first_name|default:owner.username }} to send a new one.
+{% endautoescape %}

@@ -123,8 +123,10 @@ OWNER_URL_NAMES = {  # superusers only
 ADMIN_URL_NAMES = {      # superusers only: /settings/users/
     "admin_users", "admin_user_new", "admin_user_detail", "admin_user_feature_toggle", "admin_user_ai",
     "admin_user_reset_password", "admin_user_active", "admin_user_reset_onboarding", "admin_user_gh_test_user",
+    "admin_user_welcome",
 }
-PUBLIC_URL_NAMES = {"health", "login", "withings_webhook", "google_health_webhook"}
+PUBLIC_URL_NAMES = {"health", "login", "withings_webhook", "google_health_webhook",
+                    "welcome_set_password"}   # the welcome email's link — the user isn't logged in yet
 
 _URL_TO_FEATURE = {name: slug for slug, f in FEATURES.items() for name in f["url_names"]}
 

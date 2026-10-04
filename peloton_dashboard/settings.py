@@ -108,6 +108,22 @@ GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD", "")
 # WebhookError rows) to learn whether a notification identifies its user.
 GOOGLE_HEALTH_CAPTURE_PAYLOADS = os.environ.get("GOOGLE_HEALTH_CAPTURE_PAYLOADS", "1") == "1"
 
+# Email — welcome emails for new household members. Sent from a Gmail account
+# over SMTP with a Google app password; without credentials, emails print to
+# the console instead (local development).
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+    EMAIL_USE_TLS = True
+    EMAIL_TIMEOUT = 15
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", f"FitPulse <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "FitPulse <noreply@localhost>")
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24 * 3   # welcome (set-password) links last 3 days
+
 # Withings posts every user's weigh-in notifications here (one URL for all users;
 # the payload's userid says whose). Subscribed right after the web OAuth flow.
 WITHINGS_CALLBACK_URL = os.getenv("WITHINGS_CALLBACK_URL", "")

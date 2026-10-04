@@ -6,6 +6,7 @@ PUBLIC_PATHS = (
     "/healthz/",
     "/accounts/login/",
     "/accounts/logout/",
+    "/accounts/welcome/",   # welcome email set-password links (token-checked)
     "/static/",
     "/api/withings/webhook/",
     "/webhooks/google-health/",

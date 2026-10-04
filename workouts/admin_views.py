@@ -5,16 +5,25 @@ Privacy rule: these pages show account, feature, AI-spend, onboarding and
 connection status only. They never query or display anyone's workouts, daily
 stats, body, nutrition, intervention, symptom or AI-output data
 (test_admin_users enforces this)."""
+import logging
 import secrets
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model, views as auth_views
+from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
+from django.core.validators import validate_email
 from django.db.models import Count, Sum
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse_lazy
+from django.template.loader import render_to_string
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from django.views.decorators.http import require_POST
 
 from . import llm
@@ -25,6 +34,7 @@ from .models import (
 from .onboarding import steps_for
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 PRESETS = {
     "nothing": ("Nothing", []),
@@ -48,6 +58,45 @@ def _owner_only(view):
 
 def _temp_password():
     return secrets.token_urlsafe(9)   # 12 URL-safe characters
+
+
+def _clean_email(raw):
+    """(email, error) — blank is allowed (no welcome email)."""
+    email = (raw or "").strip()
+    if not email:
+        return "", None
+    try:
+        validate_email(email)
+    except ValidationError:
+        return email, f"{email!r} doesn't look like an email address."
+    return email, None
+
+
+def send_welcome_email(request, user):
+    """Email a one-time link to choose a password (Django's password-reset
+    token: valid PASSWORD_RESET_TIMEOUT, dead once the password changes or they
+    log in). No password is ever put in the email. Returns an error string, or
+    None on success — a failed send never blocks creating the account."""
+    if not user.email:
+        return "No email address on this account."
+    link = request.build_absolute_uri(reverse("welcome_set_password", kwargs={
+        "uidb64": urlsafe_base64_encode(force_bytes(user.pk)),
+        "token": default_token_generator.make_token(user),
+    }))
+    context = {"user": user, "link": link, "owner": request.user,
+               "site": request.build_absolute_uri("/").rstrip("/"),
+               "days": settings.PASSWORD_RESET_TIMEOUT // 86400}
+    try:
+        send_mail(
+            subject=render_to_string("registration/welcome_email_subject.txt", context).strip(),
+            message=render_to_string("registration/welcome_email.txt", context),
+            from_email=None,   # DEFAULT_FROM_EMAIL
+            recipient_list=[user.email],
+        )
+    except Exception as e:
+        logger.warning("Welcome email to user %s failed: %s", user.pk, e)
+        return f"The welcome email couldn't be sent ({e.__class__.__name__}). Give them the temporary password instead."
+    return None
 
 
 def _onboarding_summary(user):
@@ -142,8 +191,8 @@ def admin_user_new(request):
     if request.method == "POST":
         username = (request.POST.get("username") or "").strip()
         first_name = (request.POST.get("first_name") or "").strip()[:150]
+        email, error = _clean_email(request.POST.get("email"))
         preset = request.POST.get("preset") if request.POST.get("preset") in PRESETS else "nothing"
-        error = None
         if not username:
             error = "Username is required."
         elif User.objects.filter(username__iexact=username).exists():
@@ -151,9 +200,9 @@ def admin_user_new(request):
         if error:
             return render(request, "workouts/admin_user_new.html",
                           {"presets": PRESETS, "error": error, "username": username,
-                           "first_name": first_name, "preset": preset})
+                           "first_name": first_name, "email": email, "preset": preset})
         password = _temp_password()
-        user = User.objects.create_user(username, password=password, first_name=first_name)
+        user = User.objects.create_user(username, email=email, password=password, first_name=first_name)
         features = list(PRESETS[preset][1])
         access = access_for(user)   # created by the post_save signal
         access.features = features
@@ -161,9 +210,11 @@ def admin_user_new(request):
         access.must_change_password = True
         access.save()
         Integration.ensure_for_user(user)
+        email_error = send_welcome_email(request, user) if email else None
         # Shown once in this response only — never stored, logged or put in messages.
         return render(request, "workouts/admin_user_password.html",
-                      {"target": user, "password": password, "is_new": True})
+                      {"target": user, "password": password, "is_new": True,
+                       "emailed": bool(email) and email_error is None, "email_error": email_error})
     return render(request, "workouts/admin_user_new.html", {"presets": PRESETS, "preset": "nothing"})
 
 
@@ -296,6 +347,42 @@ def admin_user_gh_test_user(request, pk):
     access.google_test_user_added = not access.google_test_user_added
     access.save(update_fields=["google_test_user_added", "updated_at"])
     return render(request, "workouts/partials/admin_gh_test_user.html", {"target": target, "access": access})
+
+
+@_owner_only
+@require_POST
+def admin_user_welcome(request, pk):
+    """Save the user's email address and send (or resend) the welcome email."""
+    target = get_object_or_404(User, pk=pk)
+    email, error = _clean_email(request.POST.get("email"))
+    if error or not email:
+        messages.error(request, error or "Enter an email address to send the welcome email to.")
+        return redirect("admin_user_detail", pk=target.pk)
+    if target.email != email:
+        target.email = email
+        target.save(update_fields=["email"])
+    error = send_welcome_email(request, target)
+    if error:
+        messages.error(request, error)
+    else:
+        messages.success(request, f"Welcome email sent to {email}.")
+    return redirect("admin_user_detail", pk=target.pk)
+
+
+class WelcomeSetPasswordView(auth_views.PasswordResetConfirmView):
+    """The welcome email's link: choose a password, get logged in, land on Get
+    Started (the onboarding gate takes it from there)."""
+    template_name = "registration/welcome_set_password.html"
+    post_reset_login = True
+    success_url = reverse_lazy("today")
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        access = access_for(form.user)
+        if access.must_change_password:
+            access.must_change_password = False   # they just chose their own
+            access.save(update_fields=["must_change_password", "updated_at"])
+        return response
 
 
 class PasswordChangeView(auth_views.PasswordChangeView):

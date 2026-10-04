@@ -17,10 +17,18 @@
     <dl class="admin-dl">
       <dt>Username</dt><dd>{{ target.username }}</dd>
       <dt>Name</dt><dd>{{ target.get_full_name|default:"—" }}</dd>
+      <dt>Email</dt><dd>{{ target.email|default:"—" }}</dd>
       <dt>Status</dt><dd>{% if target.is_active %}Active{% else %}Deactivated{% endif %}</dd>
       <dt>Last login</dt><dd>{{ target.last_login|date:"M j, Y g:i A"|default:"never" }}</dd>
       <dt>Created</dt><dd>{{ target.date_joined|date:"M j, Y" }}</dd>
     </dl>
+    {% if not target.is_superuser %}
+    <form method="post" action="{% url 'admin_user_welcome' target.pk %}" class="gs-inline-form" style="margin:0 0 0.9rem">
+      {% csrf_token %}
+      <input class="form-input" type="email" name="email" value="{{ target.email }}" placeholder="their@email.com" required style="flex:1;min-width:12rem">
+      <button class="btn btn-sm btn-ghost">{% if target.last_login %}Send set-password link{% else %}Send welcome email{% endif %}</button>
+    </form>
+    {% endif %}
     <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
       <form method="post" action="{% url 'admin_user_reset_password' target.pk %}"
             onsubmit="return confirm('Give {{ target.username }} a new temporary password?')">

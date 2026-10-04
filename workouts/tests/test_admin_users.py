@@ -130,3 +130,69 @@ class AdminUsersTests(TwoUserTestCase):
             for secret in ("BOB-SECRET-WORKOUT", "BOB-SECRET-FOOD", "BOB-SECRET-MED"):
                 self.assertNotIn(secret, html, url)
         self.assertIn("0.25", self.client_a.get(reverse("admin_user_detail", args=[self.b.pk])).content.decode())
+
+
+class WelcomeEmailTests(TwoUserTestCase):
+    def create(self, **extra):
+        return self.client_a.post(reverse("admin_user_new"),
+                                  {"username": "carol", "preset": "nutrition", **extra})
+
+    def link_from(self, message):
+        import re
+        return re.search(r"https?://\S+/accounts/welcome/\S+/", message.body).group(0)
+
+    def test_new_user_with_email_gets_a_set_password_link(self):
+        from django.core import mail
+        resp = self.create(email="carol@example.com", first_name="Carol")
+        carol = User.objects.get(username="carol")
+        self.assertEqual(carol.email, "carol@example.com")
+        self.assertEqual(len(mail.outbox), 1)
+        msg = mail.outbox[0]
+        self.assertEqual(msg.to, ["carol@example.com"])
+        self.assertIn("carol", msg.body)
+        self.assertNotIn(resp.context["password"], msg.body)        # never a password in an inbox
+        self.assertContains(resp, "Welcome email sent to carol@example.com")
+
+        link = self.link_from(msg)
+        anon = self.client_class()
+        page = anon.get(link, follow=True)                           # → .../set-password/
+        self.assertContains(page, "Choose a password for carol")
+        resp = anon.post(page.redirect_chain[-1][0], {
+            "new_password1": "lettuce-orbit-42", "new_password2": "lettuce-orbit-42"})
+        self.assertRedirects(resp, reverse("today"), fetch_redirect_response=False)
+        self.assertFalse(access_for(carol).must_change_password)
+        self.assertEqual(authenticate(username="carol", password="lettuce-orbit-42"), carol)
+        # logged in, and the onboarding gate sends them to Get Started
+        self.assertRedirects(anon.get("/"), reverse("get_started"), fetch_redirect_response=False)
+        # the link is single-use
+        self.assertContains(self.client_class().get(link, follow=True), "expired or was already used")
+
+    def test_no_email_means_no_message(self):
+        from django.core import mail
+        self.create()
+        self.assertEqual(mail.outbox, [])
+
+    def test_bad_email_is_rejected_before_creating_anything(self):
+        resp = self.create(email="not-an-email")
+        self.assertContains(resp, "doesn&#x27;t look like an email address")
+        self.assertFalse(User.objects.filter(username="carol").exists())
+
+    def test_send_failure_still_creates_the_user(self):
+        from unittest.mock import patch
+        with patch("workouts.admin_views.send_mail", side_effect=OSError("smtp down")):
+            resp = self.create(email="carol@example.com")
+        self.assertTrue(User.objects.filter(username="carol").exists())
+        self.assertContains(resp, "couldn&#x27;t be sent")
+        self.assertContains(resp, resp.context["password"])          # fallback still shown
+
+    def test_resend_saves_the_address_and_sends(self):
+        from django.core import mail
+        resp = self.client_a.post(reverse("admin_user_welcome", args=[self.b.pk]), {"email": "bob@example.com"})
+        self.assertRedirects(resp, reverse("admin_user_detail", args=[self.b.pk]), fetch_redirect_response=False)
+        self.b.refresh_from_db()
+        self.assertEqual(self.b.email, "bob@example.com")
+        self.assertEqual(mail.outbox[-1].to, ["bob@example.com"])
+
+    def test_resend_is_owner_only(self):
+        self.assertEqual(self.client_b.post(reverse("admin_user_welcome", args=[self.b.pk]),
+                                            {"email": "x@example.com"}).status_code, 403)
