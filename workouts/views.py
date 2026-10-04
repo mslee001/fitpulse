@@ -1522,8 +1522,18 @@ def set_peloton_auth(request):
     except (PelotonAuthError, PelotonNetworkError) as e:
         messages.error(request, str(e))
         return redirect(nxt)
-    if PelotonAuth.objects.filter(peloton_user_id=me["id"]).exclude(user=request.user).exists():
-        messages.error(request, "That Peloton account is already connected to another FitPulse user.")
+    def taken_message():
+        # Names the account: the person already holds this session, and it's the
+        # fastest way to spot "signed in to Peloton as someone else".
+        account = f"Peloton account @{me['username']}" if me["username"] else "that Peloton account"
+        return (f"That cookie is for {account}, which is already connected to another FitPulse user. "
+                "Make sure you're signed in to onepeloton.com as yourself, then copy the cookie again.")
+
+    def taken():
+        return PelotonAuth.objects.filter(peloton_user_id=me["id"]).exclude(user=request.user).exists()
+
+    if taken():
+        messages.error(request, taken_message())
         return redirect(nxt)
     first_connection = not CachedWorkout.objects.for_user(request.user).filter(source="peloton").exists()
     try:
@@ -1534,7 +1544,12 @@ def set_peloton_auth(request):
                           "peloton_username": me["username"], "notes": notes},
             )
     except IntegrityError:
-        messages.error(request, "That Peloton account is already connected to another FitPulse user.")
+        if taken():   # lost a race with another user saving the same account
+            messages.error(request, taken_message())
+        else:
+            logger.exception("Saving PelotonAuth failed for user %s", request.user.pk)
+            messages.error(request, "Couldn't save the Peloton connection because of a database error. "
+                                    "Try again, and tell Megan if it keeps happening.")
         return redirect(nxt)
     Integration.ensure_for_user(request.user)
     Integration.objects.for_user(request.user).filter(key="peloton").update(is_enabled=True, is_authenticated=True)
