@@ -1,18 +1,18 @@
 {% load workout_filters %}
 {% if error %}
-<div class="insights-error" style="padding:1rem">{{ error }}</div>
+<div role="alert" class="alert alert-soft alert-error">{{ error }}</div>
 {% elif pending %}
-<div class="insights-pending"
+<div class="flex items-center gap-2 py-2 text-sm text-muted" role="status"
   hx-get="{% url 'weekly_review_check' %}?week={{ week_start|date:'Y-m-d' }}"
   hx-trigger="load, every 30s"
   hx-target="this"
   hx-swap="outerHTML">
-  <span class="insights-pending-dot"></span>
-  Generating your weekly review — Claude Sonnet is crunching the numbers. This usually takes a few minutes.
-  <span class="insights-pending-check">Checking automatically every 30s...</span>
+  <span class="loading loading-dots loading-sm text-primary" aria-hidden="true"></span>
+  <span>Generating your weekly review — Claude Sonnet is crunching the numbers. This usually takes a few minutes.
+  <span class="block text-xs">Checking automatically every 30s…</span></span>
 </div>
 {% elif review %}
-<div class="insights-item" style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">
+<div>
   {{ review.content|format_nutrition_insights }}
 </div>
 {% endif %}

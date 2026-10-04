@@ -1546,14 +1546,14 @@ Rules:
 def _render_compare_analysis_html(text, ids_param=""):
     from django.http import HttpResponse
     regen = (
-        f'<button class="btn btn-ghost" style="font-size:0.75rem;padding:0.25rem 0.6rem;margin-top:1rem"'
+        f'<button class="btn btn-ghost btn-xs mt-4"'
         f' hx-get="/api/compare/analysis/?ids={ids_param}"'
         f' hx-target="#compare-ai-body" hx-swap="innerHTML"'
         f' hx-indicator="#compare-ai-spinner">Regenerate</button>'
-        f'<span id="compare-ai-spinner" class="cai-spinner htmx-indicator" style="margin-left:0.75rem;vertical-align:middle"></span>'
+        f'<span id="compare-ai-spinner" class="loading loading-spinner loading-xs htmx-indicator ml-3"></span>'
     )
     if not text:
-        return HttpResponse(f'<p style="color:var(--text-dim);font-size:0.85rem">Analysis unavailable.</p>{regen}')
+        return HttpResponse(f'<p class="text-sm text-muted">Analysis unavailable.</p>{regen}')
 
     headline = ""
     bullets = []

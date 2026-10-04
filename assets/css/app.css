@@ -122,7 +122,51 @@
   body { @apply bg-base-200 text-base-content font-sans antialiased; }
 }
 
+/* FitPulse components: patterns daisyUI doesn't have. Keep this list short; anything
+   used once is utilities in the template. Documented in CLAUDE.md → Styling. */
 @layer components {
+  /* Page frame */
+  .ui-page-header   { @apply mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3; }
+  .ui-page-title    { @apply text-2xl sm:text-3xl font-bold tracking-tight text-base-content; }
+  .ui-page-sub      { @apply text-muted; }
+  .ui-page-actions  { @apply flex flex-wrap items-center gap-2; }
+  .ui-section       { @apply mt-8 first:mt-0; }
+  .ui-section-title { @apply mb-3 text-lg font-semibold; }
+
+  /* Panels (replace chart-card / fp-card / add-form-card) */
+  .ui-panel         { @apply rounded-box bg-base-100 p-5 shadow-sm sm:p-6; }
+  .ui-panel-header  { @apply mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1; }
+  .ui-panel-title   { @apply text-lg font-semibold; }
+
+  /* Stat tiles (replace stat-card / metric-card and their parts) */
+  .ui-stat-grid     { @apply grid gap-3 grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(165px,1fr))]; }
+  .ui-stat          { @apply flex flex-col gap-0.5 rounded-box bg-base-100 p-4 shadow-sm; }
+  .ui-stat-hero     { @apply sm:col-span-2; }
+  .ui-stat-label    { @apply text-sm text-muted; }
+  .ui-stat-value    { @apply font-mono text-2xl font-medium tabular-nums leading-tight; }
+  .ui-stat-hero .ui-stat-value { @apply text-4xl; }
+  .ui-stat-unit     { @apply ml-0.5 font-sans text-sm font-medium text-muted; }
+  .ui-stat-sub      { @apply text-sm text-muted; }
+
+  /* Misc */
+  .ui-empty         { @apply flex flex-col items-center gap-2 rounded-box border border-dashed border-subtle px-6 py-10 text-center text-muted; }
+  .ui-bar           { @apply h-2 w-full overflow-hidden rounded-full bg-inset; }
+  .ui-bar > span    { @apply block h-full rounded-full bg-primary; }  /* width set inline: style="width: {{ pct }}%" */
+
+  /* AI output emitted by Python (workout_filters.py format_* filters, ai.py compare
+     narrative). The class names live in the Python; style them only here. */
+  .insights-list    { @apply m-0 flex list-none flex-col gap-2 p-0; }
+  .insights-item    { @apply rounded-xl bg-inset px-4 py-3 text-sm leading-relaxed; }
+  .ai-text          { @apply text-sm leading-relaxed; }
+  .ai-headline,
+  .cai-headline     { @apply mb-3 text-lg font-semibold leading-snug; }
+  .ni-section       { @apply mt-6 first:mt-0; }
+  .ni-header        { @apply mb-2 text-base font-semibold; }
+  .ni-para          { @apply mb-3 text-sm leading-relaxed text-muted last:mb-0; }
+  .nw-intensity     { @apply mb-1 text-sm font-semibold; }  /* + a tone class: text-error/-warning/-success/-info/-primary */
+  .nw-activity      { @apply mb-2 text-xl font-bold leading-snug; }
+  .nw-reason        { @apply m-0 text-sm leading-relaxed text-muted; }
+
   /* daisyUI menus leave link color alone, so main.css's teal link rule (legacy
      layer) would color every menu item. Goes away with main.css (prompt 12). */
   .menu a { color: inherit; text-decoration: none; }
