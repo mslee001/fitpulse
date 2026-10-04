@@ -55,7 +55,7 @@
 {% endfor %}
 
 <div class="page-header-actions" style="margin-top:1.25rem">
-  <button class="btn btn-accent" type="submit" form="tp-create-form">Create plan</button>
+  <button class="btn btn-primary" type="submit" form="tp-create-form">Create plan</button>
   <form method="post" action="{% url 'program_training_plan_discard' draft.pk %}" onsubmit="return confirm('Discard this draft plan?')">
     {% csrf_token %}<button class="btn btn-ghost" type="submit">Discard</button>
   </form>
@@ -73,7 +73,7 @@
     <div class="peloton-msg peloton-msg--error">{{ draft.error|default:"The plan couldn't be built." }}</div>
     <div class="page-header-actions" style="margin-top:0.9rem">
       <form method="post" action="{% url 'program_training_plan_retry' draft.pk %}">
-        {% csrf_token %}<button class="btn btn-accent" type="submit">Retry</button>
+        {% csrf_token %}<button class="btn btn-primary" type="submit">Retry</button>
       </form>
       <a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}?from={{ draft.pk }}">Change inputs</a>
     </div>

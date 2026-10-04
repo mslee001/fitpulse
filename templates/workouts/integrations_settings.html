@@ -40,7 +40,7 @@
       <div class="chart-header">
         <h3 class="chart-title">PELOTON CONNECTION</h3>
       </div>
-      <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1.25rem">
+      <p style="font-family:var(--font-sans);font-size:0.85rem;color:var(--text-muted);margin:0 0 1.25rem">
         Required for Peloton sync. FitPulse renews its Peloton sign-in automatically; reconnect here only if it says so.
       </p>
 
@@ -84,7 +84,7 @@
       {% endif %}
 
       <details style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden"{% if peloton_auth.needs_reconnect or not peloton_auth %} open{% endif %}>
-        <summary style="padding:0.55rem 0.85rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--text-muted);text-transform:uppercase;list-style:none;background:var(--bg-raised)">
+        <summary style="padding:0.55rem 0.85rem;cursor:pointer;font-family:var(--font-sans);font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--text-muted);text-transform:uppercase;list-style:none;background:var(--bg-raised)">
           {% if peloton_auth %}Reconnect{% else %}Connect{% endif %} ▾
         </summary>
         <div style="padding:1rem">
@@ -99,7 +99,7 @@
               <label class="form-label">Notes (optional)</label>
               <input type="text" name="notes" class="form-input" placeholder="e.g. copied from Chrome 2026-10-03">
             </div>
-            <button type="submit" class="btn btn-accent" style="align-self:flex-start">Connect</button>
+            <button type="submit" class="btn btn-primary" style="align-self:flex-start">Connect</button>
           </form>
         </div>
       </details>
@@ -123,7 +123,7 @@
       <div class="chart-header">
         <h3 class="chart-title">WEBHOOK ERRORS</h3>
         {% if webhook_error_count %}
-        <span class="badge" style="background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);">{{ webhook_error_count }}</span>
+        <span class="fp-badge" style="background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);">{{ webhook_error_count }}</span>
         {% endif %}
       </div>
       <p style="font-size:0.85rem;color:var(--text-muted);margin:0.75rem 0 1rem;">

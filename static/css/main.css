@@ -1,48 +1,28 @@
 /* ─────────────────────────────────────────────
-   PeloDash — Dark Industrial Aesthetic
-   Fonts: Barlow Condensed (display) + Barlow (body) + JetBrains Mono (data)
+   Legacy FitPulse styles, loaded inside assets/css/app.css's "legacy" layer.
+   Rules are deleted as page groups move to Tailwind/daisyUI; the file goes
+   away in Tailwind 12.
    ───────────────────────────────────────────── */
 
 :root {
-  --bg:         #0d0d0f;
-  --bg-card:    #141418;
-  --bg-raised:  #222230;
-  --bg-hover:   #2c2c3c;
-  --border:     #2a2a35;
-  --border-accent: #3a3a48;
-
-  --text:       #e8e8f0;
-  --text-muted: #888899;
-  --text-dim:   #555566;
-
-  --accent:     #FF6B35;
-  --accent-alt: #00D1FF;
-  --accent-green: #B4FF39;
-  --accent-red:   #FF3B5C;
-
-  --nav-bg: rgba(13, 13, 15, 0.85);
+  /* Legacy palette, derived from the daisyUI theme in assets/css/app.css so every
+     unconverted page follows the active theme. */
+  --bg:            var(--color-base-200);
+  --bg-card:       var(--color-base-100);
+  --bg-raised:     color-mix(in oklab, var(--color-base-content) 6%,  var(--color-base-100));
+  --bg-hover:      color-mix(in oklab, var(--color-base-content) 10%, var(--color-base-100));
+  --border:        color-mix(in oklab, var(--color-base-content) 12%, var(--color-base-100));
+  --border-accent: color-mix(in oklab, var(--color-base-content) 20%, var(--color-base-100));
+  --text:          var(--color-base-content);
+  --text-muted:    color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  --text-dim:      color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  --accent:        var(--color-primary);
+  --accent-alt:    var(--color-secondary);
+  --accent-green:  var(--color-success);
+  --accent-red:    var(--color-error);
+  --nav-bg:        color-mix(in oklab, var(--color-base-200) 90%, transparent);
   --nav-h: 56px;
-  --r: 6px;
-}
-
-[data-theme="light"] {
-  --bg:            #f0f0f5;
-  --bg-card:       #ffffff;
-  --bg-raised:     #f9f9fc;
-  --bg-hover:      #dcdce8;
-  --border:        #ccccd8;
-  --border-accent: #b0b0c4;
-
-  --text:          #18181e;
-  --text-muted:    #58587a;
-  --text-dim:      #8888a4;
-
-  --accent:        #d45a1e;
-  --accent-alt:    #0077bb;
-  --accent-green:  #3d8c00;
-  --accent-red:    #cc1133;
-
-  --nav-bg: rgba(240, 240, 245, 0.92);
+  --r: 0.75rem;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -56,9 +36,7 @@
 html { font-size: 16px; }
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'Barlow', sans-serif;
+  /* background, color and font-family come from app.css */
   font-size: 0.95rem;
   line-height: 1.6;
   min-height: 100vh;
@@ -81,7 +59,7 @@ a:hover { text-decoration: underline; }
 
 .nav-logo {
   display: flex; align-items: center; gap: 0.5rem;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.3rem; font-weight: 800;
   letter-spacing: 0.05em; color: var(--text);
   text-decoration: none;
@@ -93,7 +71,7 @@ a:hover { text-decoration: underline; }
 
 .nav-link {
   padding: 0.35rem 0.9rem;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600; font-size: 0.9rem;
   letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--text-muted); text-decoration: none;
@@ -118,7 +96,7 @@ a:hover { text-decoration: underline; }
 .page-header { margin-bottom: 2.5rem; }
 
 .page-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 2.8rem; font-weight: 800;
   letter-spacing: 0.04em; line-height: 1;
   background: linear-gradient(135deg, var(--text) 60%, var(--accent));
@@ -130,7 +108,7 @@ a:hover { text-decoration: underline; }
 
 .back-link {
   display: inline-block; margin-bottom: 1rem;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem; font-weight: 600; letter-spacing: 0.06em;
   color: var(--text-muted); text-decoration: none;
 }
@@ -138,40 +116,11 @@ a:hover { text-decoration: underline; }
 
 .section { margin-top: 3rem; }
 .section-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--text-muted); margin-bottom: 1rem;
   border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;
 }
-
-/* ── Buttons ─────────────────────────────────── */
-
-.btn {
-  display: inline-flex; align-items: center; gap: 0.4rem;
-  padding: 0.5rem 1.2rem;
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.85rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  border-radius: var(--r); border: 1px solid transparent;
-  cursor: pointer; text-decoration: none; transition: all 0.15s;
-}
-.btn-sm { padding: 0.3rem 0.9rem; font-size: 0.78rem; }
-.btn-full { width: 100%; justify-content: center; }
-
-.btn-accent {
-  background: var(--accent); color: #fff;
-  border-color: var(--accent);
-}
-.btn-accent:hover { background: color-mix(in srgb, var(--accent) 90%, black); text-decoration: none; }
-
-.btn-ghost {
-  background: transparent; color: var(--text-muted);
-  border-color: var(--border);
-}
-.btn-ghost:hover { color: var(--text); border-color: var(--border-accent); background: var(--bg-raised); text-decoration: none; }
-
-/* Selected state: ghost button with accent applied via JS (higher specificity wins) */
-.btn-ghost.btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
-.btn-ghost.btn-accent:hover { background: color-mix(in srgb, var(--accent) 90%, black); }
 
 /* ── Stat / Metric cards ─────────────────────── */
 
@@ -193,12 +142,12 @@ a:hover { text-decoration: underline; }
 .stat-card--hero { border-top: 3px solid var(--accent); }
 
 .stat-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;
 }
-.stat-value {
-  font-family: 'Barlow Condensed', sans-serif;
+.fp-stat-value {
+  font-family: var(--font-sans);
   font-size: 2.2rem; font-weight: 800; line-height: 1;
   color: var(--text);
 }
@@ -214,7 +163,7 @@ a:hover { text-decoration: underline; }
 }
 
 .discipline-pill {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -258,7 +207,7 @@ a:hover { text-decoration: underline; }
 }
 
 .filter-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--text-muted); text-transform: uppercase;
   margin-bottom: 1.25rem;
@@ -271,7 +220,7 @@ a:hover { text-decoration: underline; }
   background: none;
   border: none;
   cursor: default;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -295,7 +244,7 @@ a:hover { text-decoration: underline; }
   background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 4px;
   padding: 0.4rem 0.6rem;
-  font-family: 'Barlow', sans-serif; font-size: 0.85rem;
+  font-family: var(--font-sans); font-size: 0.85rem;
   appearance: none; outline: none;
   transition: border-color 0.15s;
 }
@@ -307,7 +256,7 @@ a:hover { text-decoration: underline; }
   border-top: 1px solid var(--border);
 }
 .compare-count {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.8rem; font-weight: 700; color: var(--text-muted);
   text-align: center; margin-bottom: 0.75rem; letter-spacing: 0.06em;
 }
@@ -358,7 +307,7 @@ a:hover { text-decoration: underline; }
 .garmin-default-img--hiking    { background: linear-gradient(135deg, #1a1a0d 0%, #3a3a1b 100%); }
 .garmin-default-img--swimming  { background: linear-gradient(135deg, #0d1a2a 0%, #1b3a5c 100%); }
 .discipline-badge {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
   color: var(--text-dim); text-transform: uppercase;
 }
@@ -370,7 +319,7 @@ a:hover { text-decoration: underline; }
   margin-bottom: 0.4rem;
 }
 .workout-discipline {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
   color: var(--accent);
 }
@@ -380,7 +329,7 @@ a:hover { text-decoration: underline; }
 
 .workout-title {
   display: block;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.15rem; font-weight: 700;
   color: var(--text); text-decoration: none; line-height: 1.2;
   margin-bottom: 0.25rem;
@@ -392,7 +341,7 @@ a:hover { text-decoration: underline; }
 
 .workout-stats { display: flex; gap: 1.5rem; margin-bottom: 0.5rem; }
 .wstat-value {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.95rem; font-weight: 600; color: var(--text);
 }
 .wstat-unit { font-size: 0.7rem; color: var(--text-muted); }
@@ -415,25 +364,20 @@ a:hover { text-decoration: underline; }
   padding: 1.5rem;
   margin-top: 1.5rem;
 }
-[data-theme="light"] .chart-card canvas {
-  background: #141418;
-  border-radius: 4px;
-  border: 10px solid #060606;
-}
 
 .chart-header {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 1.25rem;
 }
 .chart-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--text-muted);
 }
 .chart-toggles { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .chart-toggle {
   padding: 0.25rem 0.75rem;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
   background: var(--bg); color: var(--text-muted);
   border: 1px solid var(--border); border-radius: 4px;
@@ -470,12 +414,12 @@ a:hover { text-decoration: underline; }
 }
 .metric-card--hero { border-top: 2px solid var(--accent); }
 .metric-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
   color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;
 }
 .metric-value {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.9rem; font-weight: 800; line-height: 1; color: var(--text);
 }
 .metric-unit { font-size: 0.85rem; color: var(--text-muted); }
@@ -488,7 +432,7 @@ a:hover { text-decoration: underline; }
   position: sticky; top: calc(var(--nav-h) + 1rem);
 }
 .sidebar-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--text-muted); text-transform: uppercase; margin-bottom: 1rem;
 }
@@ -499,12 +443,12 @@ a:hover { text-decoration: underline; }
 .history-item:last-of-type { border-bottom: none; }
 .history-item-content { flex: 1; min-width: 0; text-decoration: none; display: block; }
 .history-item-date { font-size: 0.85rem; color: var(--text); font-weight: 600; }
-.history-item-stats { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.history-item-stats { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
 
 /* ── Sidebar compare button ──────────────────── */
 .compare-btn {
   flex-shrink: 0;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em;
   color: var(--text-dim); border: 1px solid var(--border);
   background: transparent; border-radius: 3px;
@@ -539,12 +483,12 @@ a:hover { text-decoration: underline; }
 }
 .discipline-card:hover { border-color: var(--accent); background: var(--bg-hover); text-decoration: none; }
 .discipline-name {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em;
   color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;
 }
 .discipline-count {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 2rem; font-weight: 800; color: var(--text);
 }
 
@@ -560,7 +504,7 @@ a:hover { text-decoration: underline; }
   border-radius: var(--r); padding: 1.25rem;
 }
 .record-discipline {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem; font-weight: 700; letter-spacing: 0.08em;
   color: var(--accent); text-transform: uppercase; margin-bottom: 0.75rem;
 }
@@ -570,7 +514,7 @@ a:hover { text-decoration: underline; }
 }
 .record-row:last-child { border-bottom: none; }
 .record-name { font-size: 0.82rem; color: var(--text-muted); }
-.record-value { font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; color: var(--text); }
+.record-value { font-family: var(--font-mono); font-size: 0.88rem; color: var(--text); }
 .record-unit { color: var(--text-dim); font-size: 0.75rem; }
 
 /* ── Compare ─────────────────────────────────── */
@@ -626,7 +570,7 @@ a:hover { text-decoration: underline; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .cai-headline {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1rem;
   font-weight: 700;
   color: var(--text);
@@ -669,13 +613,13 @@ a:hover { text-decoration: underline; }
 }
 .compare-card-date { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.3rem; }
 .compare-card-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 0.2rem;
 }
 .compare-card-instructor { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem; }
 .compare-metrics { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 .cm { display: flex; flex-direction: column; }
-.cm-v { font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 600; color: var(--text); }
+.cm-v { font-family: var(--font-mono); font-size: 1rem; font-weight: 600; color: var(--text); }
 .cm-l { font-size: 0.7rem; color: var(--text-dim); }
 
 /* ── Data table ──────────────────────────────── */
@@ -686,7 +630,7 @@ a:hover { text-decoration: underline; }
   font-size: 0.88rem;
 }
 .data-table th {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
   color: var(--text-muted); text-transform: uppercase; text-align: left;
   padding: 0.5rem 1rem; border-bottom: 1px solid var(--border);
@@ -697,7 +641,7 @@ a:hover { text-decoration: underline; }
   color: var(--text);
 }
 .data-table tr:hover td { background: var(--bg-raised); }
-.data-table .mono { font-family: 'JetBrains Mono', monospace; }
+.data-table .mono { font-family: var(--font-mono); }
 .table-link { color: var(--text-muted); font-size: 0.82rem; }
 .table-link:hover { color: var(--accent); }
 
@@ -770,19 +714,19 @@ a:hover { text-decoration: underline; }
   font-size: 3rem; color: var(--border-accent); margin-bottom: 1.5rem;
 }
 .empty-state h2 {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.5rem; font-weight: 700; color: var(--text); margin-bottom: 0.75rem;
 }
 .empty-state code {
   background: var(--bg-raised); padding: 0.1rem 0.4rem;
-  border-radius: 3px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+  border-radius: 3px; font-family: var(--font-mono); font-size: 0.85rem;
 }
 
 /* ── Discipline tag ──────────────────────────── */
 
 .discipline-tag {
   display: inline-block;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--text-muted);
   margin-bottom: 0.4rem;
@@ -810,7 +754,7 @@ a:hover { text-decoration: underline; }
 }
 
 .hr-zone-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em;
 }
 
@@ -824,7 +768,7 @@ a:hover { text-decoration: underline; }
 }
 
 .hr-zone-time {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem; color: var(--text-muted); text-align: right;
 }
 
@@ -835,7 +779,7 @@ a:hover { text-decoration: underline; }
 }
 
 .hr-zone-pct {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem; color: var(--text-dim); text-align: right;
 }
 
@@ -867,7 +811,7 @@ a:hover { text-decoration: underline; }
 }
 
 .segment-duration {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem; color: var(--text-muted); text-align: right;
 }
 
@@ -888,7 +832,7 @@ a:hover { text-decoration: underline; }
 /* ── Metric sub-label (avg/max below value) ───── */
 
 .metric-sub {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem; color: var(--text-dim); margin-top: 0.35rem;
 }
 
@@ -900,12 +844,12 @@ a:hover { text-decoration: underline; }
   width: 140px;
 }
 .comparison-table td { vertical-align: middle; }
-.comparison-table .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; }
+.comparison-table .mono { font-family: var(--font-mono); font-size: 0.88rem; }
 .comparison-table .comp-this { color: var(--text); font-weight: 600; }
 .comparison-table .comp-avg  { color: var(--text-muted); }
 .comparison-table .comp-best { color: var(--accent-green); }
 .chart-sub {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; color: var(--text-dim); letter-spacing: 0.04em;
 }
 
@@ -914,17 +858,17 @@ a:hover { text-decoration: underline; }
 .muscle-tag {
   display: inline-block;
   padding: 0.15rem 0.55rem;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase; border-radius: 3px;
   background: var(--bg-raised); color: var(--text-muted);
   border: 1px solid var(--border);
 }
-.muscle-tag--upper  { color: var(--accent-alt);   border-color: var(--accent-alt);   background: #00d1ff12; }
-.muscle-tag--lower  { color: var(--accent-green);  border-color: var(--accent-green);  background: #b4ff3912; }
-.muscle-tag--core   { color: var(--accent);        border-color: var(--accent);        background: #ff6b3512; }
+.muscle-tag--upper  { color: var(--accent-alt);   border-color: var(--accent-alt);   background: color-mix(in oklab, var(--accent-alt) 7%, transparent); }
+.muscle-tag--lower  { color: var(--accent-green);  border-color: var(--accent-green);  background: color-mix(in oklab, var(--accent-green) 7%, transparent); }
+.muscle-tag--core   { color: var(--accent);        border-color: var(--accent);        background: color-mix(in oklab, var(--accent) 7%, transparent); }
 .muscle-tag--full   { color: #CE93D8;              border-color: #CE93D8;              background: #ce93d812; }
-.muscle-tag--cardio { color: var(--accent-red);    border-color: var(--accent-red);    background: #ff3b5c12; }
+.muscle-tag--cardio { color: var(--accent-red);    border-color: var(--accent-red);    background: color-mix(in oklab, var(--accent-red) 7%, transparent); }
 
 /* ── Enhanced segment cards ───────────────────── */
 
@@ -947,11 +891,11 @@ a:hover { text-decoration: underline; }
   opacity: 0.8;
 }
 .segment-card-name {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.95rem; font-weight: 700; color: var(--text); flex: 1;
 }
 .segment-card-dur {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem; color: var(--text-muted);
 }
 .segment-card-bar-wrap {
@@ -981,12 +925,12 @@ a:hover { text-decoration: underline; }
 .subsegment-row--rest { opacity: 0.5; font-style: italic; }
 .subsegment-name { flex: 1; color: var(--text); }
 .subsegment-type {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
   color: var(--text-dim); text-transform: uppercase;
 }
 .subsegment-dur {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem; color: var(--text-muted); text-align: right;
   min-width: 40px;
 }
@@ -1019,7 +963,7 @@ a:hover { text-decoration: underline; }
   max-width: 180px;
 }
 .recent-item-stats {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem; color: var(--text-muted);
   margin-top: 0.15rem; display: flex; gap: 0.6rem; flex-wrap: wrap;
 }
@@ -1035,7 +979,7 @@ a:hover { text-decoration: underline; }
   gap: 0.6rem;
 }
 .muscle-group-name {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem; font-weight: 700; color: var(--text);
 }
 .muscle-group-bar-wrap {
@@ -1048,7 +992,7 @@ a:hover { text-decoration: underline; }
 .mg-2 { background: var(--accent-alt); }
 .mg-3 { background: var(--accent-green); }
 .muscle-group-pct {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem; color: var(--text-muted); text-align: right;
 }
 .muscle-group-bucket {
@@ -1058,7 +1002,7 @@ a:hover { text-decoration: underline; }
 
 /* ── Best split highlight ─────────────────────── */
 
-.split-best td { background: #b4ff3908 !important; }
+.split-best td { background: color-mix(in oklab, var(--accent-green) 3%, transparent) !important; }
 .split-best .split-star { color: var(--accent-green); }
 .split-star { color: transparent; font-size: 0.7rem; margin-left: 2px; }
 
@@ -1071,20 +1015,20 @@ a:hover { text-decoration: underline; }
 
 .pr-banner {
   display: flex; align-items: center; gap: 0.75rem;
-  background: linear-gradient(135deg, #b4ff3915, #b4ff3905);
-  border: 1px solid #b4ff3940;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--accent-green) 8%, transparent), color-mix(in oklab, var(--accent-green) 2%, transparent));
+  border: 1px solid color-mix(in oklab, var(--accent-green) 25%, transparent);
   border-radius: var(--r);
   padding: 0.85rem 1.1rem;
   margin-bottom: 1.5rem;
 }
 .pr-banner-icon { font-size: 1.5rem; }
 .pr-banner-text {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1rem; font-weight: 700; color: var(--accent-green);
   letter-spacing: 0.05em; text-transform: uppercase;
 }
 .pr-banner-sub {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem; color: var(--text-muted); margin-top: 0.1rem;
 }
 
@@ -1097,12 +1041,12 @@ a:hover { text-decoration: underline; }
   border-radius: var(--r); margin-bottom: 1rem;
 }
 .leaderboard-rank-num {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 2.2rem; font-weight: 900; color: var(--accent-alt);
   line-height: 1;
 }
 .leaderboard-rank-of {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem; color: var(--text-muted); margin-top: 0.1rem;
 }
 .leaderboard-pct-bar {
@@ -1114,7 +1058,7 @@ a:hover { text-decoration: underline; }
   border-radius: 3px; transition: width 0.6s ease;
 }
 .leaderboard-pct-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem; font-weight: 700; color: var(--text-muted);
   white-space: nowrap;
 }
@@ -1127,7 +1071,7 @@ a:hover { text-decoration: underline; }
   border-radius: var(--r); margin-bottom: 1rem;
 }
 .class-description {
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;
   margin-bottom: 0.6rem;
 }
@@ -1135,7 +1079,7 @@ a:hover { text-decoration: underline; }
   display: flex; align-items: center; gap: 0.5rem;
 }
 .difficulty-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--text-dim);
 }
@@ -1146,7 +1090,7 @@ a:hover { text-decoration: underline; }
 }
 .difficulty-pip--filled { background: var(--accent); }
 .difficulty-num {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem; color: var(--text-muted);
 }
 
@@ -1167,15 +1111,15 @@ a:hover { text-decoration: underline; }
 }
 .achievement-badge-text {}
 .achievement-badge-name {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem; font-weight: 700; color: var(--text);
 }
 .achievement-badge-desc {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.62rem; color: var(--text-muted); margin-top: 0.1rem;
 }
 .achievement-badge-count {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.6rem; color: var(--accent); margin-top: 0.1rem;
 }
 
@@ -1185,10 +1129,10 @@ a:hover { text-decoration: underline; }
 
 .movement-table {
   width: 100%; border-collapse: collapse;
-  font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+  font-family: var(--font-mono); font-size: 0.78rem;
 }
 .movement-table th {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--text-dim);
   text-align: left; padding: 0.35rem 0.75rem;
@@ -1212,7 +1156,7 @@ a:hover { text-decoration: underline; }
 .manual-log-table .col-effort { width: 8.5rem; }
 .manual-log-table .form-select { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.4rem 0.35rem; }
 .weight-rec {
-  margin-top: 0.2rem; font-family: 'Barlow Condensed', sans-serif;
+  margin-top: 0.2rem; font-family: var(--font-sans);
   font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted);
   cursor: help;
 }
@@ -1223,16 +1167,16 @@ a:hover { text-decoration: underline; }
 .movement-table tr.movement-miss td { opacity: 0.65; }
 
 .movement-name-cell {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.88rem; font-weight: 700;
   color: var(--text);
 }
 .movement-tag {
   display: inline-block; margin-left: 0.4rem;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--accent);
-  background: #ff6b3515; border: 1px solid #ff6b3530;
+  background: color-mix(in oklab, var(--accent) 8%, transparent); border: 1px solid color-mix(in oklab, var(--accent) 19%, transparent);
   border-radius: 3px; padding: 0 0.35rem;
 }
 .movement-target-icon {
@@ -1249,7 +1193,7 @@ a:hover { text-decoration: underline; }
   margin-bottom: 1rem;
 }
 .movement-summary-item {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
 }
 .movement-summary-num {
   font-size: 1.4rem; font-weight: 900; color: var(--text);
@@ -1262,7 +1206,7 @@ a:hover { text-decoration: underline; }
 /* Tracker tier badge */
 .tier-badge {
   display: inline-flex; align-items: center; gap: 0.3rem;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 0.15rem 0.6rem;
@@ -1280,12 +1224,12 @@ a:hover { text-decoration: underline; }
 
 /* ── Compare stats table ─────────────────────── */
 .compare-stats-table td:first-child {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.78rem; font-weight: 700; letter-spacing: 0.05em;
   text-transform: uppercase; color: var(--text-muted);
   white-space: nowrap;
 }
-.compare-stats-table td { font-family: 'JetBrains Mono', monospace; font-size: 0.83rem; }
+.compare-stats-table td { font-family: var(--font-mono); font-size: 0.83rem; }
 .cell-best { color: var(--accent) !important; font-weight: 700; }
 .cell-best::after { content: " ↑"; font-size: 0.7em; opacity: 0.7; }
 
@@ -1328,17 +1272,17 @@ a:hover { text-decoration: underline; }
   gap: 0.5rem;
 }
 .mix-legend-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem; font-weight: 600;
   letter-spacing: 0.04em; text-transform: uppercase;
   color: var(--text-muted);
 }
 .mix-legend-count {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem; color: var(--text-muted);
 }
 .mix-legend-pct {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem; color: var(--text-dim);
   min-width: 2.5rem; text-align: right;
 }
@@ -1353,7 +1297,7 @@ a:hover { text-decoration: underline; }
 
 /* Date range badge in history filter sidebar */
 .filter-date-badge {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem; color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
@@ -1368,7 +1312,7 @@ a:hover { text-decoration: underline; }
 
 .insights-pending {
   display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem; color: var(--text-muted);
   padding: 0.5rem 0;
 }
@@ -1396,7 +1340,7 @@ a:hover { text-decoration: underline; }
 }
 
 .insights-item {
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.875rem;
   line-height: 1.65;
   color: var(--text);
@@ -1408,21 +1352,21 @@ a:hover { text-decoration: underline; }
 
 .insights-meta {
   margin-top: 0.75rem;
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.7rem;
   color: var(--text-dim);
   letter-spacing: 0.02em;
 }
 
 .insights-empty {
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem; color: var(--text-dim);
   padding: 0.5rem 0;
   line-height: 1.6;
 }
 
 .insights-error {
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem; color: var(--accent-red);
   padding: 0.5rem 0;
 }
@@ -1537,7 +1481,7 @@ a:hover { text-decoration: underline; }
 .cal-signal-value { font-weight: 600; text-align: right; }
 
 .cal-sig-green { color: var(--accent-green); }
-.cal-sig-yellow { color: #FFCC00; }
+.cal-sig-yellow { color: var(--color-warning); }
 .cal-sig-red { color: var(--accent-red); }
 
 /* Load focus */
@@ -1572,11 +1516,11 @@ a:hover { text-decoration: underline; }
   justify-content: center;
   font-size: 1.8rem;
   font-weight: 800;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   margin: 0.75rem auto 0;
 }
 .readiness-ring--green { border-color: var(--accent-green); color: var(--accent-green); }
-.readiness-ring--yellow { border-color: #FFCC00; color: #FFCC00; }
+.readiness-ring--yellow { border-color: var(--color-warning); color: var(--color-warning); }
 .readiness-ring--red { border-color: var(--accent-red); color: var(--accent-red); }
 
 /* Workout card (shared, used in day view) */
@@ -1617,10 +1561,6 @@ a:hover { text-decoration: underline; }
 
 /* ── Light mode overrides for hardcoded colors ── */
 
-/* Yellow signals: #FFCC00 is invisible on a light background */
-[data-theme="light"] .cal-sig-yellow { color: #a07800; }
-[data-theme="light"] .readiness-ring--yellow { border-color: #a07800; color: #a07800; }
-
 /* Tier badges: gold/silver need darkening on light bg */
 [data-theme="light"] .tier-badge--gold   { color: #7a5c00; background: #ffd70020; border-color: #ffd70055; }
 [data-theme="light"] .tier-badge--silver { color: #505060; background: #c0c0c020; border-color: #c0c0c055; }
@@ -1628,22 +1568,6 @@ a:hover { text-decoration: underline; }
 
 /* Muscle "full body" tag: lavender is borderline on white */
 [data-theme="light"] .muscle-tag--full { color: #7a30a0; border-color: #7a30a0; background: #7a30a010; }
-
-/* Movement tag: orange tint on light bg */
-[data-theme="light"] .movement-tag { background: #d45a1e18; border-color: #d45a1e38; }
-
-/* PR banner: adapt green tint to light bg */
-[data-theme="light"] .pr-banner {
-  background: linear-gradient(135deg, #3d8c0012, #3d8c0005);
-  border-color: #3d8c0035;
-}
-[data-theme="light"] .split-best td { background: #3d8c0008 !important; }
-
-/* Muscle group tag backgrounds use hardcoded alphas — lighten slightly */
-[data-theme="light"] .muscle-tag--upper { background: #0077bb10; }
-[data-theme="light"] .muscle-tag--lower { background: #3d8c0010; }
-[data-theme="light"] .muscle-tag--core  { background: #d45a1e10; }
-[data-theme="light"] .muscle-tag--cardio { background: #cc113310; }
 
 /* ── Interventions ─────────────────────────────── */
 
@@ -1658,7 +1582,7 @@ a:hover { text-decoration: underline; }
 
 .cat-badge {
   display: inline-block;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase;
   padding: 0.2rem 0.55rem;
@@ -1685,7 +1609,7 @@ a:hover { text-decoration: underline; }
 
 .kind-badge {
   display: inline-block;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
   text-transform: uppercase;
   padding: 0.2rem 0.55rem;
@@ -1720,7 +1644,7 @@ a:hover { text-decoration: underline; }
 .intervention-row:last-child { border-bottom: none; }
 .intervention-row:hover { background: var(--bg-hover); }
 .intervention-name {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1rem; font-weight: 700;
 }
 .intervention-meta {
@@ -1750,7 +1674,7 @@ a:hover { text-decoration: underline; }
   background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 4px;
   padding: 0.45rem 0.65rem;
-  font-family: 'Barlow', sans-serif; font-size: 0.875rem;
+  font-family: var(--font-sans); font-size: 0.875rem;
   outline: none; transition: border-color 0.15s;
 }
 .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
@@ -1774,7 +1698,7 @@ a:hover { text-decoration: underline; }
   margin-bottom: 1.5rem;
 }
 .range-btn {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
   padding: 0.3rem 0.85rem; border-radius: var(--r);
   border: 1px solid var(--border); background: transparent;
@@ -1796,7 +1720,7 @@ a:hover { text-decoration: underline; }
   padding: 1rem;
 }
 .sparkline-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;
 }
@@ -1816,7 +1740,7 @@ a:hover { text-decoration: underline; }
   font-size: 0.85rem;
 }
 .analysis-table th {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--text-muted); padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border);
   text-align: left;
@@ -1826,7 +1750,7 @@ a:hover { text-decoration: underline; }
 .analysis-table tbody tr:hover td { background: var(--bg-hover); }
 
 .analysis-group-header td {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--text-dim); padding: 0.75rem 0.75rem 0.3rem;
   background: var(--bg-raised) !important;
@@ -1838,7 +1762,7 @@ a:hover { text-decoration: underline; }
 
 .ai-interpretation { font-size: 0.9rem; line-height: 1.75; }
 .ai-interpretation h2 {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.1rem; font-weight: 700; letter-spacing: 0.06em;
   color: var(--accent); margin: 1.25rem 0 0.5rem;
   text-transform: uppercase;
@@ -1852,7 +1776,7 @@ a:hover { text-decoration: underline; }
   width: 100%; border-collapse: collapse; font-size: 0.875rem;
 }
 .saved-analyses-table th {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--text-muted); padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border);
   text-align: left;
@@ -1884,7 +1808,7 @@ a:hover { text-decoration: underline; }
 .iv-item-info { flex: 1; min-width: 0; }
 
 .iv-item-name {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1rem; font-weight: 700;
   color: var(--text); text-decoration: none;
   display: inline;
@@ -1928,7 +1852,7 @@ a:hover { text-decoration: underline; }
 /* ── Trends date window labels ──────────────────────── */
 
 .window-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
   color: var(--text-dim); text-transform: uppercase;
   grid-column: 1 / -1;
@@ -1961,7 +1885,7 @@ a:hover { text-decoration: underline; }
 }
 
 .macro-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em;
   color: var(--text-muted); text-transform: uppercase;
   flex-shrink: 0;
@@ -1974,7 +1898,7 @@ a:hover { text-decoration: underline; }
   border-radius: 3px; padding: 0 3px; vertical-align: middle; margin-left: 3px;
 }
 .macro-value {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.85rem; font-weight: 600; color: var(--text);
 }
 .macro-sep { color: var(--text-dim); font-weight: 400; }
@@ -2002,7 +1926,7 @@ a:hover { text-decoration: underline; }
   font-size: 0.85rem;
 }
 .food-log-table thead th {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--text-dim);
   padding: 0.5rem 1rem;
@@ -2070,7 +1994,7 @@ a:hover { text-decoration: underline; }
   background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--r);
   padding: 0.35rem 0.6rem;
-  font-family: 'Barlow', sans-serif; font-size: 0.85rem;
+  font-family: var(--font-sans); font-size: 0.85rem;
 }
 .edit-input:focus { outline: none; border-color: var(--accent-alt); }
 .edit-input--meal { width: 120px; }
@@ -2080,7 +2004,7 @@ a:hover { text-decoration: underline; }
   display: flex; flex-direction: column; gap: 2px;
 }
 .edit-macro-lbl {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.65rem; font-weight: 700; letter-spacing: 0.07em;
   text-transform: uppercase; color: var(--text-dim);
 }
@@ -2089,7 +2013,7 @@ a:hover { text-decoration: underline; }
 }
 
 .food-entry-meal {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
   color: var(--accent); text-transform: uppercase;
 }
@@ -2105,7 +2029,7 @@ a:hover { text-decoration: underline; }
 
 /* Macro chips on entries */
 .food-macro-chip {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
   padding: 2px 7px; border-radius: 3px;
 }
@@ -2129,7 +2053,7 @@ a:hover { text-decoration: underline; }
   table-layout: fixed;
 }
 .parse-items-table th {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--text-muted); padding: 0.3rem 0.4rem; text-align: left;
   border-bottom: 1px solid var(--border);
@@ -2144,7 +2068,7 @@ a:hover { text-decoration: underline; }
 .parse-cell-input {
   background: var(--bg-raised); color: var(--text);
   border: 1px solid var(--border); border-radius: 4px;
-  padding: 0.3rem 0.4rem; font-family: 'Barlow', sans-serif; font-size: 0.82rem;
+  padding: 0.3rem 0.4rem; font-family: var(--font-sans); font-size: 0.82rem;
   transition: border-color 0.15s; outline: none;
   width: 100%; box-sizing: border-box;
 }
@@ -2159,7 +2083,7 @@ a:hover { text-decoration: underline; }
 }
 .suggestion-card:hover { border-color: var(--border-accent); }
 .suggestion-name {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 0.5rem;
 }
 .suggestion-macros { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.5rem; }
@@ -2183,7 +2107,7 @@ a:hover { text-decoration: underline; }
   border-right: none;
 }
 .saved-meal-pill {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em;
   padding: 0.35rem 0.85rem; border-radius: 999px;
   background: var(--bg-raised); color: var(--text-muted);
@@ -2202,8 +2126,8 @@ a:hover { text-decoration: underline; }
   transition: all 0.15s;
 }
 .saved-meal-delete:hover {
-  background: color-mix(in srgb, var(--danger, #f87171) 15%, transparent);
-  color: var(--danger, #f87171); border-color: var(--danger, #f87171);
+  background: color-mix(in srgb, var(--danger, var(--color-error)) 15%, transparent);
+  color: var(--danger, var(--color-error)); border-color: var(--danger, var(--color-error));
 }
 
 /* Saved meal portion picker */
@@ -2215,7 +2139,7 @@ a:hover { text-decoration: underline; }
   background: var(--bg-raised); color: var(--text-dim);
   border: 1px solid var(--border); border-left: none; border-right: none;
   padding: 0.35rem 0.5rem; cursor: pointer;
-  font-family: 'Barlow Condensed', sans-serif; font-size: 0.75rem; font-weight: 700;
+  font-family: var(--font-sans); font-size: 0.75rem; font-weight: 700;
   transition: all 0.15s;
 }
 .saved-meal-portion-btn::-webkit-details-marker { display: none; }
@@ -2233,7 +2157,7 @@ a:hover { text-decoration: underline; }
   display: flex; gap: 0.3rem; margin-bottom: 0.5rem; flex-wrap: wrap;
 }
 .portion-quick-btns button {
-  flex: 1; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 0.78rem;
+  flex: 1; font-family: var(--font-sans); font-weight: 700; font-size: 0.78rem;
   padding: 0.3rem 0.4rem; border-radius: 6px; border: 1px solid var(--border);
   background: var(--bg); color: var(--text-muted); cursor: pointer; transition: all 0.15s;
   min-width: 3rem;
@@ -2275,12 +2199,12 @@ a:hover { text-decoration: underline; }
 .target-item--fiber { border-left-color: var(--accent-green); }
 
 .target-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
   color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.3rem;
 }
 .target-value {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.8rem; font-weight: 800; line-height: 1; color: var(--text);
 }
 .target-unit { font-size: 0.9rem; color: var(--text-muted); margin-left: 2px; }
@@ -2295,7 +2219,7 @@ a:hover { text-decoration: underline; }
 }
 .nutr-stat { text-align: center; }
 .nutr-stat-val {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.6rem; font-weight: 800; line-height: 1;
 }
 .nutr-stat-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.2rem; }
@@ -2329,13 +2253,13 @@ a:hover { text-decoration: underline; }
   background: var(--text-dim);
 }
 .cal-nutrition-dot--green { background: var(--accent-green); }
-.cal-nutrition-dot--yellow { background: #FFCC00; }
+.cal-nutrition-dot--yellow { background: var(--color-warning); }
 .cal-nutrition-dot--logged { background: var(--text-dim); }
 
 /* Nutrition insights filter output */
 .ni-section { margin-bottom: 1rem; }
 .ni-header {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -2361,7 +2285,7 @@ a:hover { text-decoration: underline; }
 }
 .nutr-adh-stat { text-align: center; }
 .nutr-adh-val {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 2rem;
   font-weight: 800;
   line-height: 1;
@@ -2438,7 +2362,7 @@ a:hover { text-decoration: underline; }
 .nav-dropdown-item {
   display: block;
   padding: 0.5rem 0.85rem;
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text);
@@ -2481,7 +2405,7 @@ a:hover { text-decoration: underline; }
 }
 
 .today-date-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -2548,7 +2472,7 @@ a:hover { text-decoration: underline; }
 }
 
 .readiness-score {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 2.5rem;
   font-weight: 800;
   line-height: 1;
@@ -2556,7 +2480,7 @@ a:hover { text-decoration: underline; }
 }
 
 .readiness-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2565,15 +2489,15 @@ a:hover { text-decoration: underline; }
   margin-top: 0.3rem;
 }
 
-.readiness-prime   { border-color: #B4FF39; }
+.readiness-prime   { border-color: var(--color-success); }
 .readiness-high    { border-color: #69f0ae; }
-.readiness-moderate { border-color: #FF6B35; }
-.readiness-low     { border-color: #FF3B5C; }
+.readiness-moderate { border-color: var(--color-warning); }
+.readiness-low     { border-color: var(--color-error); }
 
 .readiness-empty { text-align: center; }
 
 .readiness-meta-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2587,7 +2511,7 @@ a:hover { text-decoration: underline; }
 }
 
 .card-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2622,28 +2546,28 @@ a:hover { text-decoration: underline; }
 }
 .section-link:hover { color: var(--accent); }
 
-.badge {
+.fp-badge {
   display: inline-block;
   padding: 0.15rem 0.5rem;
   border-radius: 3px;
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.badge-muted { background: var(--bg-raised); color: var(--text-muted); }
+.fp-badge-muted { background: var(--bg-raised); color: var(--text-muted); }
 
 .stat-sub {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 0.4rem;
 }
 
-.stat-sub-balanced   { color: #B4FF39; }
-.stat-sub-unbalanced { color: #FF6B35; }
-.stat-sub-poor       { color: #FF3B5C; }
+.stat-sub-balanced   { color: var(--color-success); }
+.stat-sub-unbalanced { color: var(--color-warning); }
+.stat-sub-poor       { color: var(--color-error); }
 
 /* Nutrition bars */
 .nutrition-bars {
@@ -2660,7 +2584,7 @@ a:hover { text-decoration: underline; }
 }
 
 .nut-bar-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -2682,7 +2606,7 @@ a:hover { text-decoration: underline; }
 }
 
 .nut-bar-value {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
   color: var(--text);
   text-align: right;
@@ -2712,7 +2636,7 @@ a:hover { text-decoration: underline; }
 }
 
 .today-workout-type {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2721,7 +2645,7 @@ a:hover { text-decoration: underline; }
 }
 
 .today-workout-title {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--text);
@@ -2774,13 +2698,13 @@ a:hover { text-decoration: underline; }
 }
 
 .intervention-pill-dose {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--accent);
 }
 
 .intervention-pill-duration {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--text-dim);
 }
@@ -2798,8 +2722,14 @@ a:hover { text-decoration: underline; }
 .login-wrap h1 { text-align: center; margin-bottom: 24px; letter-spacing: 2px; font-size: 2em; font-weight: 700; }  /* browser default, removed by Preflight */
 .login-form { display: flex; flex-direction: column; gap: 12px; }
 .login-form label { font-size: 0.85em; opacity: 0.7; }
-.login-form input { padding: 10px; font-size: 1em; }
-.login-form button { padding: 12px; font-size: 1em; margin-top: 12px; cursor: pointer; }
+.login-form input {
+  padding: 10px; font-size: 1em; color: var(--text); background: var(--bg-card);
+  border: 1px solid var(--border-accent); border-radius: var(--r);
+}
+.login-form button {
+  padding: 12px; font-size: 1em; margin-top: 12px; cursor: pointer; font-weight: 600;
+  color: var(--color-primary-content); background: var(--accent); border-radius: var(--r);
+}
 .login-error { background: rgba(255,80,80,0.1); border: 1px solid rgba(255,80,80,0.4); padding: 10px; border-radius: 4px; font-size: 0.9em; }
 
 .logout-form { display: inline; }
@@ -2835,13 +2765,13 @@ a:hover { text-decoration: underline; }
 .nav-mobile-signout { display: none; }
 
 /* ── Programs (plan / collection / split tracker) ───────────── */
-.badge-accent { background: var(--accent); color: #fff; }
+.fp-badge-accent { background: var(--accent); color: #fff; }
 
 .page-header-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 
 .program-week { margin-bottom: 1.5rem; }
 .program-week-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--text-muted);
   margin-bottom: 0.6rem;
@@ -2872,7 +2802,7 @@ a:hover { text-decoration: underline; }
 .pcell-check { color: var(--accent); font-weight: 700; }
 .pcell-title { font-size: 0.9rem; color: var(--text); }
 .pcell-sub {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem; color: var(--text-muted);
 }
 
@@ -2881,14 +2811,14 @@ a:hover { text-decoration: underline; }
 .rw-rating-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .rw-rating-row { display: flex; align-items: center; gap: 0.4rem; }
 .rw-rating-label {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--text-muted);
 }
 .rw-rating-select { width: auto; padding: 0.25rem 0.5rem; }
 .rw-rating-note { flex: 1; min-width: 180px; max-width: 320px; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 .rw-rating-badge {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 4px;
   border: 1px solid var(--border);
 }
@@ -2999,7 +2929,7 @@ a:hover { text-decoration: underline; }
     background: none;
     border: none;
     color: var(--text-muted);
-    font-family: 'Barlow', sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.88rem;
     cursor: pointer;
     padding: 0.6rem 1.25rem;
@@ -3023,7 +2953,7 @@ a:hover { text-decoration: underline; }
   .saved-meal-pill { font-size: 0.8rem; padding: 0.35rem 0.65rem; }
 
   /* ── Cards: tighter padding ── */
-  .card { padding: 1rem; }
+  .fp-card { padding: 1rem; }
 
   /* ── Calendar: stack sidebar below grid ── */
   .cal-layout { grid-template-columns: 1fr; }
@@ -3048,7 +2978,7 @@ a:hover { text-decoration: underline; }
     background: none;
     border: none;
     cursor: pointer;
-    font-family: 'Barlow Condensed', sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.12em;
@@ -3110,7 +3040,7 @@ a:hover { text-decoration: underline; }
   color: #fff;
   border: none;
   border-radius: var(--r) 0 0 var(--r);
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.9rem;
   letter-spacing: 0.1em;
   cursor: pointer;
@@ -3161,7 +3091,7 @@ a:hover { text-decoration: underline; }
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: 0.05em;
   color: var(--text);
 }
@@ -3176,7 +3106,7 @@ a:hover { text-decoration: underline; }
   background: none;
   border: none;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   cursor: pointer;
 }
@@ -3276,7 +3206,7 @@ a:hover { text-decoration: underline; }
 
 .chat-input {
   flex: 1;
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.85rem;
   padding: 8px;
   background: var(--bg);
@@ -3291,7 +3221,7 @@ a:hover { text-decoration: underline; }
 }
 
 .chat-send-btn {
-  font-family: 'Barlow Condensed', sans-serif;
+  font-family: var(--font-sans);
   background: var(--accent);
   color: #fff;
   border: none;
@@ -3323,28 +3253,28 @@ a:hover { text-decoration: underline; }
 }
 .strength-card { margin: 0; }
 .strength-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; }
-.strength-card-name { font-family: 'Barlow Condensed', sans-serif; font-size: 1.05rem; font-weight: 700; color: var(--text); }
+.strength-card-name { font-family: var(--font-sans); font-size: 1.05rem; font-weight: 700; color: var(--text); }
 .strength-card-reason { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.35rem; }
 .weight-rec-badge {
   display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0;
   border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.55rem; cursor: help;
 }
 .weight-rec-badge-label {
-  font-family: 'Barlow Condensed', sans-serif; font-size: 0.68rem; font-weight: 700;
+  font-family: var(--font-sans); font-size: 0.68rem; font-weight: 700;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted);
 }
 .weight-rec-badge--up { border-color: var(--accent); }
 .weight-rec-badge--up .weight-rec-badge-label { color: var(--accent); }
 .strength-sessions { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .strength-sessions td { padding: 0.3rem 0.4rem 0.3rem 0; border-top: 1px solid var(--bg); color: var(--text); }
-.strength-sessions td.mono { font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; }
+.strength-sessions td.mono { font-family: var(--font-mono); font-size: 0.76rem; }
 .strength-effort { color: var(--text-muted); text-align: right; white-space: nowrap; }
 
 /* ── Multi-user: messages, admin users page, Get Started ─────────────────── */
 .peloton-msg--warning { background: color-mix(in srgb, #FFB74D 12%, transparent); border: 1px solid color-mix(in srgb, #FFB74D 30%, transparent); color: #FFB74D; }
 .peloton-msg--info    { background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-muted); }
 
-.admin-table { width: 100%; border-collapse: collapse; font-family: 'Barlow', sans-serif; font-size: 0.85rem; }
+.admin-table { width: 100%; border-collapse: collapse; font-family: var(--font-sans); font-size: 0.85rem; }
 .admin-table th { text-align: left; color: var(--text-dim); font-weight: 600; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.4rem 0.6rem 0.4rem 0; border-bottom: 1px solid var(--border); }
 .admin-table td { padding: 0.5rem 0.6rem 0.5rem 0; border-bottom: 1px solid var(--border); vertical-align: top; }
 .admin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.5rem; align-items: start; }
@@ -3362,7 +3292,7 @@ a:hover { text-decoration: underline; }
 .conn-dot--red   { background: var(--accent-red); border-color: var(--accent-red); }
 .conn-dot--none  { background: transparent; }
 
-.step-pill { display: inline-block; font-family: 'Barlow Condensed', sans-serif; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--bg-raised); color: var(--text-muted); white-space: nowrap; }
+.step-pill { display: inline-block; font-family: var(--font-sans); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--bg-raised); color: var(--text-muted); white-space: nowrap; }
 .step-pill--done    { background: color-mix(in srgb, var(--accent-green) 15%, transparent); color: var(--accent-green); }
 .step-pill--todo    { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
 .step-pill--blocked { background: color-mix(in srgb, #FFB74D 15%, transparent); color: #FFB74D; }
@@ -3370,7 +3300,7 @@ a:hover { text-decoration: underline; }
 .gs-page { max-width: 760px; }
 .gs-card { margin-bottom: 1.25rem; }
 .gs-card-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
-.gs-copy { font-family: 'Barlow', sans-serif; font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; }
+.gs-copy { font-family: var(--font-sans); font-size: 0.9rem; color: var(--text-muted); line-height: 1.6; }
 .gs-copy ol { padding-left: 1.25rem; list-style: decimal; }  /* Preflight removes list markers */
 .gs-copy li { margin-bottom: 0.35rem; }
 .gs-line { font-size: 0.9rem; margin: 0 0 0.6rem; }
@@ -3383,7 +3313,6 @@ a:hover { text-decoration: underline; }
 .gs-sync-status { font-size: 0.85rem; margin-top: 0.6rem; }
 .gs-spinner { display: inline-block; width: 0.8rem; height: 0.8rem; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: gs-spin 0.9s linear infinite; vertical-align: middle; margin-right: 0.3rem; }
 @keyframes gs-spin { to { transform: rotate(360deg); } }
-.btn-link { background: none; border: none; padding: 0; color: var(--text-muted); font: inherit; font-size: 0.82rem; text-decoration: underline; cursor: pointer; }
 
 .setup-banner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1rem; padding: 0.6rem 0.9rem; border-radius: var(--r); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); font-size: 0.88rem; }
 .setup-banner-close { background: none; border: none; color: var(--text-muted); font-size: 1.1rem; cursor: pointer; }
@@ -3395,7 +3324,7 @@ a:hover { text-decoration: underline; }
 
 /* Peloton sign-in token instructions (partials/peloton_token_help.html) */
 .peloton-snippet { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.5rem 0 0.25rem; }
-.peloton-snippet-code { flex: 1; min-width: 0; margin: 0; padding: 0.55rem 0.7rem; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--r); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-all; }
+.peloton-snippet-code { flex: 1; min-width: 0; margin: 0; padding: 0.55rem 0.7rem; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--r); font-family: var(--font-mono); font-size: 0.72rem; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-break: break-all; }
 .peloton-token-help p { margin: 0.5rem 0; }
 
 /* AI training plans (program_training_plan_new / _draft) */
@@ -3404,11 +3333,11 @@ a:hover { text-decoration: underline; }
 .tp-check { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; color: var(--text-muted); cursor: pointer; margin: 0.2rem 0; }
 .tp-mode .tp-check { display: flex; }
 .tp-evidence { margin: 0.25rem 0 0.75rem; padding-left: 1.2rem; font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; }
-.tp-name { font-family: 'Barlow Condensed', sans-serif; font-size: 1.6rem; font-weight: 700; max-width: 36rem; width: 100%; }
+.tp-name { font-family: var(--font-sans); font-size: 1.6rem; font-weight: 700; max-width: 36rem; width: 100%; }
 .tp-week { margin-bottom: 1rem; }
 .tp-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr) auto; gap: 0.75rem; align-items: start; padding: 0.6rem 0; border-top: 1px solid var(--border); font-size: 0.86rem; }
 .tp-row-spec { display: flex; gap: 0.6rem; }
-.tp-day { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; letter-spacing: 0.05em; color: var(--text-dim); min-width: 2.2rem; text-transform: uppercase; }
+.tp-day { font-family: var(--font-sans); font-weight: 700; letter-spacing: 0.05em; color: var(--text-dim); min-width: 2.2rem; text-transform: uppercase; }
 .tp-row-class { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .tp-class-title { color: var(--text); font-weight: 600; }
 .tp-purpose { font-style: italic; }

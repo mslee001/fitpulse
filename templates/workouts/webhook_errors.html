@@ -17,7 +17,7 @@
     <div style="padding:0.6rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
       <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.85rem;">
         <span style="color:var(--text-dim);font-size:0.73rem;white-space:nowrap;min-width:9rem">{{ err.created_at|date:"M j, Y g:i A" }}</span>
-        <span class="badge badge-muted" style="text-transform:none;letter-spacing:normal;">{{ err.source }}</span>
+        <span class="fp-badge fp-badge-muted" style="text-transform:none;letter-spacing:normal;">{{ err.source }}</span>
         <span style="color:var(--text-muted);flex:1;">{{ err.summary }}</span>
       </div>
       {% if err.detail %}

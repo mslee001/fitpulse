@@ -15,7 +15,7 @@
     <p class="stat-sub" style="margin-bottom:0.9rem">Plans are built from FitPulse's copy of the Peloton class library. Load it once (it takes a few minutes), then come back.</p>
     <form hx-post="{% url 'catalog_sync_start' %}" hx-target="#catalog-status" hx-swap="innerHTML">
       {% csrf_token %}
-      <button type="submit" class="btn btn-accent">Refresh catalog</button>
+      <button type="submit" class="btn btn-primary">Refresh catalog</button>
     </form>
     <div id="catalog-status"></div>
   {% else %}
@@ -154,7 +154,7 @@
   </div>
 
   <div class="page-header-actions">
-    <button class="btn btn-accent" type="submit">Build my plan</button>
+    <button class="btn btn-primary" type="submit">Build my plan</button>
     <a class="btn btn-ghost" href="{% url 'program_list' %}">Cancel</a>
   </div>
 </form>

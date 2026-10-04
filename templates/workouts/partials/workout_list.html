@@ -108,7 +108,7 @@
      hx-get="{% url 'history' %}?page={{ page|add:1 }}&discipline={{ filters.discipline }}&instructor={{ filters.instructor }}&duration={{ filters.duration }}&sort={{ filters.sort }}&q={{ filters.q }}"
      hx-trigger="intersect once"
      hx-swap="outerHTML">
-  <div style="text-align:center;padding:2rem 0;color:var(--text-muted);font-size:0.85rem;font-family:'Barlow Condensed',sans-serif;letter-spacing:0.05em">
+  <div style="text-align:center;padding:2rem 0;color:var(--text-muted);font-size:0.85rem;font-family:var(--font-sans);letter-spacing:0.05em">
     LOADING…
   </div>
 </div>

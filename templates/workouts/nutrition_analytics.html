@@ -20,13 +20,13 @@
   </div>
   <div style="display:flex;gap:0.4rem;margin-top:0.5rem">
     {% for val, label in ranges %}
-    <a href="?range={{ val }}" class="btn btn-sm {% if val == range_param %}btn-accent{% else %}btn-ghost{% endif %}">{{ label }}</a>
+    <a href="?range={{ val }}" class="btn btn-sm {% if val == range_param %}btn-primary{% else %}btn-ghost{% endif %}">{{ label }}</a>
     {% endfor %}
   </div>
 </div>
 
 {# ── Adherence overview ── #}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:1.25rem">OVERVIEW — LAST {{ range_days }} DAYS</div>
   <div class="nutr-adh-grid">
     <div class="nutr-adh-stat">
@@ -83,7 +83,7 @@
 
 {# ── Macro trend chart ── #}
 {% if chart_data_json != "[]" %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">MACRO TRENDS</div>
     <div style="display:flex;gap:0.5rem;font-size:0.75rem">
@@ -102,7 +102,7 @@
 
 {# ── Day-of-week ── #}
 {% if dow_stats_json != "[]" %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:1rem">DAY-OF-WEEK PATTERNS</div>
   <div style="position:relative;height:180px">
     <canvas id="dow-chart"></canvas>
@@ -112,7 +112,7 @@
 
 {# ── Top foods ── #}
 {% if top_foods %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:1rem">TOP FOODS</div>
   <div style="display:flex;flex-direction:column;gap:0.4rem">
     {% for food in top_foods|slice:":10" %}
@@ -129,7 +129,7 @@
 
 {# ── Hunger trend ── #}
 {% if hunger_chart_json != "[]" %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">HUNGER & SATIETY</div>
     <a href="{% url 'symptoms' %}" class="btn btn-ghost btn-sm" style="font-size:0.72rem">Log symptoms ›</a>
@@ -138,7 +138,7 @@
   <div style="display:flex;gap:2rem;margin-bottom:1rem;flex-wrap:wrap">
     <div>
       <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Avg Morning Hunger</div>
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;font-weight:700;
+      <div style="font-family:var(--font-sans);font-size:1.5rem;font-weight:700;
         color:{% if hunger_avg_morning <= 3 %}var(--accent-green){% elif hunger_avg_morning >= 7 %}var(--accent-red){% else %}var(--text){% endif %}">
         {{ hunger_avg_morning }}/10
       </div>
@@ -151,7 +151,7 @@
     {% if hunger_avg_fullness is not None %}
     <div>
       <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Avg Post-Meal Fullness</div>
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.5rem;font-weight:700">{{ hunger_avg_fullness }}/10</div>
+      <div style="font-family:var(--font-sans);font-size:1.5rem;font-weight:700">{{ hunger_avg_fullness }}/10</div>
     </div>
     {% endif %}
   </div>
@@ -164,7 +164,7 @@
 
 {# ── Symptom summary ── #}
 {% if symptom_summary %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">SYMPTOMS — LAST {{ range_days }} DAYS</div>
     <a href="{% url 'symptoms' %}" class="btn btn-ghost btn-sm" style="font-size:0.72rem">Log new ›</a>
@@ -187,7 +187,7 @@
 
 {# ── AI insights ── #}
 {% if can.ai_nutrition_insights %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">AI INSIGHTS</div>
     <div style="display:flex;align-items:center;gap:0.75rem">
@@ -303,9 +303,9 @@ document.addEventListener('DOMContentLoaded', function() {
       interaction: { mode: 'index', intersect: false },
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: '#888', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y:  { position: 'left',  ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' }, title: { display: true, text: 'kcal', color: '#888', font: { size: 10 } } },
-        y2: { position: 'right', ticks: { color: '#888', font: { size: 10 } }, grid: { display: false }, title: { display: true, text: 'g', color: '#888', font: { size: 10 } } },
+        x: { ticks: { color: fpChart.muted, font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: fpChart.grid } },
+        y:  { position: 'left',  ticks: { color: fpChart.muted, font: { size: 10 } }, grid: { color: fpChart.grid }, title: { display: true, text: 'kcal', color: fpChart.muted, font: { size: 10 } } },
+        y2: { position: 'right', ticks: { color: fpChart.muted, font: { size: 10 } }, grid: { display: false }, title: { display: true, text: 'g', color: fpChart.muted, font: { size: 10 } } },
       },
     },
   });
@@ -348,10 +348,10 @@ document.addEventListener('DOMContentLoaded', function() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: hasMorning, labels: { color: '#888', font: { size: 10 }, boxWidth: 12 } } },
+        plugins: { legend: { display: hasMorning, labels: { color: fpChart.muted, font: { size: 10 }, boxWidth: 12 } } },
         scales: {
-          x: { ticks: { color: '#888', font: { size: 10 }, maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-          y: { min: 0, max: 10, ticks: { color: '#888', font: { size: 10 }, stepSize: 2 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          x: { ticks: { color: fpChart.muted, font: { size: 10 }, maxTicksLimit: 10 }, grid: { color: fpChart.grid } },
+          y: { min: 0, max: 10, ticks: { color: fpChart.muted, font: { size: 10 }, stepSize: 2 }, grid: { color: fpChart.grid } },
         },
       },
     });
@@ -377,8 +377,8 @@ document.addEventListener('DOMContentLoaded', function() {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { color: '#888', font: { size: 11 } }, grid: { display: false } },
-          y: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          x: { ticks: { color: fpChart.muted, font: { size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: fpChart.muted, font: { size: 10 } }, grid: { color: fpChart.grid } },
         },
       },
     });

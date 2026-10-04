@@ -386,8 +386,8 @@ document.addEventListener("DOMContentLoaded", () => {
           tooltip: { callbacks: { label: ctx => ctx.parsed.y != null ? Math.round(ctx.parsed.y) + " bpm" : "—" } }
         },
         scales: {
-          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
-          y: { grace: "5%", grid: { color: gridColor }, ticks: { color: tickColor, font: { family: "JetBrains Mono", size: 10 } } },
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: fpChart.fontMono, size: 10 } } },
+          y: { grace: "5%", grid: { color: gridColor }, ticks: { color: tickColor, font: { family: fpChart.fontMono, size: 10 } } },
         }
       }
     });
@@ -395,9 +395,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Avg/max next to chart title
     const hrStats = document.getElementById("hrStats");
     if (hr.average_value != null)
-      hrStats.innerHTML += `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;color:var(--text-muted)">avg <span style="color:#FF3B5C;font-weight:700">${Math.round(hr.average_value)} bpm</span></div>`;
+      hrStats.innerHTML += `<div style="font-family:var(--font-sans);font-size:0.8rem;color:var(--text-muted)">avg <span style="color:#FF3B5C;font-weight:700">${Math.round(hr.average_value)} bpm</span></div>`;
     if (hr.max_value != null)
-      hrStats.innerHTML += `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;color:var(--text-muted)">max <span style="color:#FF3B5C;font-weight:700">${Math.round(hr.max_value)} bpm</span></div>`;
+      hrStats.innerHTML += `<div style="font-family:var(--font-sans);font-size:0.8rem;color:var(--text-muted)">max <span style="color:#FF3B5C;font-weight:700">${Math.round(hr.max_value)} bpm</span></div>`;
 
     // HR zone range labels (with time spent)
     const hrZonesEl = document.getElementById("hrZoneRanges");
@@ -406,7 +406,7 @@ document.addEventListener("DOMContentLoaded", () => {
       hr.zones.forEach((z, i) => {
         const dur = z.duration ? `${Math.floor(z.duration/60)}m ${z.duration%60}s` : "";
         const col = ZONE_COLORS[i];
-        html += `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:3px;padding:0.1rem 0.5rem">${z.display_name}: ${z.range}${dur ? " · " + dur : ""}</span>`;
+        html += `<span style="font-family:var(--font-sans);font-size:0.72rem;font-weight:700;letter-spacing:0.05em;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:3px;padding:0.1rem 0.5rem">${z.display_name}: ${z.range}${dur ? " · " + dur : ""}</span>`;
       });
       html += "</div>";
       hrZonesEl.innerHTML = html;
@@ -486,8 +486,8 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         },
         scales: {
-          x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: "JetBrains Mono", size: 10 } } },
-          y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: "JetBrains Mono", size: 10 } }, beginAtZero: true },
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: fpChart.fontMono, size: 10 } } },
+          y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: fpChart.fontMono, size: 10 } }, beginAtZero: true },
         }
       }
     });

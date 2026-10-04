@@ -80,7 +80,7 @@
       </div>
     </div>
     <div style="margin-top:1rem;display:flex;gap:0.75rem">
-      <button type="submit" class="btn btn-accent">Save Changes</button>
+      <button type="submit" class="btn btn-primary">Save Changes</button>
       <button type="button" class="btn btn-ghost" onclick="document.getElementById('edit-intervention-form').classList.add('hidden')">Cancel</button>
     </div>
   </form>
@@ -108,7 +108,7 @@
 <div class="chart-card">
   <div class="chart-header">
     <h3 class="chart-title">DOSE TIMELINE</h3>
-    <button class="btn btn-accent btn-sm" onclick="document.getElementById('add-dose-form').classList.toggle('hidden')">+ Add Dose Change</button>
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('add-dose-form').classList.toggle('hidden')">+ Add Dose Change</button>
   </div>
 
   <!-- Add dose form -->
@@ -145,7 +145,7 @@
         {% endif %}
       </div>
       <div style="margin-top:1rem;display:flex;gap:0.75rem">
-        <button type="submit" class="btn btn-accent">Add Dose Change</button>
+        <button type="submit" class="btn btn-primary">Add Dose Change</button>
         <button type="button" class="btn btn-ghost" onclick="document.getElementById('add-dose-form').classList.add('hidden')">Cancel</button>
       </div>
     </form>
@@ -220,7 +220,7 @@
                   </div>
                 </div>
                 <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
-                  <button type="submit" class="btn btn-accent btn-sm">Save</button>
+                  <button type="submit" class="btn btn-primary btn-sm">Save</button>
                   <button type="button" class="btn btn-ghost btn-sm" onclick="toggleEditDose({{ dc.pk }})">Cancel</button>
                 </div>
               </form>

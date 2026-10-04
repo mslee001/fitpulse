@@ -13,7 +13,7 @@
       <input class="form-input" id="id_budget" name="monthly_ai_budget_usd" style="width:9rem"
              value="{% if access.monthly_ai_budget_usd is not None %}{{ access.monthly_ai_budget_usd }}{% endif %}" inputmode="decimal">
     </div>
-    <button type="submit" class="btn btn-sm btn-accent">Save</button>
+    <button type="submit" class="btn btn-sm btn-primary">Save</button>
     {% if saved %}<span class="muted" style="font-size:0.8rem">Saved</span>{% endif %}
   </form>
   {% if error %}<div class="peloton-msg peloton-msg--error">{{ error }}</div>{% endif %}

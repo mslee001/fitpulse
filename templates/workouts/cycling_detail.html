@@ -101,9 +101,9 @@
         <h3 class="chart-title">PERFORMANCE OVER TIME</h3>
         <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
           {% if ftp %}
-          <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim)">FTP <span style="color:var(--text-muted)">{{ ftp }} W</span></span>
+          <span style="font-family:var(--font-sans);font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim)">FTP <span style="color:var(--text-muted)">{{ ftp }} W</span></span>
           {% else %}
-          <a href="{% url 'settings' %}" style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-decoration:none">Set FTP →</a>
+          <a href="{% url 'settings' %}" style="font-family:var(--font-sans);font-size:0.68rem;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-decoration:none">Set FTP →</a>
           {% endif %}
           <div class="chart-toggles" id="chartToggles"></div>
           <button id="resetZoomBtn" class="btn btn-sm btn-ghost" style="display:none">Reset zoom</button>
@@ -475,7 +475,7 @@ document.addEventListener("DOMContentLoaded", () => {
             display: true,
             content: `Z${i + 1} ${POWER_ZONE_NAMES[i]}`,
             color: zoneLabelColor,
-            font: { family: "Barlow Condensed", size: 11, weight: "700" },
+            font: { family: fpChart.fontSans, size: 11, weight: "700" },
             position: { x: "start", y: "center" },
             padding: { left: 8 },
           },
@@ -515,7 +515,7 @@ document.addEventListener("DOMContentLoaded", () => {
         responsive: true,
         interaction: { mode: "index", intersect: false },
         plugins: {
-          legend: { display: multiScale || hasRefLines, labels: { color: legendColor, font: { family: "Barlow Condensed", size: 11 }, padding: 12 } },
+          legend: { display: multiScale || hasRefLines, labels: { color: legendColor, font: { family: fpChart.fontSans, size: 11 }, padding: 12 } },
           annotation: { annotations },
           zoom: {
             limits: {
@@ -544,7 +544,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         },
         scales: {
-          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: fpChart.fontMono, size: 10 } } },
           y: {
             reverse: false,
             min: yAxisMin,
@@ -552,7 +552,7 @@ document.addEventListener("DOMContentLoaded", () => {
             grid: { color: gridColor },
             ticks: {
               color: multiScale ? "transparent" : tickColor,
-              font: { family: "JetBrains Mono", size: 10 },
+              font: { family: fpChart.fontMono, size: 10 },
             },
           },
         }
@@ -569,9 +569,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const m = metrics[cfg.slug];
       if (!m || (m.average_value == null && m.max_value == null)) continue;
       html += `<div style="min-width:90px">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.2rem">${cfg.label}</div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.25rem;font-weight:800;color:${cfg.color}">${cfg.fmt(m.average_value)}</div>
-        ${m.max_value != null ? `<div style="font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--text-dim)">max ${cfg.fmt(m.max_value)}</div>` : ""}
+        <div style="font-family:var(--font-sans);font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.2rem">${cfg.label}</div>
+        <div style="font-family:var(--font-sans);font-size:1.25rem;font-weight:800;color:${cfg.color}">${cfg.fmt(m.average_value)}</div>
+        ${m.max_value != null ? `<div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-dim)">max ${cfg.fmt(m.max_value)}</div>` : ""}
       </div>`;
     }
     if (html) { inner.innerHTML = html; wrap.style.display = ""; }
@@ -688,7 +688,7 @@ document.addEventListener("DOMContentLoaded", () => {
     hrMeta.zones.forEach((z, i) => {
       const dur = z.duration ? `${Math.floor(z.duration/60)}m ${z.duration%60}s` : "";
       const col = ZONE_COLORS[i];
-      html += `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.05em;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:3px;padding:0.1rem 0.5rem">${z.display_name}: ${z.range}${dur ? " · " + dur : ""}</span>`;
+      html += `<span style="font-family:var(--font-sans);font-size:0.72rem;font-weight:700;letter-spacing:0.05em;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:3px;padding:0.1rem 0.5rem">${z.display_name}: ${z.range}${dur ? " · " + dur : ""}</span>`;
     });
     html += "</div>";
     hrZonesEl.innerHTML = html;

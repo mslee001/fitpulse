@@ -13,7 +13,7 @@
       <h1 class="page-title">{{ program.name }}</h1>
       <p class="page-sub">
         {{ run.display_name }}
-        {% if run.is_current %}&middot; <span class="badge badge-accent">Current</span>{% endif %}
+        {% if run.is_current %}&middot; <span class="fp-badge fp-badge-accent">Current</span>{% endif %}
       </p>
     </div>
     <div class="page-header-actions">
@@ -69,20 +69,20 @@
 <div class="stat-grid">
   <div class="stat-card stat-card--hero">
     <div class="stat-label">Classes done</div>
-    <div class="stat-value">{{ totals.workouts }}</div>
+    <div class="fp-stat-value">{{ totals.workouts }}</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Total effort pts</div>
-    <div class="stat-value">{{ totals.effort_points }}</div>
+    <div class="fp-stat-value">{{ totals.effort_points }}</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Weeks</div>
-    <div class="stat-value">{{ rows|length }}</div>
+    <div class="fp-stat-value">{{ rows|length }}</div>
   </div>
   {% if program.track_recovery %}
   <div class="stat-card" title="Cool-down walks and stretches taken right after a workout">
     <div class="stat-label">Recovery</div>
-    <div class="stat-value">{{ totals.completions_with_recovery }}/{{ totals.workouts }}</div>
+    <div class="fp-stat-value">{{ totals.completions_with_recovery }}/{{ totals.workouts }}</div>
     <div class="stat-sub">{{ totals.recovery_sessions }} session{{ totals.recovery_sessions|pluralize }} &middot; {{ totals.recovery_minutes }} min</div>
   </div>
   {% endif %}
@@ -92,15 +92,15 @@
   <div style="flex:0 0 220px; display:flex; flex-direction:column; gap:1rem">
     <div class="stat-card stat-card--hero" style="flex:1; display:flex; flex-direction:column; justify-content:center">
       <div class="stat-label">Classes done</div>
-      <div class="stat-value">{{ totals.workouts }}</div>
+      <div class="fp-stat-value">{{ totals.workouts }}</div>
     </div>
     <div class="stat-card" style="flex:1; display:flex; flex-direction:column; justify-content:center">
       <div class="stat-label">Total effort pts</div>
-      <div class="stat-value">{{ totals.effort_points }}</div>
+      <div class="fp-stat-value">{{ totals.effort_points }}</div>
     </div>
     <div class="stat-card" style="flex:1; display:flex; flex-direction:column; justify-content:center">
       <div class="stat-label">Weeks</div>
-      <div class="stat-value">{{ rows|length }}</div>
+      <div class="fp-stat-value">{{ rows|length }}</div>
     </div>
   </div>
   {% if can.ai_program_tools %}

@@ -18,7 +18,7 @@
   <input type="hidden" name="edited_by_user" id="edited-flag" value="0">
 
   <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;flex-wrap:wrap">
-    <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Parsed Items</span>
+    <span style="font-family:var(--font-sans);font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Parsed Items</span>
     {% if result.image_type == "label" %}
     <span class="confidence-badge confidence-badge--neutral">Read from nutrition label</span>
     {% elif result.image_type == "meal" %}
@@ -66,7 +66,7 @@
   </div>
 
   {# Totals row #}
-  <div id="parse-totals" style="display:flex;gap:1.25rem;padding:0.5rem 0;font-size:0.82rem;color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;border-top:1px solid var(--border);margin-top:0.5rem;flex-wrap:wrap">
+  <div id="parse-totals" style="display:flex;gap:1.25rem;padding:0.5rem 0;font-size:0.82rem;color:var(--text-muted);font-family:var(--font-sans);border-top:1px solid var(--border);margin-top:0.5rem;flex-wrap:wrap">
     <span>TOTAL</span>
     <span id="tot-cal">— kcal</span>
     <span id="tot-prot">— g P</span>
@@ -85,7 +85,7 @@
         {% endfor %}
       </select>
     </div>
-    <button type="submit" class="btn btn-accent btn-sm">Save Entry</button>
+    <button type="submit" class="btn btn-primary btn-sm">Save Entry</button>
     <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('parse-result').innerHTML=''">Cancel</button>
   </div>
 </form>

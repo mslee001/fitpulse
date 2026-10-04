@@ -20,7 +20,7 @@
   {# ── Current week review ── #}
   <div>
     {% if current_review %}
-    <div class="card" style="margin-bottom:1.5rem">
+    <div class="fp-card" style="margin-bottom:1.5rem">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.5rem">
         <div>
           <div class="section-title" style="margin-bottom:0.15rem">
@@ -41,21 +41,21 @@
       {% endif %}
     </div>
     {% elif ai_unavailable_reason %}
-    <div class="card" style="margin-bottom:1.5rem">
+    <div class="fp-card" style="margin-bottom:1.5rem">
       {% include "workouts/partials/ai_unavailable.html" %}
     </div>
     {% else %}
-    <div class="card" style="margin-bottom:1.5rem">
+    <div class="fp-card" style="margin-bottom:1.5rem">
       <div style="color:var(--text-dim);font-size:0.9rem;padding:1rem 0">
         No review available yet.
-        <a href="{% url 'weekly_review' %}?refresh=1" class="btn btn-sm btn-accent" style="margin-left:0.75rem">Generate Now</a>
+        <a href="{% url 'weekly_review' %}?refresh=1" class="btn btn-sm btn-primary" style="margin-left:0.75rem">Generate Now</a>
       </div>
     </div>
     {% endif %}
 
     {# ── Archive ── #}
     {% if archive %}
-    <div class="card">
+    <div class="fp-card">
       <div class="section-title" style="margin-bottom:1rem">PAST REVIEWS</div>
       <div style="display:flex;flex-direction:column;gap:0.75rem">
         {% for review in archive %}
@@ -76,7 +76,7 @@
 
   {# ── Sidebar ── #}
   <div>
-    <div class="card" style="margin-bottom:1rem">
+    <div class="fp-card" style="margin-bottom:1rem">
       <div class="section-title" style="margin-bottom:0.75rem">ABOUT WEEKLY REVIEW</div>
       <p style="color:var(--text-dim);font-size:0.82rem;line-height:1.6;margin:0 0 0.75rem">
         Reviews are generated every Sunday for the week that just ended (Mon–Sun).
@@ -86,7 +86,7 @@
         Use <strong>Regenerate</strong> to get a fresh analysis, for example after syncing new data.
       </p>
     </div>
-    <div class="card">
+    <div class="fp-card">
       <div class="section-title" style="margin-bottom:0.75rem">QUICK LINKS</div>
       <div style="display:flex;flex-direction:column;gap:0.4rem">
         <a href="{% url 'nutrition_analytics' %}" class="btn btn-ghost btn-sm" style="text-align:left">Nutrition Analytics</a>

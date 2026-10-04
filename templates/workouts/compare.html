@@ -68,7 +68,7 @@
       <h3 class="chart-title">AI ANALYSIS</h3>
     </div>
     <div id="compare-ai-body" style="padding:0.25rem 0">
-      <button class="btn btn-accent"
+      <button class="btn btn-primary"
               hx-get="{% url 'compare_analysis' %}?ids={{ workout_ids|join:',' }}"
               hx-target="#compare-ai-body"
               hx-swap="innerHTML"
@@ -429,7 +429,7 @@ function buildStatsTable() {
       return `<td class="mono${isBest ? " cell-best" : ""}">${v.d}${arrow}</td>`;
     }).join("");
     return `<tr>
-      <td style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap">${row.label}</td>
+      <td style="font-family:var(--font-sans);font-size:0.78rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap">${row.label}</td>
       ${cells}
     </tr>`;
   }).join("");
@@ -439,7 +439,7 @@ function buildStatsTable() {
       <table class="data-table">
         <thead>
           <tr>
-            <th style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.12em;color:var(--text-muted);text-transform:uppercase">Stat</th>
+            <th style="font-family:var(--font-sans);font-size:0.72rem;font-weight:700;letter-spacing:0.12em;color:var(--text-muted);text-transform:uppercase">Stat</th>
             ${headerCells}
           </tr>
         </thead>
@@ -502,7 +502,7 @@ function buildCompare(metricKey) {
       plugins: {
         legend: {
           display: true,
-          labels: { color: "#aaa", font: { family: "Barlow Condensed", size: 12 }, padding: 16 }
+          labels: { color: fpChart.muted, font: { family: fpChart.fontSans, size: 12 }, padding: 16 }
         },
         tooltip: {
           callbacks: {
@@ -516,13 +516,13 @@ function buildCompare(metricKey) {
         }
       },
       scales: {
-        x: { grid: { color: "#ffffff0d" }, ticks: { color: "#888", maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
+        x: { grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, maxTicksLimit: 10, font: { family: fpChart.fontMono, size: 10 } } },
         y: {
           grace: "5%",
-          grid: { color: "#ffffff0d" },
+          grid: { color: fpChart.grid },
           ticks: {
-            color: "#888",
-            font: { family: "JetBrains Mono", size: 10 },
+            color: fpChart.muted,
+            font: { family: fpChart.fontMono, size: 10 },
             callback: v => isPace ? formatPace(v) : v,
           },
           reverse: isPace,

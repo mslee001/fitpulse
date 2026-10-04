@@ -13,7 +13,7 @@
     <div class="page-header-actions">
       {% if can.ai_program_tools %}<a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}">+ New Training Plan</a>{% endif %}
       {% if can.ai_program_tools %}<a class="btn btn-ghost" href="{% url 'program_new_plan' %}">+ New Plan</a>{% endif %}
-      <a class="btn btn-accent" href="{% url 'program_new' %}">+ New Split</a>
+      <a class="btn btn-primary" href="{% url 'program_new' %}">+ New Split</a>
     </div>
   </div>
 </div>
@@ -27,7 +27,7 @@
     <div class="record-discipline" style="margin-bottom:0.4rem">{{ p.name }}</div>
     {% if p.instructor %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ p.instructor }}</div>{% endif %}
     {% with tag=p|ai_plan_tag %}{% if tag %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ tag }}</div>{% endif %}{% endwith %}
-    <span class="badge badge-accent">Current cycle</span>
+    <span class="fp-badge fp-badge-accent">Current cycle</span>
   </a>
   {% endfor %}
 </div>
@@ -42,7 +42,7 @@
     <div class="record-discipline" style="margin-bottom:0.4rem">{{ p.name }}</div>
     {% if p.instructor %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ p.instructor }}</div>{% endif %}
     {% with tag=p|ai_plan_tag %}{% if tag %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ tag }}</div>{% endif %}{% endwith %}
-    <span class="badge badge-muted">{{ p.runs.count }} cycle{{ p.runs.count|pluralize }}</span>
+    <span class="fp-badge fp-badge-muted">{{ p.runs.count }} cycle{{ p.runs.count|pluralize }}</span>
   </a>
   {% endfor %}
 </div>

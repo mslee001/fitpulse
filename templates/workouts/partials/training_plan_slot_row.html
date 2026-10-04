@@ -13,7 +13,7 @@
         {% if r.cls.overall_rating_avg is not None %} · {% widthratio r.cls.overall_rating_avg 1 100 %}% rating{% endif %}
         · aired {{ r.cls.original_air_time|date:"M j, Y" }}
       </span>
-      {% if r.pick.repeat %}<span class="badge badge-muted">Taken before · {{ r.last_taken|date:"M Y" }}</span>{% endif %}
+      {% if r.pick.repeat %}<span class="fp-badge fp-badge-muted">Taken before · {{ r.last_taken|date:"M Y" }}</span>{% endif %}
     {% else %}
       <span class="stat-sub">No matching class in the catalog — will be created unpinned.</span>
     {% endif %}

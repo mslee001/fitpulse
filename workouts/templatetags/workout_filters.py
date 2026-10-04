@@ -236,7 +236,7 @@ def format_next_workout(text):
 
     html = ""
     if intensity:
-        html += f'<div style="font-size:1rem;font-weight:800;letter-spacing:0.06em;color:{color};font-family:\'Barlow Condensed\',sans-serif;margin-bottom:0.3rem">{escape(intensity)}</div>'
+        html += f'<div style="font-size:1rem;font-weight:800;letter-spacing:0.06em;color:{color};font-family:var(--font-sans);margin-bottom:0.3rem">{escape(intensity)}</div>'
     if activity:
         html += f'<div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem">{escape(activity)}</div>'
     if reason:

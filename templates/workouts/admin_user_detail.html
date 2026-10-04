@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="page-header">
-  <h1 class="page-title">{{ target.username|upper }}{% if target.is_superuser %} <span class="badge badge-accent">Owner</span>{% endif %}</h1>
+  <h1 class="page-title">{{ target.username|upper }}{% if target.is_superuser %} <span class="fp-badge fp-badge-accent">Owner</span>{% endif %}</h1>
   <p class="page-sub"><a href="{% url 'admin_users' %}">← Users</a></p>
 </div>
 

@@ -26,19 +26,19 @@
   </div>
   <div class="stat-card">
     <div class="stat-label">Window</div>
-    <div class="stat-value">{{ sa.window_days }}<span class="stat-unit">days</span></div>
+    <div class="fp-stat-value">{{ sa.window_days }}<span class="stat-unit">days</span></div>
   </div>
   {% if sa.washout_days %}
   <div class="stat-card">
     <div class="stat-label">Washout</div>
-    <div class="stat-value">{{ sa.washout_days }}<span class="stat-unit">days</span></div>
+    <div class="fp-stat-value">{{ sa.washout_days }}<span class="stat-unit">days</span></div>
   </div>
   {% endif %}
 </div>
 
 <!-- AI Interpretation -->
 {% if sa.ai_interpretation %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">AI INTERPRETATION</div>
     <span style="font-size:0.75rem;color:var(--text-dim)">{{ sa.ai_model }}</span>
@@ -76,13 +76,13 @@
             {% if m.before_n or m.after_n %}
             <tr class="{% if m.improved == True %}analysis-improved{% elif m.improved == False %}analysis-worsened{% else %}analysis-neutral{% endif %}">
               <td>{{ m.display_name }}</td>
-              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem">
+              <td style="text-align:right;font-family:var(--font-mono);font-size:0.85rem">
                 {% if m.before_mean != None %}{{ m.before_mean|floatformat:1 }}{% if m.unit %} {{ m.unit }}{% endif %}{% else %}—{% endif %}
               </td>
-              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem">
+              <td style="text-align:right;font-family:var(--font-mono);font-size:0.85rem">
                 {% if m.after_mean != None %}{{ m.after_mean|floatformat:1 }}{% if m.unit %} {{ m.unit }}{% endif %}{% else %}—{% endif %}
               </td>
-              <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem;
+              <td style="text-align:right;font-family:var(--font-mono);font-size:0.85rem;
                 color:{% if m.improved == True %}var(--accent-green){% elif m.improved == False %}var(--accent-red){% else %}inherit{% endif %};font-weight:700">
                 {% if m.pct_change != None %}{% if m.pct_change > 0 %}+{% endif %}{{ m.pct_change|floatformat:1 }}%{% else %}—{% endif %}
               </td>

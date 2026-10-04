@@ -13,7 +13,7 @@
 <div class="symptoms-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
 
   {# ── Log form ── #}
-  <div class="card">
+  <div class="fp-card">
     <div class="section-title" style="margin-bottom:1.25rem">LOG A SYMPTOM</div>
 
     <div id="symptom-success" style="display:none;color:var(--accent-green);font-size:0.85rem;margin-bottom:1rem">
@@ -25,7 +25,7 @@
       <div style="display:flex;flex-wrap:wrap;gap:0.4rem" id="symptom-chips">
         {% for val, label in symptom_choices %}
         <button type="button"
-                class="btn btn-ghost btn-sm symptom-chip"
+                class="btn btn-sm symptom-chip"
                 data-value="{{ val }}"
                 style="font-size:0.8rem">{{ label }}</button>
         {% endfor %}
@@ -42,9 +42,9 @@
     <div style="margin-bottom:1.25rem">
       <div class="filter-label" style="margin-bottom:0.5rem">SEVERITY</div>
       <div style="display:flex;gap:0.5rem">
-        <button type="button" class="btn btn-ghost btn-sm severity-btn" data-value="1" style="flex:1">Mild</button>
-        <button type="button" class="btn btn-ghost btn-sm severity-btn" data-value="2" style="flex:1">Moderate</button>
-        <button type="button" class="btn btn-ghost btn-sm severity-btn" data-value="3" style="flex:1">Severe</button>
+        <button type="button" class="btn btn-sm severity-btn" data-value="1" style="flex:1">Mild</button>
+        <button type="button" class="btn btn-sm severity-btn" data-value="2" style="flex:1">Moderate</button>
+        <button type="button" class="btn btn-sm severity-btn" data-value="3" style="flex:1">Severe</button>
       </div>
       <input type="hidden" id="selected-severity" value="">
     </div>
@@ -80,7 +80,7 @@
                 placeholder="e.g. onset timing, what I ate beforehand…"></textarea>
     </div>
 
-    <button type="button" class="btn btn-accent" style="width:100%" onclick="logSymptom()">
+    <button type="button" class="btn btn-primary" style="width:100%" onclick="logSymptom()">
       Log Symptom
     </button>
     <div id="log-status" style="font-size:0.82rem;color:var(--text-muted);margin-top:0.5rem;text-align:center"></div>
@@ -89,7 +89,7 @@
   {# ── 30-day summary ── #}
   <div>
     {% if summary %}
-    <div class="card" style="margin-bottom:1.5rem">
+    <div class="fp-card" style="margin-bottom:1.5rem">
       <div class="section-title" style="margin-bottom:1rem">LAST 30 DAYS</div>
       <div style="display:flex;flex-direction:column;gap:0.4rem">
         {% for row in summary %}
@@ -109,7 +109,7 @@
 
     {# Recent log #}
     {% if recent %}
-    <div class="card">
+    <div class="fp-card">
       <div class="section-title" style="margin-bottom:1rem">RECENT ENTRIES</div>
       <div style="display:flex;flex-direction:column;gap:0.5rem" id="recent-list">
         {% for entry in recent|slice:":15" %}
@@ -133,8 +133,8 @@ var _severity = '';
 
 document.querySelectorAll('.symptom-chip').forEach(function(btn) {
   btn.addEventListener('click', function() {
-    document.querySelectorAll('.symptom-chip').forEach(b => b.classList.remove('btn-accent'));
-    btn.classList.add('btn-accent');
+    document.querySelectorAll('.symptom-chip').forEach(b => b.classList.remove('btn-primary'));
+    btn.classList.add('btn-primary');
     _symptom = btn.dataset.value;
     var otherField = document.getElementById('other-label-field');
     if (_symptom === 'other') {
@@ -149,8 +149,8 @@ document.querySelectorAll('.symptom-chip').forEach(function(btn) {
 
 document.querySelectorAll('.severity-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
-    document.querySelectorAll('.severity-btn').forEach(b => b.classList.remove('btn-accent'));
-    btn.classList.add('btn-accent');
+    document.querySelectorAll('.severity-btn').forEach(b => b.classList.remove('btn-primary'));
+    btn.classList.add('btn-primary');
     _severity = btn.dataset.value;
   });
 });
@@ -174,8 +174,8 @@ function logSymptom() {
       if (j.ok) {
         setStatus('✓ Logged!', 'var(--accent-green)');
         // Reset selections
-        document.querySelectorAll('.symptom-chip').forEach(b => b.classList.remove('btn-accent'));
-        document.querySelectorAll('.severity-btn').forEach(b => b.classList.remove('btn-accent'));
+        document.querySelectorAll('.symptom-chip').forEach(b => b.classList.remove('btn-primary'));
+        document.querySelectorAll('.severity-btn').forEach(b => b.classList.remove('btn-primary'));
         document.getElementById('symptom-notes').value = '';
         document.getElementById('other-label').value = '';
         document.getElementById('other-label-field').style.display = 'none';

@@ -32,44 +32,44 @@
   {% if stats.best_pace %}
   <div class="stat-card stat-card--hero">
     <div class="stat-label">Best Pace</div>
-    <div class="stat-value" style="font-size:1.6rem">{{ stats.best_pace|format_pace }}</div>
+    <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.best_pace|format_pace }}</div>
   </div>
   {% endif %}
   {% if stats.avg_pace %}
   <div class="stat-card">
     <div class="stat-label">Avg Pace</div>
-    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_pace|format_pace }}</div>
+    <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.avg_pace|format_pace }}</div>
   </div>
   {% endif %}
   {% if stats.best_distance %}
   <div class="stat-card">
     <div class="stat-label">Best Distance</div>
-    <div class="stat-value" style="font-size:1.6rem">{{ stats.best_distance|floatformat:2 }}<span class="stat-unit">mi</span></div>
+    <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.best_distance|floatformat:2 }}<span class="stat-unit">mi</span></div>
   </div>
   {% endif %}
   {% if stats.avg_hr %}
   <div class="stat-card">
     <div class="stat-label">Avg Heart Rate</div>
-    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
+    <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
   </div>
   {% endif %}
   {% if has_form_data %}
     {% if stats.avg_cadence %}
     <div class="stat-card">
       <div class="stat-label">Avg Cadence</div>
-      <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_cadence|floatformat:0 }}<span class="stat-unit">spm</span></div>
+      <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.avg_cadence|floatformat:0 }}<span class="stat-unit">spm</span></div>
     </div>
     {% endif %}
     {% if stats.avg_vo %}
     <div class="stat-card">
       <div class="stat-label">Avg Vert. Osc.</div>
-      <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_vo|floatformat:1 }}<span class="stat-unit">cm</span></div>
+      <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.avg_vo|floatformat:1 }}<span class="stat-unit">cm</span></div>
     </div>
     {% endif %}
     {% if stats.avg_gct %}
     <div class="stat-card">
       <div class="stat-label">Avg GCT</div>
-      <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_gct|floatformat:0 }}<span class="stat-unit">ms</span></div>
+      <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.avg_gct|floatformat:0 }}<span class="stat-unit">ms</span></div>
     </div>
     {% endif %}
   {% endif %}
@@ -77,56 +77,56 @@
   {% if stats.max_effort %}
   <div class="stat-card stat-card--hero">
     <div class="stat-label">Best Effort</div>
-    <div class="stat-value" style="font-size:1.6rem">{{ stats.max_effort|floatformat:1 }}</div>
+    <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.max_effort|floatformat:1 }}</div>
   </div>
   {% endif %}
   {% if stats.avg_effort %}
   <div class="stat-card">
     <div class="stat-label">Avg Effort</div>
-    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_effort|floatformat:1 }}</div>
+    <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.avg_effort|floatformat:1 }}</div>
   </div>
   {% endif %}
   {% if stats.avg_calories %}
   <div class="stat-card">
     <div class="stat-label">Avg Calories</div>
-    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_calories|floatformat:0 }}</div>
+    <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.avg_calories|floatformat:0 }}</div>
   </div>
   {% endif %}
   {% if stats.avg_hr %}
   <div class="stat-card">
     <div class="stat-label">Avg Heart Rate</div>
-    <div class="stat-value" style="font-size:1.6rem">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
+    <div class="fp-stat-value" style="font-size:1.6rem">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
   </div>
   {% endif %}
 {% else %}
   {% if stats.max_output %}
   <div class="stat-card stat-card--hero">
     <div class="stat-label">Best Output</div>
-    <div class="stat-value">{{ stats.max_output|format_watts }}</div>
+    <div class="fp-stat-value">{{ stats.max_output|format_watts }}</div>
   </div>
   {% endif %}
   {% if stats.avg_output %}
   <div class="stat-card">
     <div class="stat-label">Avg Output</div>
-    <div class="stat-value">{{ stats.avg_output|format_watts }}</div>
+    <div class="fp-stat-value">{{ stats.avg_output|format_watts }}</div>
   </div>
   {% endif %}
   {% if stats.avg_cadence %}
   <div class="stat-card">
     <div class="stat-label">Avg Cadence</div>
-    <div class="stat-value">{{ stats.avg_cadence|floatformat:0 }}<span class="stat-unit">rpm</span></div>
+    <div class="fp-stat-value">{{ stats.avg_cadence|floatformat:0 }}<span class="stat-unit">rpm</span></div>
   </div>
   {% endif %}
   {% if stats.avg_resistance %}
   <div class="stat-card">
     <div class="stat-label">Avg Resistance</div>
-    <div class="stat-value">{{ stats.avg_resistance|floatformat:0 }}<span class="stat-unit">%</span></div>
+    <div class="fp-stat-value">{{ stats.avg_resistance|floatformat:0 }}<span class="stat-unit">%</span></div>
   </div>
   {% endif %}
   {% if stats.avg_hr %}
   <div class="stat-card">
     <div class="stat-label">Avg Heart Rate</div>
-    <div class="stat-value">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
+    <div class="fp-stat-value">{{ stats.avg_hr|floatformat:0 }}<span class="stat-unit">bpm</span></div>
   </div>
   {% endif %}
 {% endif %}
@@ -165,8 +165,8 @@
 
 <!-- Compare bar -->
 <div id="compareBar" class="compare-sidebar-bar" style="display:none;align-items:center;justify-content:space-between;gap:1rem">
-  <span id="compareBarCount" style="font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;color:var(--text-muted)">0 selected</span>
-  <a id="compareBarLink" href="#" class="btn btn-accent btn-sm">Compare Selected →</a>
+  <span id="compareBarCount" style="font-family:var(--font-sans);font-size:0.85rem;color:var(--text-muted)">0 selected</span>
+  <a id="compareBarLink" href="#" class="btn btn-primary btn-sm">Compare Selected →</a>
 </div>
 
 <!-- All attempts table -->
@@ -303,12 +303,12 @@ function buildTrend(metricKey) {
         }
       },
       scales: {
-        x: { grid: { color: '#ffffff0d' }, ticks: { color: '#888', font: { family: 'JetBrains Mono', size: 11 } } },
+        x: { grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, font: { family: fpChart.fontMono, size: 11 } } },
         y: {
           reverse: invert,
-          grid: { color: '#ffffff0d' },
+          grid: { color: fpChart.grid },
           ticks: {
-            color: '#888', font: { family: 'JetBrains Mono', size: 11 },
+            color: fpChart.muted, font: { family: fpChart.fontMono, size: 11 },
             callback: v => metricKey === 'pace' ? `${Math.floor(v/60)}:${String(v%60).padStart(2,'0')}` : v
           }
         },

@@ -96,7 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#E8743B";
   const volumes = {{ volume_series|safe }};
   const charts = {{ charts|safe }};
-  const axisFont = { family: "JetBrains Mono", size: 10 };
+  const axisFont = { family: fpChart.fontMono, size: 10 };
 
   const volCanvas = document.getElementById("volumeChart");
   if (volCanvas && volumes.length) {

@@ -22,7 +22,7 @@
   <div style="display:flex;flex-direction:column;gap:0.85rem;margin-bottom:1.25rem">
     {% for seg in class_plan %}
     <div>
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.4rem;text-transform:uppercase">
+      <div style="font-family:var(--font-sans);font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.4rem;text-transform:uppercase">
         {{ seg.name }}{% if seg.length %} &middot; {{ seg.length|floatformat:0 }}s{% endif %}
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:0.4rem">
@@ -85,7 +85,7 @@
         {% if manual_volume_lb %}
         <tfoot>
           <tr>
-            <td colspan="6" style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted)">Total volume</td>
+            <td colspan="6" style="text-align:right;font-family:var(--font-sans);font-size:0.78rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted)">Total volume</td>
             <td class="mono" style="text-align:right;font-weight:700;white-space:nowrap">{{ manual_volume_lb|floatformat:"0g" }} lb</td>
           </tr>
         </tfoot>
@@ -93,7 +93,7 @@
       </table>
     </div>
     <div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.9rem;flex-wrap:wrap">
-      <button type="submit" class="btn btn-accent">Save log</button>
+      <button type="submit" class="btn btn-primary">Save log</button>
       <button type="button" class="btn btn-ghost" id="addManualRowBtn">+ Add exercise</button>
       <span style="font-size:0.72rem;color:var(--text-dim)">Exercises with no numbers, notes or effort aren't saved. Rate effort to get weight recommendations &middot; <a href="{% url 'strength_trends' %}">Strength trends &rarr;</a></span>
     </div>

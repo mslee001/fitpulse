@@ -60,7 +60,7 @@
   <div class="today-section-header">
     <h2 class="section-title">WELLNESS</h2>
     {% if wellness_is_yesterday %}
-    <span class="badge badge-muted">From yesterday</span>
+    <span class="fp-badge fp-badge-muted">From yesterday</span>
     {% endif %}
     <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="section-link">Full day view →</a>
   </div>
@@ -68,14 +68,14 @@
     {% if daily.hrv_last_night %}
     <div class="stat-card">
       <div class="stat-label">HRV Last Night</div>
-      <div class="stat-value">{{ daily.hrv_last_night }}<span class="stat-unit">ms</span></div>
+      <div class="fp-stat-value">{{ daily.hrv_last_night }}<span class="stat-unit">ms</span></div>
       {% if daily.hrv_status %}<div class="stat-sub stat-sub-{{ daily.hrv_status|lower }}">{{ daily.hrv_status }}</div>{% endif %}
     </div>
     {% endif %}
     {% if daily.sleep_score %}
     <div class="stat-card">
       <div class="stat-label">Sleep Score</div>
-      <div class="stat-value">{{ daily.sleep_score }}</div>
+      <div class="fp-stat-value">{{ daily.sleep_score }}</div>
       {% if daily.sleep_seconds %}
       <div class="stat-sub">{{ daily.sleep_seconds|format_duration_hm }}</div>
       {% endif %}
@@ -84,26 +84,26 @@
     {% if daily.body_battery_start %}
     <div class="stat-card">
       <div class="stat-label">Body Battery</div>
-      <div class="stat-value">{{ daily.body_battery_start }}<span class="stat-unit"> at wakeup</span></div>
+      <div class="fp-stat-value">{{ daily.body_battery_start }}<span class="stat-unit"> at wakeup</span></div>
       {% if daily.body_battery_charge %}<div class="stat-sub">+{{ daily.body_battery_charge }} charged overnight</div>{% endif %}
     </div>
     {% endif %}
     {% if daily.resting_hr %}
     <div class="stat-card">
       <div class="stat-label">Resting HR</div>
-      <div class="stat-value">{{ daily.resting_hr }}<span class="stat-unit">bpm</span></div>
+      <div class="fp-stat-value">{{ daily.resting_hr }}<span class="stat-unit">bpm</span></div>
     </div>
     {% endif %}
     {% if daily.stress_avg %}
     <div class="stat-card">
       <div class="stat-label">Stress Avg</div>
-      <div class="stat-value">{{ daily.stress_avg }}</div>
+      <div class="fp-stat-value">{{ daily.stress_avg }}</div>
     </div>
     {% endif %}
     {% if daily.steps %}
     <div class="stat-card">
       <div class="stat-label">Steps</div>
-      <div class="stat-value">{{ daily.steps }}</div>
+      <div class="fp-stat-value">{{ daily.steps }}</div>
     </div>
     {% endif %}
   </div>
@@ -121,25 +121,25 @@
     {% if daily.floors_climbed %}
     <div class="stat-card">
       <div class="stat-label">Floors Climbed</div>
-      <div class="stat-value">{{ daily.floors_climbed }}</div>
+      <div class="fp-stat-value">{{ daily.floors_climbed }}</div>
     </div>
     {% endif %}
     {% if daily.active_calories %}
     <div class="stat-card">
       <div class="stat-label">Active Calories</div>
-      <div class="stat-value">{{ daily.active_calories }}<span class="stat-unit">kcal</span></div>
+      <div class="fp-stat-value">{{ daily.active_calories }}<span class="stat-unit">kcal</span></div>
     </div>
     {% endif %}
     {% if daily.active_zone_minutes %}
     <div class="stat-card">
       <div class="stat-label">Active Zone Minutes</div>
-      <div class="stat-value">{{ daily.active_zone_minutes }}</div>
+      <div class="fp-stat-value">{{ daily.active_zone_minutes }}</div>
     </div>
     {% endif %}
     {% if daily.moderate_intensity_minutes or daily.vigorous_intensity_minutes %}
     <div class="stat-card">
       <div class="stat-label">Intensity Minutes</div>
-      <div class="stat-value">{{ daily.moderate_intensity_minutes|default:0 }}<span class="stat-unit">mod</span></div>
+      <div class="fp-stat-value">{{ daily.moderate_intensity_minutes|default:0 }}<span class="stat-unit">mod</span></div>
       <div class="stat-sub">{{ daily.vigorous_intensity_minutes|default:0 }} vigorous</div>
     </div>
     {% endif %}

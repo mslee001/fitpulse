@@ -17,8 +17,107 @@
 @plugin "./vendor/daisyui.mjs" {
   themes: false;
   logs: false;
-  /* TEMPORARY (removed in 02): these daisyUI components share class names with
-     today's markup (btn, card, badge, stat-value) and would restyle every page
-     before the themes and renames exist. */
-  exclude: button, card, badge, stat;
+}
+
+/* FitPulse "Soft modern" themes. Names match the existing data-theme values, so the
+   toggle and localStorage['theme'] keep working. Colors must stay HEX: Chart.js reads
+   these variables and can't parse oklch(). */
+@plugin "./vendor/daisyui-theme.mjs" {
+  name: "dark";
+  default: true;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #1C2028;
+  --color-base-200: #14171D;
+  --color-base-300: #0F1116;
+  --color-base-content: #E9EDF3;
+  --color-primary: #2BC4B0;
+  --color-primary-content: #0B1A18;
+  --color-secondary: #7AA7FF;
+  --color-secondary-content: #0B1530;
+  --color-accent: #B79CFF;
+  --color-accent-content: #1A1033;
+  --color-neutral: #232833;
+  --color-neutral-content: #E9EDF3;
+  --color-info: #7AA7FF;
+  --color-info-content: #0B1530;
+  --color-success: #57D68D;
+  --color-success-content: #0A2416;
+  --color-warning: #F2B45A;
+  --color-warning-content: #2B1A00;
+  --color-error: #F87171;
+  --color-error-content: #2B0A0A;
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "./vendor/daisyui-theme.mjs" {
+  name: "light";
+  default: false;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #FFFFFF;
+  --color-base-200: #F4F6F9;
+  --color-base-300: #E6E9EF;
+  --color-base-content: #151A22;
+  --color-primary: #0E8C7E;
+  --color-primary-content: #FFFFFF;
+  --color-secondary: #2F62D6;
+  --color-secondary-content: #FFFFFF;
+  --color-accent: #6B4ED8;
+  --color-accent-content: #FFFFFF;
+  --color-neutral: #2A303C;
+  --color-neutral-content: #F4F6F9;
+  --color-info: #2F62D6;
+  --color-info-content: #FFFFFF;
+  --color-success: #1B7A43;
+  --color-success-content: #FFFFFF;
+  --color-warning: #A86300;
+  --color-warning-content: #FFFFFF;
+  --color-error: #C2283B;
+  --color-error-content: #FFFFFF;
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* dark: utilities follow the existing toggle. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Theme-aware helpers: text-muted, text-faint, border-subtle, bg-inset.
+   faint (45%) is decorative/disabled only: it doesn't meet 4.5:1. */
+@theme inline {
+  --color-muted: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  --color-faint: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  --color-subtle: color-mix(in oklab, var(--color-base-content) 12%, var(--color-base-100));
+  --color-inset: color-mix(in oklab, var(--color-base-content) 5%, var(--color-base-100));
+}
+
+/* Chart series palette, validated for both themes. Read via window.fpChart. */
+@layer base {
+  :root, [data-theme="dark"] {
+    --chart-1: #14A394; --chart-2: #3987E5; --chart-3: #D95926;
+    --chart-4: #9085E9; --chart-5: #C98500; --chart-6: #D55181;
+  }
+  [data-theme="light"] {
+    --chart-1: #0E8C7E; --chart-2: #2A78D6; --chart-3: #E2602B;
+    --chart-4: #4A3AA7; --chart-5: #A87400; --chart-6: #C94F7C;
+  }
+  body { @apply bg-base-200 text-base-content font-sans antialiased; }
 }

@@ -29,28 +29,28 @@
 <div class="body-stats-row">
   <div class="stat-card stat-card--hero">
     <div class="stat-label">Current Weight</div>
-    <div class="stat-value">
+    <div class="fp-stat-value">
       {% if current_weight %}{{ current_weight|floatformat:1 }}<span class="stat-unit">lb</span>
       {% else %}—{% endif %}
     </div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Body Fat %</div>
-    <div class="stat-value">
+    <div class="fp-stat-value">
       {% if current_fat_pct %}{{ current_fat_pct|floatformat:1 }}<span class="stat-unit">%</span>
       {% else %}—{% endif %}
     </div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Lean Mass</div>
-    <div class="stat-value">
+    <div class="fp-stat-value">
       {% if current_lean %}{{ current_lean|floatformat:1 }}<span class="stat-unit">lb</span>
       {% else %}—{% endif %}
     </div>
   </div>
   <div class="stat-card">
     <div class="stat-label">7-Day Δ</div>
-    <div class="stat-value">
+    <div class="fp-stat-value">
       {% if delta_7d != None %}
         <span class="{% if delta_7d < 0 %}delta-negative{% elif delta_7d > 0 %}delta-positive{% else %}delta-neutral{% endif %}">
           {% if delta_7d > 0 %}+{% endif %}{{ delta_7d|floatformat:1 }}<span class="stat-unit">lb</span>
@@ -60,7 +60,7 @@
   </div>
   <div class="stat-card">
     <div class="stat-label">30-Day Δ</div>
-    <div class="stat-value">
+    <div class="fp-stat-value">
       {% if delta_30d != None %}
         <span class="{% if delta_30d < 0 %}delta-negative{% elif delta_30d > 0 %}delta-positive{% else %}delta-neutral{% endif %}">
           {% if delta_30d > 0 %}+{% endif %}{{ delta_30d|floatformat:1 }}<span class="stat-unit">lb</span>
@@ -194,7 +194,7 @@
     {% for iv in active_ivs %}
     <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
       <span class="cat-badge cat-{{ iv.category }}">{{ iv.category }}</span>
-      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700">{{ iv.name }}</span>
+      <span style="font-family:var(--font-sans);font-weight:700">{{ iv.name }}</span>
       {% with cd=iv.current_dose %}{% if cd %}
       <span style="color:var(--text-muted);font-size:0.85rem">{{ cd.dose }}</span>
       {% endif %}{% endwith %}
@@ -272,7 +272,7 @@ const interventionLinesPlugin = {
 
     function drawPill(boxX, boxY, boxW, boxH, label, color, fontSize) {
       ctx.save();
-      ctx.font = `bold ${fontSize}px Barlow Condensed, sans-serif`;
+      ctx.font = `bold ${fontSize}px ${fpChart.fontSans}`;
       ctx.fillStyle = 'rgba(14,14,20,0.92)';
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
@@ -298,7 +298,7 @@ const interventionLinesPlugin = {
       if (xVal == null || xVal < xScale.left || xVal > xScale.right) return;
       const color = ann.color || '#aaa';
       const label = ann.label.length > 18 ? ann.label.slice(0, 17) + '…' : ann.label;
-      ctx.font = 'bold 10px Barlow Condensed, sans-serif';
+      ctx.font = 'bold 10px ' + fpChart.fontSans;
       const boxW = ctx.measureText(label).width + PILL_PAD * 2;
       items.push({ xVal, color, lineColor: color, label, fontSize: 10, boxW, boxH: 16, isDose: false,
                    lineFrom: yScale.top, lineTo: yScale.bottom, lineDash: [5, 4], lineW: 1.5 });
@@ -309,7 +309,7 @@ const interventionLinesPlugin = {
       if (xVal == null || xVal < xScale.left || xVal > xScale.right) return;
       const lineColor = (ann.color || '#888') + '99';
       const pillColor = (ann.color || '#888') + 'cc';
-      ctx.font = 'bold 9px Barlow Condensed, sans-serif';
+      ctx.font = 'bold 9px ' + fpChart.fontSans;
       const boxW = ctx.measureText(ann.label).width + PILL_PAD * 2;
       items.push({ xVal, color: pillColor, lineColor, label: ann.label, fontSize: 9, boxW, boxH: 15, isDose: true,
                    lineFrom: yScale.top, lineTo: midY, lineDash: [2, 4], lineW: 1 });
@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           label: 'Weight',
           data: weights,
-          borderColor: 'rgba(255,255,255,0.45)',
+          borderColor: fpChart.alpha(fpChart.text, 0.45),
           borderWidth: 1,
           tension: 0.2,
           spanGaps: true,

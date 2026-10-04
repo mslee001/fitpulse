@@ -105,7 +105,7 @@
       </div>
       {% endif %}
 
-      <button type="button" class="btn btn-ghost btn-full"
+      <button type="button" class="btn btn-ghost w-full"
               onclick="window.location='{% url 'history' %}'">
         Clear filters
       </button>
@@ -114,14 +114,14 @@
     <!-- Compare button — shown when checkboxes are selected -->
     <div id="compare-bar" class="compare-bar" style="display:none">
       <div class="compare-count"><span id="compare-count-num">0</span> selected</div>
-      <a id="compare-link" href="{% url 'compare' %}" class="btn btn-accent btn-full">
+      <a id="compare-link" href="{% url 'compare' %}" class="btn btn-primary w-full">
         Compare →
       </a>
     </div>
 
     <!-- Create Program button — shown once at least one workout is checked -->
     <div id="create-program-bar" style="display:none;margin-top:0.5rem">
-      <a id="create-program-link" href="{% url 'program_new' %}" class="btn btn-ghost btn-full">
+      <a id="create-program-link" href="{% url 'program_new' %}" class="btn btn-ghost w-full">
         Create Program →
       </a>
     </div>

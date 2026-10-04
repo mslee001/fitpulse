@@ -26,21 +26,21 @@
 <div class="stat-grid">
   <div class="stat-card stat-card--hero">
     <div class="stat-label">Total Workouts</div>
-    <div class="stat-value">{{ wc.total_workouts|default:"—" }}</div>
+    <div class="fp-stat-value">{{ wc.total_workouts|default:"—" }}</div>
   </div>
   {% with s=overview.streaks %}
   <div class="stat-card">
     <div class="stat-label">Current Streak</div>
-    <div class="stat-value">{{ s.current_weekly|default:"0" }}<span class="stat-unit">wks</span></div>
+    <div class="fp-stat-value">{{ s.current_weekly|default:"0" }}<span class="stat-unit">wks</span></div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Best Streak</div>
-    <div class="stat-value">{{ s.best_weekly|default:"0" }}<span class="stat-unit">wks</span></div>
+    <div class="fp-stat-value">{{ s.best_weekly|default:"0" }}<span class="stat-unit">wks</span></div>
   </div>
   {% endwith %}
   <div class="stat-card">
     <div class="stat-label">Cached Locally</div>
-    <div class="stat-value">{{ total_cached }}</div>
+    <div class="fp-stat-value">{{ total_cached }}</div>
   </div>
 </div>
 {% endwith %}

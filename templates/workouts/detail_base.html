@@ -88,7 +88,7 @@
       <div class="leaderboard-pct-label">beat {{ workout.leaderboard_pct|floatformat:0 }}%</div>
     </div>
     {% if workout_detail.strava_id %}
-    <div style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--text-dim);padding:0 0.1rem 1rem">Strava #{{ workout_detail.strava_id }}</div>
+    <div style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-dim);padding:0 0.1rem 1rem">Strava #{{ workout_detail.strava_id }}</div>
     {% endif %}
     {% endif %}
 
@@ -108,22 +108,22 @@
     {% endfor %}
     </div>
     {% if workout.ride_id %}
-    <a href="{% url 'class_history' workout.ride_id %}" class="btn btn-ghost btn-full" style="margin-top:1rem">
+    <a href="{% url 'class_history' workout.ride_id %}" class="btn btn-ghost w-full" style="margin-top:1rem">
       Full class history →
     </a>
     {% elif garmin_activity_url %}
-    <a href="{{ garmin_activity_url }}" class="btn btn-ghost btn-full" style="margin-top:1rem">
+    <a href="{{ garmin_activity_url }}" class="btn btn-ghost w-full" style="margin-top:1rem">
       Full activity history →
     </a>
     {% endif %}
     {% endif %}
     {% if workout.external_url %}
-    <a href="{{ workout.external_url }}" class="btn btn-ghost btn-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
+    <a href="{{ workout.external_url }}" class="btn btn-ghost w-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
       View on {% if workout.source == "garmin" %}Garmin Connect{% else %}Peloton{% endif %} ↗
     </a>
     {% endif %}
     {% if workout.source == "peloton" and workout.garmin_activity_id %}
-    <a href="https://connect.garmin.com/modern/activity/{{ workout.garmin_activity_id }}" class="btn btn-ghost btn-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
+    <a href="https://connect.garmin.com/modern/activity/{{ workout.garmin_activity_id }}" class="btn btn-ghost w-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
       View on Garmin Connect ↗
     </a>
     {% endif %}
@@ -131,8 +131,8 @@
     {% block recent_section %}{% endblock %}
 
     <div id="compareBar" class="compare-sidebar-bar" style="display:none">
-      <span id="compareBarCount" style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;color:var(--text-muted)">0 selected</span>
-      <a id="compareBarLink" href="#" class="btn btn-accent btn-sm btn-full" style="margin-top:0.5rem">Compare →</a>
+      <span id="compareBarCount" style="font-family:var(--font-sans);font-size:0.75rem;color:var(--text-muted)">0 selected</span>
+      <a id="compareBarLink" href="#" class="btn btn-primary btn-sm w-full" style="margin-top:0.5rem">Compare →</a>
     </div>
   </aside>
 </div>

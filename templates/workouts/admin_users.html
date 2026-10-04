@@ -8,7 +8,7 @@
     <h1 class="page-title">USERS</h1>
     <p class="page-sub">Household accounts — features, AI spend, setup and connections. No one's health data is shown here.</p>
   </div>
-  <a href="{% url 'admin_user_new' %}" class="btn btn-accent">+ New user</a>
+  <a href="{% url 'admin_user_new' %}" class="btn btn-primary">+ New user</a>
 </div>
 
 {% include "workouts/partials/messages.html" %}
@@ -23,7 +23,7 @@
       <tr>
         <td>
           <a href="{% url 'admin_user_detail' row.user.pk %}">{{ row.user.username }}</a>
-          {% if row.user.is_superuser %}<span class="badge badge-accent" style="margin-left:0.4rem">Owner</span>{% endif %}
+          {% if row.user.is_superuser %}<span class="fp-badge fp-badge-accent" style="margin-left:0.4rem">Owner</span>{% endif %}
         </td>
         <td>{% if row.user.is_active %}yes{% else %}<span class="muted">no</span>{% endif %}</td>
         <td>{% if row.user.last_login %}{{ row.user.last_login|date:"M j, Y" }}{% else %}<span class="muted">never</span>{% endif %}</td>

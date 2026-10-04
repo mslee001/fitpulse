@@ -321,7 +321,7 @@
     {% if nutrition_entries or nutrition_targets %}
     <div class="stat-card" style="margin-bottom:1.5rem">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--text-dim)">NUTRITION</div>
+        <div style="font-family:var(--font-sans);font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--text-dim)">NUTRITION</div>
         <a href="{% url 'nutrition' %}?date={{ day|date:'Y-m-d' }}" style="font-size:0.75rem;color:var(--accent)">+ Log food ›</a>
       </div>
       {% if nutrition_totals %}

@@ -21,7 +21,7 @@
   {% if steps.password.status != "done" %}
   <section class="chart-card gs-card" id="password">
     <div class="gs-card-head"><h3 class="chart-title">PASSWORD</h3><span class="step-pill step-pill--todo">To do</span></div>
-    <a class="btn btn-accent" href="{% url 'password_change' %}">Choose a password</a>
+    <a class="btn btn-primary" href="{% url 'password_change' %}">Choose a password</a>
   </section>
   {% endif %}
 
@@ -98,9 +98,9 @@
         <p>Google makes private apps reconnect <strong>every 7 days</strong>. FitPulse shows a reminder on the Data Sources page when it's time. Reconnecting is one click.</p>
       </div>
       {% if step.status == "blocked" %}
-      <button class="btn btn-accent" disabled title="Waiting on Megan to add your Google account">Connect Google Health</button>
+      <button class="btn btn-primary" disabled title="Waiting on Megan to add your Google account">Connect Google Health</button>
       {% else %}
-      <a href="{% url 'google_health_oauth_connect' %}?next={{ gs|urlencode }}%23google_health" class="btn btn-accent">Connect Google Health</a>
+      <a href="{% url 'google_health_oauth_connect' %}?next={{ gs|urlencode }}%23google_health" class="btn btn-primary">Connect Google Health</a>
       {% endif %}
       <form method="post" action="{% url 'gs_skip' 'google_health' %}" class="gs-skip">{% csrf_token %}<button class="btn-link">I don't use Google Health — skip</button></form>
     {% endif %}
@@ -137,7 +137,7 @@
           <option value="maintain" {% if nutrition_profile.goal == "maintain" %}selected{% endif %}>Maintain</option>
           <option value="gain" {% if nutrition_profile.goal == "gain" %}selected{% endif %}>Gain</option>
         </select></div>
-      <div><button type="submit" class="btn btn-accent">{% if step.status == "done" %}Update{% else %}Save{% endif %}</button></div>
+      <div><button type="submit" class="btn btn-primary">{% if step.status == "done" %}Update{% else %}Save{% endif %}</button></div>
     </form>
   </section>
   {% endwith %}
@@ -194,7 +194,7 @@
   <section class="chart-card gs-card" id="finish">
     <form method="post" action="{% url 'gs_finish' %}">
       {% csrf_token %}
-      <button type="submit" class="btn btn-accent" {% if not can_finish %}disabled{% endif %}>Finish setup</button>
+      <button type="submit" class="btn btn-primary" {% if not can_finish %}disabled{% endif %}>Finish setup</button>
     </form>
     {% if missing %}
     <ul class="gs-missing">{% for item in missing %}<li>{{ item }}</li>{% endfor %}</ul>

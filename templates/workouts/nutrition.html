@@ -22,7 +22,7 @@
   </div>
   <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem">
     <a href="?date={{ prev_date }}" class="btn btn-ghost btn-sm">‹ Prev</a>
-    <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.9rem;font-weight:700;color:var(--text-muted);padding:0 0.25rem">
+    <span style="font-family:var(--font-sans);font-size:0.9rem;font-weight:700;color:var(--text-muted);padding:0 0.25rem">
       {{ page_date|date:"M j" }}
     </span>
     {% if not is_today %}
@@ -51,7 +51,7 @@
 
 {# ── Hunger check widget (today only) ── #}
 {% if is_today %}
-<div class="card" style="margin-bottom:1.5rem" id="hunger-widget">
+<div class="fp-card" style="margin-bottom:1.5rem" id="hunger-widget">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">HOW HUNGRY ARE YOU RIGHT NOW?</div>
     <span id="hunger-context-label" style="font-size:0.72rem;color:var(--text-dim)"></span>
@@ -59,7 +59,7 @@
   <div style="display:flex;gap:0.3rem;flex-wrap:wrap" id="hunger-btns">
     {% for i in "1234567890" %}{% with n=forloop.counter %}
     <button type="button"
-            class="btn btn-ghost btn-sm hunger-num-btn"
+            class="btn btn-sm hunger-num-btn"
             data-level="{{ n }}"
             style="min-width:2.4rem;font-size:0.82rem">{{ n }}</button>
     {% endwith %}{% endfor %}
@@ -73,7 +73,7 @@
 
 {# ── Yesterday recap (shown only when today has no entries) ── #}
 {% if yesterday_recap %}
-<div class="card" style="margin-bottom:2rem;border-color:var(--border-accent)">
+<div class="fp-card" style="margin-bottom:2rem;border-color:var(--border-accent)">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
     <div class="section-title" style="margin-bottom:0">YESTERDAY — {{ yesterday_recap.date|date:"l, M j" }}</div>
     <a href="?date={{ yesterday_recap.date|date:'Y-m-d' }}" class="btn btn-ghost btn-sm" style="font-size:0.75rem">View ›</a>
@@ -103,15 +103,15 @@
 {% endif %}
 
 {% if not targets %}
-<div class="card" style="border-color:var(--accent);margin-bottom:2rem">
+<div class="fp-card" style="border-color:var(--accent);margin-bottom:2rem">
   <p style="color:var(--text-muted);margin-bottom:0.75rem">No macro targets set yet. Set up your profile to get personalized targets.</p>
-  <a href="{% url 'nutrition_targets' %}" class="btn btn-accent btn-sm">Set Up Targets</a>
+  <a href="{% url 'nutrition_targets' %}" class="btn btn-primary btn-sm">Set Up Targets</a>
 </div>
 {% endif %}
 
 {# ── Macro totals ── #}
 {% if targets %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:1.25rem">TODAY'S MACROS</div>
 
   {% with cal_consumed=totals.cal|default:0 cal_target=targets.calories|default:0 %}
@@ -214,7 +214,7 @@
 
 {# ── Log Food ── #}
 {% if can.ai_food_parse %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:1rem">LOG FOOD</div>
   <form method="post" action="{% url 'nutrition_parse' %}"
         hx-post="{% url 'nutrition_parse' %}"
@@ -227,7 +227,7 @@
     <textarea name="raw_text" id="food-textarea"
       placeholder="Describe what you ate — e.g. '2 scrambled eggs, sourdough toast with butter, black coffee'"
       rows="3"
-      style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.75rem;font-family:'Barlow',sans-serif;font-size:0.95rem;resize:vertical;margin-bottom:0.75rem"
+      style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.75rem;font-family:var(--font-sans);font-size:0.95rem;resize:vertical;margin-bottom:0.75rem"
     ></textarea>
 
     <!-- Food photo area: nutrition label or meal (the AI decides which) -->
@@ -252,7 +252,7 @@
           <label class="form-label" style="font-size:0.75rem;margin-bottom:0.35rem;display:block">Portion notes (optional)</label>
           <input type="text" name="serving_note" id="serving-note-input"
             placeholder='e.g. "the whole bag", "half", "about 1 cup rice"'
-            style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.65rem;font-family:'Barlow',sans-serif;font-size:0.875rem">
+            style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.65rem;font-family:var(--font-sans);font-size:0.875rem">
           <div style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.3rem" id="serving-chips">
             <button type="button" class="serving-chip" onclick="setServingNote('1 serving')">1 serving</button>
             <button type="button" class="serving-chip" onclick="setServingNote('I had all of this')">Whole package</button>
@@ -264,13 +264,13 @@
     </div>
 
     <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
-      <select name="meal" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.75rem;font-family:'Barlow',sans-serif;font-size:0.85rem">
+      <select name="meal" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.4rem 0.75rem;font-family:var(--font-sans);font-size:0.85rem">
         <option value="">Meal (auto)</option>
         {% for val,label in meal_choices %}
         <option value="{{ val }}">{{ label }}</option>
         {% endfor %}
       </select>
-      <button type="submit" class="btn btn-accent btn-sm">
+      <button type="submit" class="btn btn-primary btn-sm">
         Parse
       </button>
       <span id="parse-spinner" class="htmx-indicator" style="color:var(--accent);font-size:0.8rem">Parsing…</span>
@@ -287,7 +287,7 @@
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);
-  font-family: 'Barlow', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.75rem;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
@@ -402,7 +402,7 @@ function setServingNote(text) {
 
 {# ── Today's entries ── #}
 {% if entries %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:1rem">TODAY'S LOG</div>
   <div class="food-log-table-wrap">
     <table class="food-log-table">
@@ -435,7 +435,7 @@ function setServingNote(text) {
 
 {# ── Meal suggestions ── #}
 {% if can.ai_meal_suggest %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
     <div class="section-title" style="margin-bottom:0">WHAT SHOULD I EAT?</div>
     <button class="btn btn-ghost btn-sm"
@@ -455,7 +455,7 @@ function setServingNote(text) {
 
 {# ── Saved meals ── #}
 {% if saved_meals %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:1rem">QUICK RE-LOG</div>
   <div style="display:flex;flex-wrap:wrap;gap:0.5rem">
     {% for sm in saved_meals %}
@@ -504,7 +504,7 @@ function setServingNote(text) {
 
 {# ── Most satisfying meals ── #}
 {% if satisfying_meals %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:0.25rem">MOST SATISFYING MEALS</div>
   <p style="color:var(--text-dim);font-size:0.78rem;margin-bottom:1rem">Meals you've rated as filling (fullness ≥ 7) after eating.</p>
   <div style="display:flex;flex-direction:column;gap:0.5rem">
@@ -533,13 +533,13 @@ function setServingNote(text) {
 
 {# ── This week ── #}
 {% if weekly and weekly.days_logged > 0 %}
-<div class="card" style="margin-bottom:2rem">
+<div class="fp-card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
     <div class="section-title" style="margin-bottom:0">THIS WEEK</div>
     <span style="color:var(--text-dim);font-size:0.8rem">{{ weekly.days_logged }}/{{ weekly.days|length }} days logged</span>
   </div>
   <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;font-family:'Barlow Condensed',sans-serif">
+    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;font-family:var(--font-sans)">
       <thead>
         <tr>
           <th style="text-align:left;padding:0.3rem 0.5rem 0.3rem 0;color:var(--text-dim);font-weight:600;white-space:nowrap;width:4rem"></th>
@@ -644,8 +644,8 @@ function setServingNote(text) {
   document.querySelectorAll('.hunger-num-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var level = btn.dataset.level;
-      document.querySelectorAll('.hunger-num-btn').forEach(b => b.classList.remove('btn-accent'));
-      btn.classList.add('btn-accent');
+      document.querySelectorAll('.hunger-num-btn').forEach(b => b.classList.remove('btn-primary'));
+      btn.classList.add('btn-primary');
 
       var data = new FormData();
       data.append('hunger_level', level);

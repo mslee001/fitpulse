@@ -10,7 +10,7 @@
       <h1 class="page-title">Interventions</h1>
       <p class="page-sub">Track medications, supplements, and other interventions</p>
     </div>
-    <button class="btn btn-accent" onclick="document.getElementById('add-iv-panel').style.display='block';this.style.display='none'">+ Add Intervention</button>
+    <button class="btn btn-primary" onclick="document.getElementById('add-iv-panel').style.display='block';this.style.display='none'">+ Add Intervention</button>
   </div>
 </div>
 
@@ -57,7 +57,7 @@
       </div>
     </div>
     <div style="margin-top:1rem">
-      <button type="submit" class="btn btn-accent">Add Intervention</button>
+      <button type="submit" class="btn btn-primary">Add Intervention</button>
     </div>
   </form>
 </div>
@@ -113,7 +113,7 @@
             <input name="start_date" type="date" class="form-input" value="{% now 'Y-m-d' %}">
           </div>
           <div style="display:flex;gap:0.5rem">
-            <button type="submit" class="btn btn-accent btn-sm">Apply</button>
+            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
             <button type="button" class="btn btn-ghost btn-sm" onclick="toggleQuickDose({{ iv.pk }})">Cancel</button>
           </div>
         </form>

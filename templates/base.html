@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}FitPulse{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   {% load static %}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <script>
@@ -19,22 +20,49 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" defer></script>
-  <script defer>
-    window._applyChartTheme = function() {
+  <script>
+    // Chart colors from the active daisyUI theme (assets/css/app.css). Runs now (app.css is
+    // already loaded), on DOMContentLoaded (Chart.js loads with defer) and after every theme
+    // toggle. window.chartTheme is the legacy shape older chart code still reads.
+    window._applyChartTheme = function () {
+      var cs = getComputedStyle(document.documentElement);
+      var v = function (name) { return cs.getPropertyValue(name).trim(); };
+      var mix = function (hex, pct) {  // hex + alpha → rgba() string Chart.js can parse
+        var h = (hex || '#888888').replace('#', '');
+        if (h.length === 3) h = h.replace(/(.)/g, '$1$1');
+        var n = parseInt(h, 16);
+        return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + pct + ')';
+      };
+      var text = v('--color-base-content') || '#888888';
+      window.fpChart = {
+        text: text,
+        muted: mix(text, 0.65),
+        grid: mix(text, 0.08),
+        primary: v('--color-primary'),
+        success: v('--color-success'), warning: v('--color-warning'), error: v('--color-error'),
+        surface: v('--color-base-100'),
+        series: [1, 2, 3, 4, 5, 6].map(function (i) { return v('--chart-' + i); }),
+        fontSans: "'DM Sans', ui-sans-serif, system-ui, sans-serif",
+        fontMono: "'DM Mono', ui-monospace, monospace",
+        alpha: mix,
+      };
       if (typeof Chart !== 'undefined') {
-        Chart.defaults.color = 'rgba(255,255,255,0.95)';
+        Chart.defaults.color = window.fpChart.muted;
+        Chart.defaults.borderColor = window.fpChart.grid;
+        Chart.defaults.font.family = window.fpChart.fontSans;
       }
       window.chartTheme = {
-        gridColor:      'rgba(255,255,255,0.05)',
-        tickColor:      '#888',
-        legendColor:    '#aaa',
-        zoneLabelColor: 'rgba(255,255,255,0.95)',
-        refLineColor:   'rgba(255,255,255,0.30)',
-        mainLineWidth:  2,
-        refLineWidth:   1.5,
+        gridColor: window.fpChart.grid,
+        tickColor: window.fpChart.muted,
+        legendColor: window.fpChart.muted,
+        zoneLabelColor: text,
+        refLineColor: mix(text, 0.30),
+        mainLineWidth: 2,
+        refLineWidth: 1.5,
       };
     };
     window._applyChartTheme();
+    document.addEventListener('DOMContentLoaded', window._applyChartTheme);
   </script>
 </head>
 <body>
@@ -125,7 +153,7 @@
     {% endif %}
 
     <div class="sync-menu">
-      <button class="btn btn-sm btn-accent" onclick="this.closest('.sync-menu').classList.toggle('open')">
+      <button class="btn btn-sm btn-primary" onclick="this.closest('.sync-menu').classList.toggle('open')">
         <span class="sync-icon">↻</span> Sync ▾
       </button>
       <div class="sync-dropdown">
