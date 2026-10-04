@@ -1469,6 +1469,10 @@ class Program(models.Model):
     recovery_max_min = models.PositiveSmallIntegerField(default=30)      # longer than this is a workout, not a cool-down
     recovery_walks = models.BooleanField(default=True)                   # count walking workouts
     recovery_stretches = models.BooleanField(default=True)               # count stretching workouts
+    # Set only for AI-generated training plans (workouts/training_plans.py):
+    # {"goal", "race_date", "target_time", "start_date", "mode",
+    #  "companion_program_id", "draft_id", "generated_at", "model"}.
+    goal_json = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1521,6 +1525,10 @@ class ProgramSlot(models.Model):
     # Only workouts on/after the active run's start date qualify.
     match_discipline = models.CharField(max_length=40, blank=True)
     match_title_keyword = models.CharField(max_length=80, blank=True)
+    # The class spec a training-plan slot was filled from: {"discipline",
+    # "class_type_id", "class_type", "duration_min", "intensity", "purpose",
+    # "setting"}. Drives "Swap class". Empty for every other slot.
+    spec_json = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["week", "day", "order"]
@@ -1628,6 +1636,49 @@ class ProgramWorkout(models.Model):
 
     def __str__(self):
         return f"{self.run_week} · {self.workout_id}"
+
+
+class PlanDraft(models.Model):
+    """One AI training-plan generation: inputs → context snapshot → AI spec →
+    class picks → (optionally) a created Program. Owned by user."""
+    STATUS = [("generating", "Generating"), ("ready", "Ready"), ("failed", "Failed"), ("created", "Created")]
+    STALE_AFTER = timedelta(minutes=10)
+    STALE_ERROR = "Interrupted, probably by a deploy or restart"
+    PRUNE_AFTER = timedelta(days=30)
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+", db_index=True)
+    objects = UserOwnedManager()
+    status = models.CharField(max_length=12, choices=STATUS, default="generating")
+    inputs_json = models.JSONField(default=dict)
+    context_text = models.TextField(blank=True)     # exactly what the prompt's FITNESS CONTEXT said — for spot-checks
+    spec_json = models.JSONField(default=dict, blank=True)   # validated AI output
+    picks_json = models.JSONField(default=dict, blank=True)  # {"<week>-<day>-<order>": {"ride_id", "alternates": [...]}}
+    warnings = models.JSONField(default=list, blank=True)
+    ai_model = models.CharField(max_length=60, blank=True)
+    error = models.TextField(blank=True)
+    program = models.ForeignKey("Program", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PlanDraft({self.pk}, {self.status})"
+
+    def refreshed(self):
+        """A generating draft older than STALE_AFTER lost its thread (deploys
+        kill threads) — mark it failed so the page offers Retry."""
+        if self.status == "generating" and self.updated_at and timezone.now() - self.updated_at > self.STALE_AFTER:
+            self.status, self.error = "failed", self.STALE_ERROR
+            PlanDraft.objects.filter(pk=self.pk, status="generating").update(status="failed", error=self.STALE_ERROR)
+        return self
+
+    @classmethod
+    def prune(cls, user):
+        """Drop this user's uncreated drafts older than PRUNE_AFTER."""
+        cls.objects.for_user(user).exclude(status="created").filter(
+            created_at__lt=timezone.now() - cls.PRUNE_AFTER).delete()
 
 
 class AIUsage(models.Model):

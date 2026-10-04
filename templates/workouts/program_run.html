@@ -154,10 +154,7 @@
             {% endfor %}
           </a>
         {% else %}
-          <div class="pcell pcell-todo{% if cell.slot.optional %} pcell-optional{% endif %}">
-            <span class="pcell-title">{{ cell.slot.title }}</span>
-            {% if cell.slot.optional %}<span class="pcell-sub">optional</span>{% endif %}
-          </div>
+          {% include "workouts/partials/program_plan_cell.html" %}
         {% endif %}
       {% endfor %}
       {% for e in row.loose %}

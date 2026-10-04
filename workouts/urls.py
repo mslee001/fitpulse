@@ -36,7 +36,7 @@ from .ai import (
     pattern_insights_refresh, pattern_insights_check,
     weekly_review_check,
 )
-from . import admin_views, onboarding_views
+from . import admin_views, onboarding_views, training_plan_views
 from .program_views import (
     program_list, program_new, program_new_plan, program_detail, program_delete, program_run,
     program_edit, program_duplicate, program_new_blank,
@@ -135,6 +135,23 @@ urlpatterns = [
     path("programs/", program_list, name="program_list"),
     path("programs/new/", program_new, name="program_new"),
     path("programs/new-plan/", program_new_plan, name="program_new_plan"),
+    path("programs/training-plan/new/", training_plan_views.program_training_plan_new,
+         name="program_training_plan_new"),
+    path("programs/training-plan/<int:pk>/", training_plan_views.program_training_plan_draft,
+         name="program_training_plan_draft"),
+    path("programs/training-plan/<int:pk>/status/", training_plan_views.program_training_plan_status,
+         name="program_training_plan_status"),
+    path("programs/training-plan/<int:pk>/retry/", training_plan_views.program_training_plan_retry,
+         name="program_training_plan_retry"),
+    path("programs/training-plan/<int:pk>/swap/", training_plan_views.program_training_plan_swap,
+         name="program_training_plan_swap"),
+    path("programs/training-plan/<int:pk>/pick/", training_plan_views.program_training_plan_pick,
+         name="program_training_plan_pick"),
+    path("programs/training-plan/<int:pk>/create/", training_plan_views.program_training_plan_create,
+         name="program_training_plan_create"),
+    path("programs/training-plan/<int:pk>/discard/", training_plan_views.program_training_plan_discard,
+         name="program_training_plan_discard"),
+    path("programs/slot/<int:pk>/swap/", training_plan_views.program_slot_swap, name="program_slot_swap"),
     path("programs/new-blank/", program_new_blank, name="program_new_blank"),
     path("programs/<slug:slug>/", program_detail, name="program_detail"),
     path("programs/<slug:slug>/delete/", program_delete, name="program_delete"),

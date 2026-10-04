@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}New Training Plan — FitPulse{% endblock %}
+{% block nav_training %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">New Training Plan</h1>
+  <p class="page-sub">Tell FitPulse your goal. The AI writes a week-by-week plan from your running history, then fills every session with a real Peloton class you can review and swap before saving.</p>
+</div>
+
+{% if catalog_empty %}
+<div class="add-form-card">
+  <h3 class="chart-title" style="margin-bottom:0.5rem">CLASS CATALOG IS EMPTY</h3>
+  {% if is_owner %}
+    <p class="stat-sub" style="margin-bottom:0.9rem">Plans are built from FitPulse's copy of the Peloton class library. Load it once (it takes a few minutes), then come back.</p>
+    <form hx-post="{% url 'catalog_sync_start' %}" hx-target="#catalog-status" hx-swap="innerHTML">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-accent">Refresh catalog</button>
+    </form>
+    <div id="catalog-status"></div>
+  {% else %}
+    <p class="stat-sub">The class catalog hasn't been loaded yet — ask Megan.</p>
+  {% endif %}
+</div>
+{% else %}
+
+{% if errors %}
+<div style="margin-bottom:1.25rem">
+  {% for e in errors %}<div class="peloton-msg peloton-msg--error">{{ e }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<form method="post" action="{% url 'program_training_plan_new' %}" id="tp-form">
+  {% csrf_token %}
+
+  <div class="add-form-card" style="margin-bottom:1.25rem">
+    <h3 class="chart-title" style="margin-bottom:0.9rem">GOAL</h3>
+    <div class="tp-grid">
+      <div class="form-group">
+        <label class="form-label" for="tp-goal">Goal</label>
+        <select name="goal" id="tp-goal" class="form-select">
+          {% for key, label in goals.items %}<option value="{{ key }}"{% if values.goal == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group tp-race">
+        <label class="form-label" for="tp-race">Race date</label>
+        <input type="date" name="race_date" id="tp-race" class="form-input" value="{{ values.race_date|default:'' }}">
+      </div>
+      <div class="form-group tp-base">
+        <label class="form-label" for="tp-weeks">Plan length (weeks)</label>
+        <input type="number" name="weeks" id="tp-weeks" class="form-input" min="4" max="16" value="{{ values.weeks|default:8 }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="tp-start">Start date</label>
+        <input type="date" name="start_date" id="tp-start" class="form-input" value="{{ values.start_date|default:'' }}">
+      </div>
+      <div class="form-group tp-race">
+        <label class="form-label" for="tp-target">Target time (optional)</label>
+        <input name="target_time" id="tp-target" class="form-input" placeholder="28:30 or 1:55:00" value="{{ values.target_time|default:'' }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="add-form-card" style="margin-bottom:1.25rem">
+    <h3 class="chart-title" style="margin-bottom:0.6rem">STARTING LEVEL</h3>
+    <p class="stat-sub" style="margin-bottom:0.4rem">Suggested from your history: <strong style="color:var(--text)">{{ assessment.level|title }}</strong></p>
+    <ul class="tp-evidence">
+      {% for e in assessment.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+    <div class="form-group" style="max-width:22rem">
+      <label class="form-label" for="tp-level">Starting level</label>
+      <select name="level" id="tp-level" class="form-select" data-suggested="{{ assessment.level }}">
+        <option value="auto"{% if values.level == "auto" %} selected{% endif %}>Auto — suggested: {{ assessment.level|title }}</option>
+        {% for l in levels %}<option value="{{ l }}"{% if values.level == l %} selected{% endif %}>{{ l|title }}</option>{% endfor %}
+      </select>
+    </div>
+    <div id="tp-runway" class="peloton-msg peloton-msg--warning" hidden></div>
+  </div>
+
+  <div class="add-form-card" style="margin-bottom:1.25rem">
+    <h3 class="chart-title" style="margin-bottom:0.9rem">SCHEDULE</h3>
+    <div class="form-group">
+      <span class="form-label">Training days</span>
+      <div class="tp-days">
+        {% for num, name in days %}
+        <label class="tp-check"><input type="checkbox" name="days" value="{{ num }}"{% if num in values.days %} checked{% endif %}> {{ name }}</label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="tp-grid">
+      <div class="form-group">
+        <label class="form-label" for="tp-long">Long-run day (optional)</label>
+        <select name="long_day" id="tp-long" class="form-select">
+          <option value="">No preference</option>
+          {% for num, name in days %}<option value="{{ num }}"{% if values.long_day == num %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="tp-wkday">Max weekday session (min)</label>
+        <input type="number" name="max_weekday_min" id="tp-wkday" class="form-input" min="20" max="120" value="{{ values.max_weekday_min|default:45 }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="tp-wkend">Max weekend session (min)</label>
+        <input type="number" name="max_weekend_min" id="tp-wkend" class="form-input" min="20" max="120" value="{{ values.max_weekend_min|default:75 }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <span class="form-label">Where you run</span>
+      <div class="tp-days">
+        <label class="tp-check"><input type="radio" name="setting" value="tread"{% if values.setting == "tread" %} checked{% endif %}> Tread</label>
+        <label class="tp-check"><input type="radio" name="setting" value="outdoor"{% if values.setting == "outdoor" %} checked{% endif %}> Outdoor (audio classes)</label>
+        <label class="tp-check"><input type="radio" name="setting" value="either"{% if values.setting == "either" %} checked{% endif %}> Either</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="add-form-card" style="margin-bottom:1.25rem">
+    <h3 class="chart-title" style="margin-bottom:0.9rem">HOW IT FITS</h3>
+    <div class="tp-days" style="margin-bottom:0.9rem">
+      <label class="tp-check"><input type="radio" name="mode" value="standalone"{% if values.mode != "alongside" %} checked{% endif %}> Standalone — this is my main training</label>
+      <label class="tp-check"><input type="radio" name="mode" value="alongside"{% if values.mode == "alongside" %} checked{% endif %}{% if not companions %} disabled{% endif %}> Alongside another program</label>
+    </div>
+    {% if not companions %}<p class="stat-sub" style="margin-top:-0.4rem">Alongside needs one of your programs with an active cycle.</p>{% endif %}
+
+    <div class="tp-mode tp-mode-standalone">
+      <div class="tp-grid">
+        <div class="form-group">
+          <label class="form-label" for="tp-spw">Strength sessions per week</label>
+          <select name="strength_per_week" id="tp-spw" class="form-select">
+            {% for n in "0123" %}<option value="{{ n }}"{% if values.strength_per_week|stringformat:"s" == n %} selected{% endif %}>{{ n }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <label class="tp-check"><input type="checkbox" name="mobility" value="1"{% if values.mobility %} checked{% endif %}> Add stretching, pilates and yoga sessions</label>
+    </div>
+
+    <div class="tp-mode tp-mode-alongside">
+      <div class="form-group" style="max-width:24rem">
+        <label class="form-label" for="tp-companion">Plan around</label>
+        <select name="companion_program_id" id="tp-companion" class="form-select">
+          {% for p in companions %}<option value="{{ p.pk }}"{% if values.companion_program_id == p.pk %} selected{% endif %}>{{ p.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <label class="tp-check"><input type="checkbox" name="allow_doubles" value="1"{% if values.allow_doubles %} checked{% endif %}> OK to run on a strength day</label>
+      <label class="tp-check"><input type="checkbox" name="mobility" value="1" class="tp-mobility-alongside"{% if values.mobility %} checked{% endif %}> Allow optional short yoga or stretch sessions on free days</label>
+    </div>
+  </div>
+
+  <div class="add-form-card" style="margin-bottom:1.25rem">
+    <div class="form-group" style="margin:0">
+      <label class="form-label" for="tp-notes">Anything the plan should know? (optional)</label>
+      <textarea name="notes" id="tp-notes" class="form-textarea" rows="3" maxlength="500" placeholder="e.g. my left knee gets sore on long runs; I travel the week of Nov 10">{{ values.notes|default:'' }}</textarea>
+    </div>
+  </div>
+
+  <div class="page-header-actions">
+    <button class="btn btn-accent" type="submit">Build my plan</button>
+    <a class="btn btn-ghost" href="{% url 'program_list' %}">Cancel</a>
+  </div>
+</form>
+
+<script>
+(function () {
+  var runway = {{ runway_json|safe }};
+  var labels = {"5k": "5K", "10k": "10K", "half": "half marathon", "full": "marathon"};
+  var form = document.getElementById('tp-form');
+  var goal = document.getElementById('tp-goal');
+  var level = document.getElementById('tp-level');
+  var race = document.getElementById('tp-race');
+  var start = document.getElementById('tp-start');
+  var warn = document.getElementById('tp-runway');
+
+  function monday(d) { var x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+
+  function update() {
+    var isBase = goal.value === 'base';
+    form.querySelectorAll('.tp-race').forEach(function (el) { el.hidden = isBase; });
+    form.querySelectorAll('.tp-base').forEach(function (el) { el.hidden = !isBase; });
+    var mode = form.querySelector('input[name=mode]:checked');
+    mode = mode ? mode.value : 'standalone';
+    form.querySelectorAll('.tp-mode').forEach(function (el) {
+      var on = el.classList.contains('tp-mode-' + mode);
+      el.hidden = !on;
+      el.querySelectorAll('input, select').forEach(function (i) { i.disabled = !on; });
+    });
+    warn.hidden = true;
+    if (isBase || !race.value || !start.value) return;
+    var lv = level.value === 'auto' ? level.dataset.suggested : level.value;
+    var weeks = Math.round((monday(race.value + 'T00:00') - monday(start.value + 'T00:00')) / 6048e5) + 1;
+    var min = (runway[goal.value] || {})[lv];
+    if (min && weeks > 0 && weeks < min) {
+      warn.textContent = weeks + ' weeks is short for a ' + lv + ' ' + labels[goal.value] +
+        ' (about ' + min + ' is typical) — the plan will aim for finishing comfortably, with walk breaks if needed.';
+      warn.hidden = false;
+    }
+  }
+  form.addEventListener('change', update);
+  update();
+})();
+</script>
+{% endif %}
+{% endblock %}
