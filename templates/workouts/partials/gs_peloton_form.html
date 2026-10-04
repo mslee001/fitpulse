@@ -1,0 +1,6 @@
+<form method="post" action="{% url 'set_peloton_auth' %}" class="gs-inline-form">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="/get-started/#peloton">
+  <input type="password" name="session_id" class="form-input" autocomplete="off" placeholder="Paste peloton_session_id" required style="min-width:16rem">
+  <button type="submit" class="btn btn-accent">Connect</button>
+</form>

@@ -10,7 +10,7 @@
       <p class="page-sub">Plans, collections, and splits tracked across cycles</p>
     </div>
     <div class="page-header-actions">
-      <a class="btn btn-ghost" href="{% url 'program_new_plan' %}">+ New Plan</a>
+      {% if can.ai_program_tools %}<a class="btn btn-ghost" href="{% url 'program_new_plan' %}">+ New Plan</a>{% endif %}
       <a class="btn btn-accent" href="{% url 'program_new' %}">+ New Split</a>
     </div>
   </div>

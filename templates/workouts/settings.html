@@ -61,6 +61,7 @@
         {% endif %}
       </form>
 
+      {% if is_owner %}
       <div style="margin-top:1.5rem;padding-top:1.25rem;border-top:1px solid var(--border)">
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">FTP HISTORY (APPLIED TO WORKOUTS)</div>
         <table style="width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:0.75rem">
@@ -86,9 +87,11 @@
           </tbody>
         </table>
       </div>
+      {% endif %}
     </div>
 
     <!-- Dumbbells Card -->
+    {% if can.strength %}
     <div class="chart-card">
       <div class="chart-header">
         <h3 class="chart-title">DUMBBELLS</h3>
@@ -111,6 +114,18 @@
         <button type="submit" class="btn btn-accent">Save</button>
       </form>
     </div>
+    {% endif %}
+
+    <!-- Account card -->
+    <div class="chart-card">
+      <div class="chart-header"><h3 class="chart-title">ACCOUNT</h3></div>
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+        <a class="btn btn-ghost btn-sm" href="{% url 'password_change' %}">Change password</a>
+        <a class="btn btn-ghost btn-sm" href="{% url 'get_started' %}">Setup guide</a>
+        <a class="btn btn-ghost btn-sm" href="{% url 'integrations_settings' %}">Data sources</a>
+        {% if is_owner %}<a class="btn btn-ghost btn-sm" href="{% url 'admin_users' %}">Users</a>{% endif %}
+      </div>
+    </div>
 
   </div>{# end left column #}
 
@@ -123,77 +138,7 @@
       These fields personalise AI insights, next-workout recommendations, and meal suggestions. All fields are optional — leave blank for generic output.
     </p>
 
-    <form method="post" action="{% url 'set_athlete_profile' %}">
-      {% csrf_token %}
-
-      <!-- Experience levels -->
-      <div style="margin-bottom:1.25rem">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">EXPERIENCE LEVEL</div>
-        <div class="experience-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem">
-          {% with sel_style="width:100%;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.82rem;padding:0.4rem 0.5rem;border-radius:4px" %}
-          <div>
-            <label style="display:block;font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Running</label>
-            <select name="running_experience" style="{{ sel_style }}">
-              <option value="">— not set —</option>
-              {% for val, display in experience_choices %}
-              <option value="{{ val }}" {% if athlete.running_experience == val %}selected{% endif %}>{{ display }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div>
-            <label style="display:block;font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Cycling</label>
-            <select name="cycling_experience" style="{{ sel_style }}">
-              <option value="">— not set —</option>
-              {% for val, display in experience_choices %}
-              <option value="{{ val }}" {% if athlete.cycling_experience == val %}selected{% endif %}>{{ display }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div>
-            <label style="display:block;font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Strength</label>
-            <select name="strength_experience" style="{{ sel_style }}">
-              <option value="">— not set —</option>
-              {% for val, display in experience_choices %}
-              <option value="{{ val }}" {% if athlete.strength_experience == val %}selected{% endif %}>{{ display }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          {% endwith %}
-        </div>
-      </div>
-
-      <!-- Coaching tone -->
-      <div style="margin-bottom:1.25rem">
-        <label style="display:block;font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.5rem">COACHING TONE</label>
-        <select name="coaching_tone" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;padding:0.4rem 0.6rem;border-radius:4px;min-width:200px">
-          {% for val, display in tone_choices %}
-          <option value="{{ val }}" {% if athlete.coaching_tone == val %}selected{% endif %}>{{ display }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- Training focus -->
-      <div style="margin-bottom:1.25rem">
-        <label style="display:block;font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.5rem">CURRENT TRAINING FOCUS</label>
-        <textarea name="training_focus" rows="2" placeholder="e.g. building running base, training for a 10K, strength recomp" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.training_focus }}</textarea>
-      </div>
-
-      <!-- Rehab keywords -->
-      <div style="margin-bottom:1.25rem">
-        <label style="display:block;font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem">PT / REHAB KEYWORDS</label>
-        <p style="font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-dim);margin:0 0 0.5rem">Comma-separated. Workout titles containing any of these are tagged as PT/rehab and excluded from training-load reasoning.</p>
-        <input type="text" name="rehab_keywords" value="{{ athlete.rehab_keywords|join:', ' }}" placeholder="e.g. shoulder pt, physical therapy, rehab" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;padding:0.4rem 0.65rem;border-radius:4px">
-      </div>
-
-      <!-- Health context override -->
-      <div style="margin-bottom:1.5rem">
-        <label style="display:block;font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem">HEALTH CONTEXT (OPTIONAL OVERRIDE)</label>
-        <p style="font-family:'Barlow',sans-serif;font-size:0.72rem;color:var(--text-dim);margin:0 0 0.5rem">Free-form context injected into AI health and nutrition prompts. Leave blank to derive context from your tracked Interventions automatically.</p>
-        <textarea name="health_context_override" rows="3" placeholder="e.g. managing weight loss on a GLP-1 medication, building muscle, perimenopausal" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-family:'Barlow',sans-serif;font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.health_context_override }}</textarea>
-      </div>
-
-      <button type="submit" class="btn btn-accent">Save Profile</button>
-    </form>
+    {% include "workouts/partials/athlete_profile_form.html" %}
   </div>
 
 </div>

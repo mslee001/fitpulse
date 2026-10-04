@@ -1,0 +1,13 @@
+<form id="admin-gh-test-user" hx-post="{% url 'admin_user_gh_test_user' target.pk %}" hx-target="this" hx-swap="outerHTML" style="margin:0 0 0.75rem">
+  {% csrf_token %}
+  <label style="display:flex;align-items:flex-start;gap:0.6rem;cursor:pointer">
+    <input type="checkbox" {% if access.google_test_user_added %}checked{% endif %} onchange="htmx.trigger(this.form, 'submit')">
+    <span>
+      <span style="font-weight:600">Google test user added</span>
+      <span class="muted" style="display:block;font-size:0.78rem;margin-top:0.15rem">
+        Add their Google account under Google Cloud console → APIs &amp; Services → OAuth consent screen → Test users,
+        then tick this box. Their Google Health Connect button stays disabled until you do.
+      </span>
+    </span>
+  </label>
+</form>

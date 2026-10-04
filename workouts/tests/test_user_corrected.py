@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from django.test import TestCase
 
 from workouts.models import CachedWorkout
+from workouts.tests.helpers import make_user
 from workouts.sync import _fetch_and_store_performance, _upsert_page
 
 GHOST_START = 1790963468  # Peloton's start for the session rejoined after a Tread reboot
@@ -22,7 +23,8 @@ def payload(**overrides):
 
 class UserCorrectedTests(TestCase):
     def setUp(self):
-        _upsert_page([payload()])
+        self.user = make_user("megan", superuser=True)
+        _upsert_page(self.user, [payload()])
         CachedWorkout.objects.filter(workout_id="w1").update(
             created_at=REAL_START, duration_seconds=1721, calories=217, heart_rate_avg=127,
             manual_movements_json=[{"name": "Bent Over Row", "sets": 3, "reps": 6}],
@@ -30,7 +32,7 @@ class UserCorrectedTests(TestCase):
         )
 
     def test_resync_keeps_corrected_stats(self):
-        _upsert_page([payload(name="renamed")])
+        _upsert_page(self.user, [payload(name="renamed")])
         w = CachedWorkout.objects.get(workout_id="w1")
         self.assertEqual(w.created_at, REAL_START)
         self.assertEqual((w.duration_seconds, w.calories, w.heart_rate_avg), (1721, 217, 127))
@@ -41,7 +43,7 @@ class UserCorrectedTests(TestCase):
 
     def test_uncorrected_workout_still_overwritten(self):
         CachedWorkout.objects.filter(workout_id="w1").update(user_corrected=False)
-        _upsert_page([payload()])
+        _upsert_page(self.user, [payload()])
         w = CachedWorkout.objects.get(workout_id="w1")
         self.assertEqual((w.calories, w.duration_seconds), (2, 2700))
 
@@ -51,7 +53,7 @@ class UserCorrectedTests(TestCase):
             "summaries": {"calories": {"value": 2}},
             "metrics_by_slug": {"heart_rate": {"average_value": 85}},
         }
-        _fetch_and_store_performance(["w1"], client)
+        _fetch_and_store_performance(self.user, ["w1"], client)
         w = CachedWorkout.objects.get(workout_id="w1")
         self.assertIsNotNone(w.performance_graph_json)
         self.assertEqual((w.calories, w.heart_rate_avg), (217, 127))

@@ -1,11 +1,11 @@
 """One-time interactive Google Health API OAuth2 authentication.
 
-Run this once from the terminal to save tokens to the GoogleHealthAuth DB
-singleton. After that, sync functions use the cached tokens automatically
+Run this once from the terminal to save tokens to the user's GoogleHealthAuth
+row. After that, sync functions use the cached tokens automatically
 (auto-refresh on expiry).
 
 Usage:
-    python manage.py google_health_login
+    python manage.py google_health_login [--user USERNAME]
 
 Prerequisites (set in .env):
     GOOGLE_HEALTH_CLIENT_ID=...
@@ -23,15 +23,21 @@ import urllib.parse
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from workouts.management.user_arg import add_user_argument, resolve_user
+
 
 class Command(BaseCommand):
     help = "Authenticate with the Google Health API and save OAuth tokens for sync."
+
+    def add_arguments(self, parser):
+        add_user_argument(parser)
 
     def handle(self, *args, **options):
         from workouts.services.google_health_client import GoogleHealthClient, build_google_health_auth_url
         from workouts.models import Integration
 
-        client = GoogleHealthClient()
+        user = resolve_user(options)
+        client = GoogleHealthClient(user)
 
         if not client.client_id:
             self.stderr.write(self.style.ERROR(
@@ -87,14 +93,14 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f"Token exchange failed: {e}"))
             return
 
-        Integration.objects.filter(key="google_health").update(
+        Integration.objects.filter(user=user, key="google_health").update(
             is_authenticated=True, last_synced_at=None
         )
 
         self.stdout.write(self.style.SUCCESS(
             f"Success! Granted scopes: {tokens.get('scopes', '(none reported)')}"
         ))
-        self.stdout.write("Tokens saved to DB (GoogleHealthAuth singleton).")
+        self.stdout.write(f"Tokens saved to DB (GoogleHealthAuth for {user.username}).")
         self.stdout.write(
             "Reminder: while your Google Cloud OAuth consent screen is in \"Testing\" "
             "publishing status, the refresh token issued above expires after 7 days — "

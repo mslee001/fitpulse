@@ -23,9 +23,12 @@ def jpeg(size=100):
 
 
 class ParseFoodTextTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user("t", password="x")
+
     @patch("workouts.ai.llm.call_json", return_value=dict(MEAL_RESPONSE))
     def test_image_branch_uses_sonnet_and_sends_image(self, call_json):
-        result = parse_food_text("", "", image_b64="AAAA", image_media_type="image/jpeg")
+        result = parse_food_text(self.user, "", "", image_b64="AAAA", image_media_type="image/jpeg")
 
         prompt = call_json.call_args.args[0]
         kwargs = call_json.call_args.kwargs
@@ -39,7 +42,7 @@ class ParseFoodTextTests(TestCase):
     @patch("workouts.ai.llm.call_json")
     def test_missing_image_type_defaults_to_label(self, call_json):
         call_json.return_value = {"items": [], "confidence": "high", "note": ""}
-        result = parse_food_text("", "", image_b64="AAAA")
+        result = parse_food_text(self.user, "", "", image_b64="AAAA")
         self.assertEqual(result["image_type"], "label")
 
     @patch("workouts.ai._lookup_branded_nutrition", return_value=[])
@@ -47,7 +50,7 @@ class ParseFoodTextTests(TestCase):
     @patch("workouts.ai.llm.call_json")
     def test_text_branch_unchanged(self, call_json, *_):
         call_json.return_value = {"items": [{"name": "eggs"}], "confidence": "high", "note": ""}
-        result = parse_food_text("2 eggs")
+        result = parse_food_text(self.user, "2 eggs")
 
         kwargs = call_json.call_args.kwargs
         self.assertEqual(kwargs["model"], llm.HAIKU)

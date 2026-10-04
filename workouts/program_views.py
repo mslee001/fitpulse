@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
+from .access import has_feature
 from .models import Program, ProgramRun, ProgramSlot, ProgramWeek, ProgramWorkout, RunWeek
 from .programs import (
     ANY_CLASS_PRESETS, backfill_program, create_plan, create_split, duplicate_program,
@@ -90,7 +91,7 @@ def _run_grid(run):
 
 
 def program_list(request):
-    programs = Program.objects.prefetch_related("runs").all()
+    programs = Program.objects.for_user(request.user).prefetch_related("runs").all()
     current = [p for p in programs if p.active_run]
     past = [p for p in programs if not p.active_run]
     return render(request, "workouts/program_list.html", {"current_programs": current, "past_programs": past})
@@ -108,7 +109,7 @@ def program_new(request):
         checked_ride_ids = set(request.POST.getlist("slot_ride_id"))
 
         workout_ids = [i.strip() for i in ids_param.split(",") if i.strip()]
-        candidates = resolve_split_candidates(workout_ids)
+        candidates = resolve_split_candidates(request.user, workout_ids)
 
         errors = []
         if not name:
@@ -116,7 +117,7 @@ def program_new(request):
         if not checked_ride_ids:
             errors.append("Select at least one class.")
         slug = slugify(name)
-        if not errors and Program.objects.filter(slug=slug).exists():
+        if not errors and Program.objects.for_user(request.user).filter(slug=slug).exists():
             errors.append(f'A program named "{name}" already exists.')
         claimed = [c for c in candidates if c["ride_id"] in checked_ride_ids and c["claimed_by"]]
         for c in claimed:
@@ -124,7 +125,7 @@ def program_new(request):
 
         if not errors:
             selected = [c for c in candidates if c["ride_id"] in checked_ride_ids]
-            program = create_split(name, slug, selected)
+            program = create_split(request.user, name, slug, selected)
             return redirect("program_detail", slug=program.slug)
         return render(request, "workouts/program_new.html", {
             "ids_param": ids_param, "candidates": candidates, "errors": errors,
@@ -133,7 +134,7 @@ def program_new(request):
 
     ids_param = request.GET.get("ids", "")
     workout_ids = [i.strip() for i in ids_param.split(",") if i.strip()]
-    candidates = resolve_split_candidates(workout_ids) if workout_ids else None
+    candidates = resolve_split_candidates(request.user, workout_ids) if workout_ids else None
     # pre-check everything except slots already claimed by another program
     checked_ride_ids = {c["ride_id"] for c in candidates if not c["claimed_by"]} if candidates else set()
     return render(request, "workouts/program_new.html", {
@@ -221,7 +222,7 @@ def program_new_plan(request):
         if not name:
             errors.append("Plan name is required.")
         slug = slugify(name)
-        if not errors and Program.objects.filter(slug=slug).exists():
+        if not errors and Program.objects.for_user(request.user).filter(slug=slug).exists():
             errors.append(f'A program named "{name}" already exists.')
         included = [r for r in rows if r["included"] and r["title"]]
         if not included:
@@ -248,7 +249,7 @@ def program_new_plan(request):
             })
         weeks_data = [{"number": n, "slots": slots} for n, slots in sorted(rows_by_week.items())]
         kind = request.POST.get("kind") if request.POST.get("kind") in ("plan", "split") else None
-        program = create_plan(name, slug, instructor, weeks_data, kind=kind)
+        program = create_plan(request.user, name, slug, instructor, weeks_data, kind=kind)
         total = sum(len(w["slots"]) for w in weeks_data)
         messages.success(
             request,
@@ -278,7 +279,13 @@ def program_new_plan(request):
             return render(request, "workouts/program_new_plan.html",
                           {"raw_text": raw_text, "name": name, "instructor": instructor})
 
-        result = parse_plan_skeleton(raw_text, image_b64=image_b64, image_media_type=image_media_type)
+        from .ai import AI_UNAVAILABLE, ai_unavailable_reason
+        try:
+            result = parse_plan_skeleton(request.user, raw_text, image_b64=image_b64, image_media_type=image_media_type)
+        except AI_UNAVAILABLE as e:
+            messages.error(request, ai_unavailable_reason(e))
+            return render(request, "workouts/program_new_plan.html",
+                          {"raw_text": raw_text, "name": name, "instructor": instructor})
         if not result.get("ok") or not result.get("items"):
             messages.error(
                 request,
@@ -299,7 +306,7 @@ def program_new_plan(request):
             class_type = (item.get("class_type") or "").strip().lower()
             # Open-ended days ("Pilates (any class)") have no single ride to resolve.
             resolved = ({"ride_id": "", "matched_via": "", "candidates": []} if is_any else
-                        resolve_slot_ride_id(title, instructor=instructor, source_url=item.get("source_url", "")))
+                        resolve_slot_ride_id(request.user, title, instructor=instructor, source_url=item.get("source_url", "")))
             rows.append({
                 "week": item.get("week") or 1,
                 "day": item.get("day"),
@@ -475,7 +482,7 @@ def program_edit(request, slug):
     """Edit a program's definition in the app: name, recovery-tracking rules, and every slot
     (day/order/optional, and how a workout matches it — a specific class, any class of a
     type, or by title). Replaces the one-off setup commands and shell edits."""
-    program = get_object_or_404(Program, slug=slug)
+    program = get_object_or_404(Program.objects.for_user(request.user), slug=slug)
     if request.method == "POST":
         parts, warnings = _apply_program_edit(program, request.POST)
         # New/changed slots may now match history you already have (and recovery rules may
@@ -504,7 +511,7 @@ def program_edit(request, slug):
 
 @require_POST
 def program_duplicate(request, slug):
-    program = get_object_or_404(Program, slug=slug)
+    program = get_object_or_404(Program.objects.for_user(request.user), slug=slug)
     copy = duplicate_program(
         program, name=request.POST.get("name"), keep_ride_ids="keep_ride_ids" in request.POST)
     messages.success(
@@ -522,7 +529,8 @@ def program_new_blank(request):
     if not name:
         messages.error(request, "Give the program a name.")
         return redirect("program_new_plan")
-    program = Program.objects.create(name=name[:200], slug=unique_slug(name), kind=kind, match_strategy="ride_ids")
+    program = Program.objects.create(user=request.user, name=name[:200], slug=unique_slug(request.user, name),
+                                     kind=kind, match_strategy="ride_ids")
     ProgramWeek.objects.create(program=program, number=1)
     messages.success(request, f'"{program.name}" created — add its classes below.')
     return redirect("program_edit", slug=program.slug)
@@ -533,13 +541,13 @@ def program_delete(request, slug):
     """Delete an entire Program — every week/slot/run/pass/completion it owns
     (cascades via FK on_delete=CASCADE). Does not touch the underlying workout
     history, same as deleting a single run."""
-    program = get_object_or_404(Program, slug=slug)
+    program = get_object_or_404(Program.objects.for_user(request.user), slug=slug)
     program.delete()
     return redirect("program_list")
 
 
 def program_detail(request, slug):
-    program = get_object_or_404(Program, slug=slug)
+    program = get_object_or_404(Program.objects.for_user(request.user), slug=slug)
     runs = program.runs.all()
     # If there's a current run, jump straight into it.
     if program.active_run:
@@ -549,7 +557,7 @@ def program_detail(request, slug):
 
 
 def program_run(request, pk):
-    run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
+    run = get_object_or_404(ProgramRun.objects.filter(program__user=request.user).select_related("program"), pk=pk)
     rows, totals = _run_grid(run)
 
     # Retrospective only loads for a completed run — _end_run() already
@@ -558,12 +566,15 @@ def program_run(request, pk):
     # (and showing a necessarily-partial analysis) on every view of a run
     # that's still in progress.
     retro_text = None
-    if not run.is_current:
-        from .ai import _get_or_generate_retrospective
-        if request.GET.get("refresh_retro") == "1":
-            _get_or_generate_retrospective(run, force=True)
-            return redirect("program_run", pk=run.pk)
-        retro_text = _get_or_generate_retrospective(run)
+    if not run.is_current and has_feature(request.user, "ai_program_tools"):
+        from .ai import AI_UNAVAILABLE, _get_or_generate_retrospective
+        try:
+            if request.GET.get("refresh_retro") == "1":
+                _get_or_generate_retrospective(request.user, run, force=True)
+                return redirect("program_run", pk=run.pk)
+            retro_text = _get_or_generate_retrospective(request.user, run)
+        except AI_UNAVAILABLE:
+            retro_text = run.retrospective or None
 
     return render(request, "workouts/program_run.html", {
         "program": run.program, "run": run,
@@ -581,7 +592,7 @@ def program_backfill(request, slug):
     that, e.g. to pick up workouts a deleted pass orphaned into whatever run is
     currently active.
     """
-    program = get_object_or_404(Program, slug=slug)
+    program = get_object_or_404(Program.objects.for_user(request.user), slug=slug)
     made = backfill_program(program)
     for run in program.runs.all():
         recompute_run_dates(run)
@@ -592,7 +603,7 @@ def program_backfill(request, slug):
 @require_POST
 def run_week_rate(request, pk):
     """Save RPE + note for one pass via HTMX; swaps just that row's rating widget."""
-    rw = get_object_or_404(RunWeek.objects.select_related("run", "program_week"), pk=pk)
+    rw = get_object_or_404(RunWeek.objects.filter(run__program__user=request.user).select_related("run", "program_week"), pk=pk)
     raw = (request.POST.get("rpe") or "").strip()
     if raw == "":
         rw.rpe = None
@@ -615,7 +626,7 @@ def run_week_rate(request, pk):
 def program_delete_week(request, pk):
     """Delete one pass (RunWeek) and its completions, then compact remaining sequences
     so passes stay numbered contiguously (e.g. deleting pass 13 of 14 renumbers 14 -> 13)."""
-    week = get_object_or_404(RunWeek.objects.select_related("run", "program_week"), pk=pk)
+    week = get_object_or_404(RunWeek.objects.filter(run__program__user=request.user).select_related("run", "program_week"), pk=pk)
     run, program_week = week.run, week.program_week
     week.delete()
 
@@ -633,7 +644,7 @@ def program_delete_week(request, pk):
 def program_delete_run(request, pk):
     """Delete an entire cycle — all its passes and completions (cascades via
     RunWeek -> ProgramWorkout). Does not touch the underlying workout history."""
-    run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
+    run = get_object_or_404(ProgramRun.objects.filter(program__user=request.user).select_related("program"), pk=pk)
     slug = run.program.slug
     run.delete()
     return redirect("program_detail", slug=slug)
@@ -644,7 +655,7 @@ def _generate_retrospective_safe(run):
     never block ending a run; the page can always regenerate on demand."""
     try:
         from .ai import _get_or_generate_retrospective
-        _get_or_generate_retrospective(run)
+        _get_or_generate_retrospective(run.program.user, run)
     except Exception:
         pass
 
@@ -672,14 +683,14 @@ def _end_run(run):
 @require_POST
 def program_complete_run(request, pk):
     """Mark a run as ended, without starting a new one (unlike 'Start new cycle', which does both)."""
-    run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
+    run = get_object_or_404(ProgramRun.objects.filter(program__user=request.user).select_related("program"), pk=pk)
     _end_run(run)
     return redirect("program_run", pk=run.pk)
 
 
 def program_start_cycle(request, slug):
     """POST: end the current run (if any) and open a fresh one. Explicit 'new cycle'."""
-    program = get_object_or_404(Program, slug=slug)
+    program = get_object_or_404(Program.objects.for_user(request.user), slug=slug)
     if request.method == "POST":
         cur = program.active_run
         if cur:
@@ -696,7 +707,7 @@ def program_start_cycle(request, slug):
 
 
 def program_progression(request, pk):
-    run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
+    run = get_object_or_404(ProgramRun.objects.filter(program__user=request.user).select_related("program"), pk=pk)
     metric = request.GET.get("metric", "top_weight")
     categories = progression_categories(run)
     category = request.GET.get("category") or None
@@ -712,7 +723,7 @@ def program_progression(request, pk):
 
 
 def program_running_progression(request, pk):
-    run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
+    run = get_object_or_404(ProgramRun.objects.filter(program__user=request.user).select_related("program"), pk=pk)
     metric = request.GET.get("metric", "pace")
     if metric not in ("pace", "distance", "hr"):
         metric = "pace"
@@ -727,9 +738,12 @@ def program_running_progression(request, pk):
 def program_retrospective(request, pk):
     """Sonnet retrospective for a run — cached, regenerable via ?refresh=1. Works
     mid-cycle too (a partial read), not just after the run is marked ended."""
-    from .ai import _get_or_generate_retrospective
-    run = get_object_or_404(ProgramRun.objects.select_related("program"), pk=pk)
+    from .ai import AI_UNAVAILABLE, _get_or_generate_retrospective, ai_unavailable_reason
+    run = get_object_or_404(ProgramRun.objects.filter(program__user=request.user).select_related("program"), pk=pk)
     force = request.GET.get("refresh") == "1"
-    text = _get_or_generate_retrospective(run, force=force)
+    try:
+        text = _get_or_generate_retrospective(request.user, run, force=force)
+    except AI_UNAVAILABLE as e:
+        text = run.retrospective or ai_unavailable_reason(e)
     return render(request, "workouts/program_retrospective.html",
                   {"program": run.program, "run": run, "text": text})

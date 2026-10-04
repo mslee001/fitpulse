@@ -2,10 +2,14 @@
 import os
 from django.core.management.base import BaseCommand
 from workouts.models import PelotonAuth
+from workouts.management.user_arg import add_user_argument, resolve_user
 
 
 class Command(BaseCommand):
     help = "One-shot: seed PelotonAuth from PELOTON_SESSION_ID and PELOTON_USER_ID env vars."
+
+    def add_arguments(self, parser):
+        add_user_argument(parser)
 
     def handle(self, *args, **opts):
         session_id = os.environ.get("PELOTON_SESSION_ID", "").strip()
@@ -18,10 +22,10 @@ class Command(BaseCommand):
             return
 
         PelotonAuth.objects.update_or_create(
-            pk=1,
+            user=resolve_user(opts),
             defaults={
                 "session_id": session_id,
-                "user_id": user_id,
+                "peloton_user_id": user_id,
                 "notes": "Seeded from env vars",
             },
         )

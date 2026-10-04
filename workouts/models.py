@@ -1,13 +1,28 @@
 import re
+from datetime import timedelta
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+from .users import UserOwnedManager
+
+
+def _require_user(user):
+    """Per-user rows need a real user. A lookup without one is a bug, never a
+    reason to fall back to the owner."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        raise ValueError("A logged-in user is required")
+
 
 class DailyStats(models.Model):
     """Garmin wellness data for a single calendar day."""
-    date = models.DateField(unique=True, db_index=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
+    date = models.DateField(db_index=True)
 
     # Body battery (time series + daily extremes)
     body_battery_json = models.JSONField(default=list, blank=True)
@@ -151,6 +166,9 @@ class DailyStats(models.Model):
 
     class Meta:
         ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "date"], name="uniq_dailystats_user_date"),
+        ]
 
     def __str__(self):
         return f"DailyStats {self.date}"
@@ -270,6 +288,10 @@ class DailyStats(models.Model):
 
 class BodyMeasurement(models.Model):
     """A single Withings scale measurement group (one weigh-in session)."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     measured_at = models.DateTimeField(db_index=True)
     date = models.DateField(db_index=True)  # local date for fast daily queries
     source = models.CharField(max_length=20, default="withings")
@@ -286,7 +308,8 @@ class BodyMeasurement(models.Model):
     class Meta:
         ordering = ["-measured_at"]
         constraints = [
-            models.UniqueConstraint(fields=["source", "withings_grpid"], name="unique_withings_measurement"),
+            models.UniqueConstraint(fields=["user", "source", "withings_grpid"],
+                                    name="unique_withings_measurement_user"),
         ]
 
     def __str__(self):
@@ -301,7 +324,9 @@ def default_dumbbells():
 
 
 class UserSettings(models.Model):
-    """Singleton for user-level settings (FTP, preferences, etc.)."""
+    """One row per user: user-level settings (FTP, preferences, etc.)."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="fp_settings")
     ftp = models.IntegerField(null=True, blank=True, help_text="Functional Threshold Power in watts")
     updated_at = models.DateTimeField(auto_now=True)
     ai_insights = models.TextField(null=True, blank=True)
@@ -321,8 +346,10 @@ class UserSettings(models.Model):
     dumbbells_lb = models.JSONField(default=default_dumbbells, blank=True)
 
     @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
+    def for_user(cls, user):
+        """This user's row, created on first use."""
+        _require_user(user)
+        obj, _ = cls.objects.get_or_create(user=user)
         return obj
 
     def __str__(self):
@@ -330,6 +357,10 @@ class UserSettings(models.Model):
 
 
 class Intervention(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     CATEGORY_CHOICES = [
         ("medication", "Medication"),
         ("supplement", "Supplement"),
@@ -394,6 +425,7 @@ class Intervention(models.Model):
 
 
 class DoseChange(models.Model):
+    # No user FK: owned through Intervention. Scope lookups through the parent.
     intervention = models.ForeignKey(
         "Intervention", on_delete=models.CASCADE, related_name="dose_changes"
     )
@@ -424,6 +456,10 @@ class DoseChange(models.Model):
 
 
 class SavedAnalysis(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     label = models.CharField(max_length=200)
     intervention = models.ForeignKey("Intervention", null=True, blank=True, on_delete=models.SET_NULL)
     before_start = models.DateField()
@@ -471,8 +507,12 @@ class CachedWorkout(models.Model):
     Local cache of a Peloton workout. Stores the fields we query/filter on
     directly, plus the raw JSON blob for anything else. Refresh via /api/sync/.
     """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
 
-    workout_id = models.CharField(max_length=64, unique=True, db_index=True)
+
+    workout_id = models.CharField(max_length=64, db_index=True)
     ride_id = models.CharField(max_length=64, blank=True, db_index=True)
 
     # ── Run target pace (from /api/workout/:id/performance_graph) ─────────────
@@ -632,6 +672,9 @@ class CachedWorkout(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "workout_id"], name="uniq_workout_user_workout_id"),
+        ]
 
     def __str__(self):
         return f"{self.title} ({self.created_at:%Y-%m-%d})"
@@ -876,7 +919,9 @@ class CachedWorkout(models.Model):
 # ---------------------------------------------------------------------------
 
 class NutritionProfile(models.Model):
-    """Singleton — stores inputs for the macro target calculator."""
+    """One row per user — stores inputs for the macro target calculator."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="nutrition_profile")
     height_cm = models.FloatField(null=True, blank=True)
     age = models.IntegerField(null=True, blank=True)
     biological_sex = models.CharField(max_length=10, default="female")
@@ -892,8 +937,10 @@ class NutritionProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
+    def for_user(cls, user):
+        """This user's row, created on first use."""
+        _require_user(user)
+        obj, _ = cls.objects.get_or_create(user=user)
         return obj
 
     def __str__(self):
@@ -901,7 +948,9 @@ class NutritionProfile(models.Model):
 
 
 class AthleteProfile(models.Model):
-    """Singleton (pk=1). Drives persona/coaching context for AI prompts."""
+    """One row per user. Drives persona/coaching context for AI prompts."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="athlete_profile")
     EXPERIENCE_CHOICES = [
         ("new",          "New to this discipline"),
         ("intermediate", "Intermediate"),
@@ -927,6 +976,9 @@ class AthleteProfile(models.Model):
         help_text="Substring matches that flag a workout title as PT/rehab and exclude it from "
                   "training-load reasoning. Example: ['shoulder pt', 'physical therapy', 'rehab', 'prehab'].")
 
+    # Set when the profile form is first saved — Get Started's "AI coaching profile" step.
+    saved_at = models.DateTimeField(null=True, blank=True)
+
     health_context_override = models.TextField(blank=True,
         help_text="Free-form context to inject verbatim into health/nutrition prompts. "
                   "Leave blank to derive from Interventions only.")
@@ -934,8 +986,10 @@ class AthleteProfile(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
+    def for_user(cls, user):
+        """This user's row, created on first use."""
+        _require_user(user)
+        obj, _ = cls.objects.get_or_create(user=user)
         return obj
 
     def __str__(self):
@@ -944,6 +998,10 @@ class AthleteProfile(models.Model):
 
 class FoodEntry(models.Model):
     """One logged food/meal event."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     MEAL_CHOICES = [
         ("breakfast", "Breakfast"), ("lunch", "Lunch"),
         ("dinner", "Dinner"), ("snack", "Snack"),
@@ -977,6 +1035,10 @@ class FoodEntry(models.Model):
 
 class SavedMeal(models.Model):
     """Saved meal for one-click re-logging."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     name = models.CharField(max_length=200)
     meal = models.CharField(max_length=20, blank=True)
     items_json = models.JSONField(default=list)
@@ -1000,6 +1062,10 @@ class SavedMeal(models.Model):
 # ---------------------------------------------------------------------------
 
 class HungerCheck(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     CONTEXT_CHOICES = [
         ("morning",   "Morning (waking)"),
         ("pre_meal",  "Before a meal"),
@@ -1030,6 +1096,10 @@ class HungerCheck(models.Model):
 # ---------------------------------------------------------------------------
 
 class SideEffectLog(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     SEVERITY_CHOICES = [(1, "Mild"), (2, "Moderate"), (3, "Severe")]
     SYMPTOM_CHOICES = [
         ("nausea",          "Nausea"),
@@ -1077,6 +1147,10 @@ class SideEffectLog(models.Model):
 # ---------------------------------------------------------------------------
 
 class TargetAdjustment(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     timestamp         = models.DateTimeField(auto_now_add=True)
     previous_calories = models.IntegerField()
     new_calories      = models.IntegerField()
@@ -1093,7 +1167,11 @@ class TargetAdjustment(models.Model):
 
 class WeeklyReview(models.Model):
     """AI-generated weekly review covering weight, nutrition, workouts, and habits."""
-    week_start    = models.DateField(unique=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
+    week_start    = models.DateField()
     content       = models.TextField(blank=True, default="")
     generated_at  = models.DateTimeField(auto_now_add=True)
     ai_model      = models.CharField(max_length=64, default="claude-sonnet-4-6")
@@ -1101,6 +1179,9 @@ class WeeklyReview(models.Model):
 
     class Meta:
         ordering = ["-week_start"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "week_start"], name="uniq_weeklyreview_user_week"),
+        ]
 
     def __str__(self):
         return f"Weekly Review {self.week_start}"
@@ -1113,10 +1194,12 @@ class WeeklyReview(models.Model):
 
 class WithingsAuth(models.Model):
     """
-    Singleton (pk=1). Stores Withings OAuth credentials in Postgres so both
+    One row per user. Stores Withings OAuth credentials in Postgres so both
     laptop and hosted app can sync from the same source of truth.
     Replaces ~/.fitpulse/withings_tokens.json.
     """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="withings_auth")
     userid = models.CharField(max_length=64)
     access_token = models.TextField()
     refresh_token = models.TextField()
@@ -1132,25 +1215,36 @@ class WithingsAuth(models.Model):
     class Meta:
         verbose_name = "Withings Auth"
         verbose_name_plural = "Withings Auth"
+        constraints = [
+            # One Withings account can't feed two FitPulse users — webhooks route by userid.
+            models.UniqueConstraint(fields=["userid"], condition=~models.Q(userid=""),
+                                    name="uniq_withings_userid"),
+        ]
 
     def __str__(self):
         return f"WithingsAuth(userid={self.userid}, expires={self.token_expires_at})"
 
     @classmethod
-    def get(cls):
-        """Returns the singleton row, or None if not yet seeded."""
-        return cls.objects.filter(pk=1).first()
+    def for_user(cls, user):
+        """This user's row, or None if they haven't connected yet."""
+        _require_user(user)
+        return cls.objects.filter(user=user).first()
 
 
 class PelotonAuth(models.Model):
     """
-    Singleton (pk=1). Stores Peloton session credentials in Postgres so both
+    One row per user. Stores Peloton session credentials in Postgres so both
     laptop and hosted app can sync. Peloton has no OAuth — the session cookie
     is extracted manually from browser DevTools and pasted into /settings/integrations/.
     Cookies last weeks to months; rotate when sync starts returning 403.
     """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="peloton_auth")
     session_id = models.CharField(max_length=512, help_text="peloton_session_id cookie")
-    user_id = models.CharField(max_length=64, help_text="Peloton user ID")
+    # The Peloton account id (named peloton_user_id so it can't be confused
+    # with the Django `user` FK above, whose attribute is user_id).
+    peloton_user_id = models.CharField(max_length=64, help_text="Peloton user ID")
+    peloton_username = models.CharField(max_length=64, blank=True)   # from /api/me, for "Connected as @…"
     last_updated = models.DateTimeField(auto_now=True)
     notes = models.CharField(
         max_length=500,
@@ -1161,13 +1255,20 @@ class PelotonAuth(models.Model):
     class Meta:
         verbose_name = "Peloton Auth"
         verbose_name_plural = "Peloton Auth"
+        constraints = [
+            # One Peloton account can't feed two FitPulse users.
+            models.UniqueConstraint(fields=["peloton_user_id"], condition=~models.Q(peloton_user_id=""),
+                                    name="uniq_peloton_user_id"),
+        ]
 
     def __str__(self):
-        return f"PelotonAuth(user_id={self.user_id}, updated={self.last_updated})"
+        return f"PelotonAuth(peloton_user_id={self.peloton_user_id}, updated={self.last_updated})"
 
     @classmethod
-    def get(cls):
-        return cls.objects.filter(pk=1).first()
+    def for_user(cls, user):
+        """This user's row, or None if they haven't connected yet."""
+        _require_user(user)
+        return cls.objects.filter(user=user).first()
 
     @property
     def masked_session_id(self):
@@ -1178,12 +1279,14 @@ class PelotonAuth(models.Model):
 
 class GoogleHealthAuth(models.Model):
     """
-    Singleton (pk=1). Stores Google Health API OAuth2 credentials in Postgres,
+    One row per user. Stores Google Health API OAuth2 credentials in Postgres,
     same pattern as WithingsAuth. Populated by the `google_health_login`
     management command, or by the web reconnect flow at
     /auth/google-health/connect/ (see google_health_oauth_connect/
     google_health_oauth_callback in views.py).
     """
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="google_health_auth")
     access_token = models.TextField()
     refresh_token = models.TextField()
     token_expires_at = models.DateTimeField()
@@ -1206,9 +1309,10 @@ class GoogleHealthAuth(models.Model):
         return f"GoogleHealthAuth(expires={self.token_expires_at})"
 
     @classmethod
-    def get(cls):
-        """Returns the singleton row, or None if not yet seeded."""
-        return cls.objects.filter(pk=1).first()
+    def for_user(cls, user):
+        """This user's row, or None if they haven't connected yet."""
+        _require_user(user)
+        return cls.objects.filter(user=user).first()
 
     @property
     def days_since_connected(self):
@@ -1221,13 +1325,17 @@ class Integration(models.Model):
     so the UI can toggle them on/off and show connection status, without
     touching the sync logic for the ones left alone.
     """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     KEY_CHOICES = [
         ("peloton", "Peloton"),
         ("garmin", "Garmin"),
         ("withings", "Withings"),
         ("google_health", "Google Health"),
     ]
-    key = models.CharField(max_length=32, unique=True, choices=KEY_CHOICES)
+    key = models.CharField(max_length=32, choices=KEY_CHOICES)
     display_name = models.CharField(max_length=64)
     is_enabled = models.BooleanField(default=True)
     is_authenticated = models.BooleanField(default=False)
@@ -1242,9 +1350,22 @@ class Integration(models.Model):
 
     class Meta:
         ordering = ["key"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "key"], name="uniq_integration_user_key"),
+        ]
 
     def __str__(self):
         return f"Integration({self.key}, enabled={self.is_enabled})"
+
+    @classmethod
+    def ensure_for_user(cls, user):
+        """Create the per-user rows if missing. Garmin only for superusers."""
+        keys = [k for k, _ in cls.KEY_CHOICES if k != "garmin" or user.is_superuser]
+        for key in keys:
+            cls.objects.get_or_create(
+                user=user, key=key,
+                defaults={"display_name": dict(cls.KEY_CHOICES)[key], "is_enabled": True},
+            )
 
     @property
     def sync_all_url_name(self):
@@ -1268,6 +1389,11 @@ class WebhookError(models.Model):
     is recorded and when the errors page is viewed, so this never needs a
     separate scheduled cleanup job.
     """
+    # Nullable for good: some failures happen before a user can be determined.
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", null=True, blank=True, db_index=True)
+    objects = UserOwnedManager()
+
     RETENTION_DAYS = 14
 
     source = models.CharField(max_length=32)  # e.g. "google_health"
@@ -1282,10 +1408,11 @@ class WebhookError(models.Model):
         return f"WebhookError({self.source}, {self.created_at:%Y-%m-%d %H:%M})"
 
     @classmethod
-    def record(cls, source: str, summary: str, detail: str = "") -> None:
+    def record(cls, source: str, summary: str, detail: str = "", user=None) -> None:
         """Log a failure and prune anything past the retention window in
-        the same call — the self-cleaning half of this model's contract."""
-        cls.objects.create(source=source, summary=summary, detail=detail)
+        the same call — the self-cleaning half of this model's contract.
+        `user` is whose sync failed, when known."""
+        cls.objects.create(source=source, summary=summary, detail=detail, user=user)
         cls.prune()
 
     @classmethod
@@ -1298,6 +1425,10 @@ class WebhookError(models.Model):
 
 class Program(models.Model):
     """Durable definition of a plan / collection / split. Created once, reused across runs."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="+", db_index=True)
+    objects = UserOwnedManager()
+
     KIND_CHOICES = [("plan", "Plan"), ("collection", "Collection"), ("split", "Split")]
     MATCH_CHOICES = [
         ("achievement", "Achievement name"),
@@ -1305,7 +1436,7 @@ class Program(models.Model):
         ("ride_ids", "Ride ID list"),
     ]
     name = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField()
     kind = models.CharField(max_length=20, choices=KIND_CHOICES, default="plan")
     instructor = models.CharField(max_length=120, blank=True)
     match_strategy = models.CharField(max_length=20, choices=MATCH_CHOICES, default="ride_ids")
@@ -1332,6 +1463,9 @@ class Program(models.Model):
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "slug"], name="uniq_program_user_slug"),
+        ]
 
     def __str__(self):
         return self.name
@@ -1343,6 +1477,7 @@ class Program(models.Model):
 
 class ProgramWeek(models.Model):
     """A canonical week in the definition. A split has exactly one."""
+    # No user FK: owned through Program. Scope lookups through the parent.
     program = models.ForeignKey(Program, related_name="weeks", on_delete=models.CASCADE)
     number = models.PositiveIntegerField()
     label = models.CharField(max_length=120, blank=True)   # "Base", "Peak"
@@ -1357,6 +1492,7 @@ class ProgramWeek(models.Model):
 
 class ProgramSlot(models.Model):
     """A planned class within a canonical week."""
+    # No user FK: owned through ProgramWeek → Program. Scope lookups through the parent.
     week = models.ForeignKey(ProgramWeek, related_name="slots", on_delete=models.CASCADE)
     day = models.PositiveIntegerField(null=True, blank=True)     # 1=Mon
     order = models.PositiveIntegerField(default=0)
@@ -1385,6 +1521,7 @@ class ProgramSlot(models.Model):
 
 class ProgramRun(models.Model):
     """One engagement period. end_date NULL == the current tracker."""
+    # No user FK: owned through Program. Scope lookups through the parent.
     program = models.ForeignKey(Program, related_name="runs", on_delete=models.CASCADE)
     label = models.CharField(max_length=120, blank=True)     # "Cycle 1 — Spring"
     start_date = models.DateField()
@@ -1422,6 +1559,7 @@ class ProgramRun(models.Model):
 
 class RunWeek(models.Model):
     """One pass through a canonical week inside a run. Repeats == more of these."""
+    # No user FK: owned through ProgramRun → Program. Scope lookups through the parent.
     run = models.ForeignKey(ProgramRun, related_name="run_weeks", on_delete=models.CASCADE)
     program_week = models.ForeignKey(ProgramWeek, on_delete=models.CASCADE)
     sequence = models.PositiveIntegerField()   # 1,2,3… position in the run
@@ -1445,6 +1583,7 @@ class ProgramRecovery(models.Model):
     """A recovery session (cool-down walk / stretch) taken right after a program
     completion. Hangs off the completion's ProgramWorkout so it lives and dies
     with its pass; a workout can be a recovery for at most one completion."""
+    # No user FK: owned through ProgramWorkout → RunWeek → ProgramRun → Program. Scope lookups through the parent.
     KIND_CHOICES = [("walk", "Cool-down walk"), ("stretch", "Stretch")]
     entry = models.ForeignKey("ProgramWorkout", related_name="recoveries", on_delete=models.CASCADE)
     workout = models.OneToOneField("CachedWorkout", related_name="program_recovery", on_delete=models.CASCADE)
@@ -1466,6 +1605,7 @@ class ProgramRecovery(models.Model):
 
 class ProgramWorkout(models.Model):
     """A completion pinned to a specific pass + slot."""
+    # No user FK: owned through RunWeek → ProgramRun → Program. Scope lookups through the parent.
     run_week = models.ForeignKey(RunWeek, related_name="entries", on_delete=models.CASCADE)
     slot = models.ForeignKey(ProgramSlot, null=True, blank=True, on_delete=models.SET_NULL)
     workout = models.ForeignKey("CachedWorkout", on_delete=models.CASCADE)
@@ -1478,3 +1618,89 @@ class ProgramWorkout(models.Model):
 
     def __str__(self):
         return f"{self.run_week} · {self.workout_id}"
+
+
+class AIUsage(models.Model):
+    """One Anthropic response's token usage and cost, for per-user monthly
+    budgets and the admin page. Counts and cost only — never prompt or response text."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    feature = models.CharField(max_length=48, db_index=True)   # slug from access.FEATURES
+    model = models.CharField(max_length=64)
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    cache_read_tokens = models.PositiveIntegerField(default=0)
+    cache_write_tokens = models.PositiveIntegerField(default=0)
+    is_batch = models.BooleanField(default=False)
+    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    objects = UserOwnedManager()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"AIUsage({self.feature}, {self.model}, ${self.cost_usd})"
+
+
+class UserAccess(models.Model):
+    """What a user may use (see access.FEATURES), their AI budget, and account
+    state for the forced password change and Get Started onboarding.
+    Created for every new user with everything off."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="access")
+    features = models.JSONField(default=list, blank=True)        # list of feature slugs
+    ai_enabled = models.BooleanField(default=False)               # master AI switch
+    monthly_ai_budget_usd = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    must_change_password = models.BooleanField(default=False)
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True)
+    google_test_user_added = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"UserAccess({self.user_id}, {len(self.features)} features)"
+
+
+def _create_user_access(sender, instance, created, **kwargs):
+    if created:
+        UserAccess.objects.get_or_create(user=instance)
+
+
+models.signals.post_save.connect(_create_user_access, sender=settings.AUTH_USER_MODEL,
+                                 dispatch_uid="workouts_create_user_access")
+
+
+class SyncJob(models.Model):
+    """A background first-time backfill (see background.start_backfill), polled by
+    the Get Started page while it runs."""
+    STATUS = [("running", "Running"), ("done", "Done"), ("failed", "Failed")]
+    STALE_AFTER = timedelta(minutes=90)
+    STALE_ERROR = "Interrupted, probably by a deploy or restart"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    source = models.CharField(max_length=32)        # peloton / withings / google_health
+    status = models.CharField(max_length=12, choices=STATUS, default="running")
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    summary = models.JSONField(default=dict, blank=True)   # the _run_*_sync_all result dict
+    error = models.TextField(blank=True)
+
+    objects = UserOwnedManager()
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"SyncJob({self.source}, {self.status})"
+
+    @property
+    def is_stale(self):
+        return self.status == "running" and timezone.now() - self.started_at > self.STALE_AFTER
+
+    def refreshed(self):
+        """Mark a running job that outlived STALE_AFTER as failed (its thread died
+        with a deploy/restart) and return self."""
+        if self.is_stale:
+            self.status, self.error, self.finished_at = "failed", self.STALE_ERROR, timezone.now()
+            self.save(update_fields=["status", "error", "finished_at"])
+        return self

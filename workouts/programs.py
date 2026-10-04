@@ -107,7 +107,8 @@ def _overlaps_program_workout(workout):
     ride-id to tell duplicates apart."""
     start, end = _workout_span(workout)
     cands = (ProgramWorkout.objects
-             .filter(workout__created_at__gte=start - timedelta(hours=3), workout__created_at__lt=end)
+             .filter(workout__user=workout.user,
+                     workout__created_at__gte=start - timedelta(hours=3), workout__created_at__lt=end)
              .exclude(workout=workout).select_related("workout"))
     for e in cands:
         s2, e2 = _workout_span(e.workout)
@@ -123,7 +124,8 @@ def _discipline_slots_for(workout):
         return []
     title = (workout.title or "").lower()
     out = []
-    for slot in ProgramSlot.objects.filter(match_discipline=disc).select_related("week", "week__program"):
+    slots = ProgramSlot.objects.filter(week__program__user_id=workout.user_id, match_discipline=disc)
+    for slot in slots.select_related("week", "week__program"):
         kw = slot.match_title_keyword.strip().lower()
         if kw and kw not in title:
             continue
@@ -137,12 +139,15 @@ def identify_membership(workout):
     """
     Return (program, canonical_week_number, day, matched_by) or None.
     1) achievement name  2) ride-id membership  3) title suffix (only if a Program matches).
+    Only the workout owner's programs are considered — a housemate taking the same
+    class never lands on someone else's grid.
     """
     names = achievement_names(workout)
     ride_id = workout.ride_id
+    programs = Program.objects.filter(user_id=workout.user_id)
 
     # 1) achievement-stamped plans
-    for p in Program.objects.filter(match_strategy="achievement").exclude(achievement_name=""):
+    for p in programs.filter(match_strategy="achievement").exclude(achievement_name=""):
         if p.achievement_name in names:
             wk, dy = parse_week_day(p, workout)
             return p, (wk or 1), dy, "achievement"
@@ -150,6 +155,7 @@ def identify_membership(workout):
     # 2) ride-id membership (splits, and any exact-pinned slot)
     if ride_id:
         slots = list(ProgramSlot.objects
+                     .filter(week__program__user_id=workout.user_id)
                      .filter(Q(peloton_ride_id=ride_id) | Q(alt_ride_ids__contains=ride_id))
                      .select_related("week", "week__program"))
         if slots:
@@ -182,8 +188,8 @@ def identify_membership(workout):
     m = TITLE_SUFFIX_RE.search(workout.title or "")
     if m:
         plan_slug = slugify(m.group("plan"))
-        p = Program.objects.filter(slug=plan_slug).first() or \
-            Program.objects.filter(name__iexact=m.group("plan").strip()).first()
+        p = programs.filter(slug=plan_slug).first() or \
+            programs.filter(name__iexact=m.group("plan").strip()).first()
         if p:
             return p, int(m.group("week")), int(m.group("day")), "description"
         # A plan we don't track yet — caller may surface this as a suggestion.
@@ -420,10 +426,12 @@ def attach_recoveries(run):
     lo = mains[0].workout.created_at
     hi = max(_workout_span(m.workout)[1] for m in mains) + timedelta(
         minutes=2 * (window_min + program.recovery_max_min))
-    taken = set(ProgramWorkout.objects.values_list("workout_id", flat=True))
-    taken |= set(ProgramRecovery.objects.values_list("workout_id", flat=True))
+    owner = program.user
+    taken = set(ProgramWorkout.objects.filter(workout__user=owner).values_list("workout_id", flat=True))
+    taken |= set(ProgramRecovery.objects.filter(workout__user=owner).values_list("workout_id", flat=True))
     cands = []
-    for w in CachedWorkout.objects.filter(created_at__gte=lo, created_at__lte=hi).exclude(pk__in=taken).order_by("created_at"):
+    nearby = CachedWorkout.objects.for_user(owner).filter(created_at__gte=lo, created_at__lte=hi)
+    for w in nearby.exclude(pk__in=taken).order_by("created_at"):
         kind = recovery_kind(w, program)
         if kind:
             cands.append((w, kind))
@@ -454,14 +462,15 @@ def attach_recoveries(run):
     return made
 
 
-def reconcile_program_extras():
-    """Catch up "any class" slot matches and recovery attachments for every program
-    that uses them — run after syncs, since a walk/stretch usually lands after its
+def reconcile_program_extras(user):
+    """Catch up "any class" slot matches and recovery attachments for every one of
+    the user's programs that uses them — run after syncs, since a walk/stretch usually lands after its
     workout and Google/Garmin-recorded classes never go through the per-workout
     Peloton hook. Cheap no-op for programs that use neither. Returns
     {"associated": n, "recoveries": n}."""
     associated = recoveries = 0
-    for program in Program.objects.all():
+    own_recoveries = ProgramRecovery.objects.filter(workout__user=user)
+    for program in Program.objects.for_user(user):
         run = program.active_run
         if run is None:
             continue
@@ -469,12 +478,12 @@ def reconcile_program_extras():
         if not (has_disc or program.track_recovery):
             continue
         # Count by the change in rows: backfill_program also attaches recoveries itself.
-        before = ProgramRecovery.objects.count()
+        before = own_recoveries.count()
         if has_disc:
             associated += backfill_program(program)
         if program.track_recovery:
             attach_recoveries(run)
-        recoveries += ProgramRecovery.objects.count() - before
+        recoveries += own_recoveries.count() - before
     return {"associated": associated, "recoveries": recoveries}
 
 
@@ -717,7 +726,7 @@ def _workout_exercise_loads(workout):
 
 # ---------- building a new split from the UI ----------
 
-def resolve_split_candidates(workout_ids):
+def resolve_split_candidates(user, workout_ids):
     """
     Turn a set of explicitly-selected CachedWorkout ids (picked by the user on the
     History page) into one slot candidate per distinct ride-id among them.
@@ -729,7 +738,7 @@ def resolve_split_candidates(workout_ids):
     user actually picked is unambiguous; the user makes the merge/split call by
     which workouts they select, not a title heuristic.
     """
-    workouts = (CachedWorkout.objects
+    workouts = (CachedWorkout.objects.for_user(user)
                 .filter(workout_id__in=workout_ids, source="peloton")
                 .exclude(ride_id=""))
     by_ride = {}
@@ -741,13 +750,14 @@ def resolve_split_candidates(workout_ids):
         if w.instructor_name:
             g["instructors"][w.instructor_name] = g["instructors"].get(w.instructor_name, 0) + 1
 
+    own_slots = ProgramSlot.objects.filter(week__program__user=user)
     claimed_by = dict(
-        ProgramSlot.objects
+        own_slots
         .filter(peloton_ride_id__in=by_ride.keys())
         .select_related("week__program")
         .values_list("peloton_ride_id", "week__program__name")
     )
-    for slot in ProgramSlot.objects.exclude(alt_ride_ids=[]).select_related("week__program"):
+    for slot in own_slots.exclude(alt_ride_ids=[]).select_related("week__program"):
         for rid in slot.alt_ride_ids:
             if rid in by_ride:
                 claimed_by[rid] = slot.week.program.name
@@ -791,7 +801,7 @@ def backfill_program(program):
             dq &= Q(created_at__date__gte=run.start_date)
         q |= dq
     # Date order matters: placement assumes earlier completions are already on the grid.
-    workouts = CachedWorkout.objects.filter(q).order_by("created_at")
+    workouts = CachedWorkout.objects.for_user(program.user).filter(q).order_by("created_at")
     made = 0
     for w in workouts:
         existing = ProgramWorkout.objects.filter(workout=w).exists()
@@ -831,7 +841,7 @@ def recompute_run_dates(run):
         run.save(update_fields=update_fields)
 
 
-def create_split(name, slug, selected_candidates):
+def create_split(user, name, slug, selected_candidates):
     """
     Create a Program (kind=split, match_strategy=ride_ids) with one ProgramSlot per
     selected candidate (from resolve_split_candidates), then backfill history scoped
@@ -845,7 +855,7 @@ def create_split(name, slug, selected_candidates):
     instructor = instructor_votes.most_common(1)[0][0] if instructor_votes else ""
 
     program = Program.objects.create(
-        name=name, slug=slug, kind="split", match_strategy="ride_ids", instructor=instructor,
+        user=user, name=name, slug=slug, kind="split", match_strategy="ride_ids", instructor=instructor,
     )
     week = ProgramWeek.objects.create(program=program, number=1)
     for i, c in enumerate(selected_candidates):
@@ -860,7 +870,7 @@ def create_split(name, slug, selected_candidates):
 
 # ---------- building a new plan from the UI (link / screenshot / text intake) ----------
 
-def verify_ride_id(ride_id):
+def verify_ride_id(user, ride_id):
     """
     Live-confirm a ride_id resolves to a real Peloton class, and return the
     catalog facts about it. Used both to validate a link-extracted id and to
@@ -869,7 +879,7 @@ def verify_ride_id(ride_id):
     """
     from .services.peloton_client import PelotonClient
     try:
-        detail = PelotonClient().get_ride_details(ride_id)
+        detail = PelotonClient(user).get_ride_details(ride_id)
     except Exception:
         return None
     ride = detail.get("ride") or {}
@@ -885,7 +895,7 @@ def verify_ride_id(ride_id):
     }
 
 
-def find_local_ride_ids(title, instructor=""):
+def find_local_ride_ids(user, title, instructor=""):
     """
     Match a plan-slot title against the user's own already-synced Peloton
     history. A class the user has already taken resolves for free, with no
@@ -896,7 +906,7 @@ def find_local_ride_ids(title, instructor=""):
     norm = normalize_title(title)
     if not norm:
         return []
-    qs = CachedWorkout.objects.filter(source="peloton").exclude(ride_id="")
+    qs = CachedWorkout.objects.for_user(user).filter(source="peloton").exclude(ride_id="")
     if instructor:
         qs = qs.filter(instructor_name__iexact=instructor)
     seen = {}
@@ -910,7 +920,7 @@ def find_local_ride_ids(title, instructor=""):
     return sorted(seen.values(), key=lambda c: c["taken_on"] or date.min, reverse=True)
 
 
-def resolve_slot_ride_id(title, instructor="", source_url=""):
+def resolve_slot_ride_id(user, title, instructor="", source_url=""):
     """
     Best-effort ride_id resolution for one plan slot, cascading:
     1) a Peloton class link pasted alongside this item (ground truth — verified live)
@@ -926,10 +936,10 @@ def resolve_slot_ride_id(title, instructor="", source_url=""):
     """
     linked = extract_ride_id_from_text(source_url)
     if linked:
-        info = verify_ride_id(linked)
+        info = verify_ride_id(user, linked)
         if info:
             return {"ride_id": linked, "matched_via": "link", "info": info, "candidates": []}
-    local = find_local_ride_ids(title, instructor=instructor)
+    local = find_local_ride_ids(user, title, instructor=instructor)
     if len(local) == 1:
         return {"ride_id": local[0]["ride_id"], "matched_via": "history", "info": None, "candidates": []}
     if len(local) > 1:
@@ -1027,10 +1037,10 @@ def resolve_slot_match(match, ride_input="", preset="", discipline="", keyword="
     return {**empty, "peloton_ride_id": ride_id}
 
 
-def unique_slug(name):
+def unique_slug(user, name):
     base = slugify(name) or "program"
     slug, n = base, 2
-    while Program.objects.filter(slug=slug).exists():
+    while Program.objects.for_user(user).filter(slug=slug).exists():
         slug, n = f"{base}-{n}", n + 1
     return slug
 
@@ -1046,7 +1056,8 @@ def duplicate_program(program, name=None, keep_ride_ids=False):
     """
     name = (name or "").strip() or f"{program.name} (copy)"
     copy = Program.objects.create(
-        name=name, slug=unique_slug(name), kind=program.kind, instructor=program.instructor,
+        user=program.user, name=name, slug=unique_slug(program.user, name),
+        kind=program.kind, instructor=program.instructor,
         match_strategy=program.match_strategy, achievement_name=program.achievement_name,
         title_week_day_regex=program.title_week_day_regex, series_id_hint=program.series_id_hint,
         description=program.description, track_recovery=program.track_recovery,
@@ -1067,7 +1078,7 @@ def duplicate_program(program, name=None, keep_ride_ids=False):
     return copy
 
 
-def create_plan(name, slug, instructor, weeks_data, kind=None):
+def create_plan(user, name, slug, instructor, weeks_data, kind=None):
     """
     Create a Program (kind=plan, match_strategy=ride_ids) from a structured
     skeleton — weeks_data: [{"number": 1, "slots": [{"day", "order", "title",
@@ -1083,7 +1094,7 @@ def create_plan(name, slug, instructor, weeks_data, kind=None):
     # A single repeating week is a split, several distinct weeks a plan (unless told).
     kind = kind or ("split" if len(weeks_data) == 1 else "plan")
     program = Program.objects.create(
-        name=name, slug=slug, kind=kind, match_strategy="ride_ids", instructor=instructor,
+        user=user, name=name, slug=slug, kind=kind, match_strategy="ride_ids", instructor=instructor,
     )
     weeks_by_number = {wk["number"]: ProgramWeek.objects.create(program=program, number=wk["number"])
                        for wk in weeks_data}
@@ -1161,7 +1172,7 @@ def recovery_across_block(run):
 
     def block_avg(d0, d1, field):
         vals = [getattr(s, field) for s in
-                DailyStats.objects.filter(date__gte=d0, date__lt=d1)
+                DailyStats.objects.for_user(run.program.user).filter(date__gte=d0, date__lt=d1)
                 if getattr(s, field, None) is not None]
         return round(mean(vals), 1) if vals else None
 
@@ -1176,7 +1187,7 @@ def intervention_overlap(run):
     from .models import Intervention
     start, end = _run_window(run)
     out = []
-    for iv in Intervention.objects.all():
+    for iv in Intervention.objects.for_user(run.program.user):
         if iv.start_date <= end and (iv.end_date is None or iv.end_date >= start):
             doses = [f"{dc.dose} from {dc.start_date}"
                      for dc in iv.dose_changes.filter(start_date__gte=start, start_date__lte=end)]

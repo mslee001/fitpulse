@@ -1,17 +1,23 @@
 """
 Seed a fresh database with realistic demo data.
 
-Usage:
-    DB_FILE=demo.sqlite3 venv/bin/python3 manage.py migrate
-    DB_FILE=demo.sqlite3 venv/bin/python3 manage.py seed_demo
+Usage (DATABASE_URL on the command line wins over the one in .env — never
+run this against the production database):
+    DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py migrate
+    DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py seed_demo [--user USERNAME]
+    DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py changepassword demo
+
+Seeds (and first clears) only the given user's data — by default a user named
+"demo", created with an unusable password if missing — never the owner's.
 
 Then run the server:
-    DB_FILE=demo.sqlite3 venv/bin/python3 manage.py runserver
+    DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py runserver
 """
 
 import datetime
 import random
 import uuid
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -34,6 +40,10 @@ def _uid():
 class Command(BaseCommand):
     help = "Populate demo.sqlite3 with realistic fake data for demos."
 
+    def add_arguments(self, parser):
+        parser.add_argument("--user", metavar="USERNAME", default="demo",
+                            help="User to seed (default: demo, created if missing)")
+
     def handle(self, *args, **options):
         from workouts.models import (
             CachedWorkout, DailyStats, UserSettings, NutritionProfile,
@@ -41,17 +51,24 @@ class Command(BaseCommand):
             Intervention, DoseChange, WeeklyReview, BodyMeasurement,
         )
 
-        self.stdout.write("Clearing existing data...")
+        User = get_user_model()
+        user = User.objects.filter(username=options["user"]).first()
+        if user is None:
+            user = User(username=options["user"])
+            user.set_unusable_password()
+            user.save()
+
+        self.stdout.write(f"Clearing existing data for {user.username}...")
         for M in [CachedWorkout, DailyStats, UserSettings, NutritionProfile,
                   FoodEntry, SavedMeal, HungerCheck, SideEffectLog,
-                  Intervention, DoseChange, WeeklyReview, BodyMeasurement]:
-            M.objects.all().delete()
+                  Intervention, WeeklyReview, BodyMeasurement]:
+            M.objects.filter(user=user).delete()   # DoseChanges go with their Intervention
 
         rng = random.Random(42)
 
         # ── UserSettings ────────────────────────────────────────────────────
         settings = UserSettings.objects.create(
-            pk=1, ftp=220,
+            user=user, ftp=220,
             ai_insights=SAMPLE_INSIGHTS,
             ai_insights_generated_at=timezone.now() - datetime.timedelta(hours=3),
             ai_pattern_insights=SAMPLE_PATTERN_INSIGHTS,
@@ -65,7 +82,7 @@ class Command(BaseCommand):
 
         # ── NutritionProfile ─────────────────────────────────────────────────
         NutritionProfile.objects.create(
-            pk=1,
+            user=user,
             height_cm=165.0,
             age=34,
             biological_sex="female",
@@ -80,6 +97,7 @@ class Command(BaseCommand):
 
         # ── Intervention + DoseChange ─────────────────────────────────────────
         iv = Intervention.objects.create(
+            user=user,
             name="Semaglutide",
             category="medication",
             start_date=_d(90),
@@ -91,6 +109,7 @@ class Command(BaseCommand):
         DoseChange.objects.create(intervention=iv, dose="1mg", start_date=_d(34), end_date=None)
 
         iv2 = Intervention.objects.create(
+            user=user,
             name="Creatine Monohydrate",
             category="supplement",
             start_date=_d(60),
@@ -142,6 +161,7 @@ class Command(BaseCommand):
             fiber_total = rng.gauss(24, 4) if logged else None
 
             ds = DailyStats(
+                user=user,
                 date=d,
                 weight_lb=round(weight, 1),
                 fat_mass_lb=round(fat_mass, 1),
@@ -200,27 +220,37 @@ class Command(BaseCommand):
 
         # ── Workouts ──────────────────────────────────────────────────────────
         self.stdout.write("Seeding workouts...")
-        _seed_workouts(rng)
+        _seed_workouts(user, rng)
 
         # ── FoodEntries ───────────────────────────────────────────────────────
         self.stdout.write("Seeding food log (30 days)...")
-        _seed_nutrition(rng)
+        _seed_nutrition(user, rng)
 
         # ── SavedMeals ────────────────────────────────────────────────────────
-        _seed_saved_meals()
+        _seed_saved_meals(user)
 
         # ── HungerChecks ──────────────────────────────────────────────────────
-        _seed_hunger(rng)
+        _seed_hunger(user, rng)
 
         # ── SideEffectLogs ────────────────────────────────────────────────────
-        _seed_symptoms(rng, iv)
+        _seed_symptoms(user, rng, iv)
 
         # ── WeeklyReview ──────────────────────────────────────────────────────
-        _seed_weekly_review()
+        _seed_weekly_review(user)
+
+        # Demo user can use everything and skips Get Started.
+        from workouts.access import FEATURES, access_for
+        from workouts.models import Integration
+        access = access_for(user)
+        access.features, access.ai_enabled = list(FEATURES), True
+        access.must_change_password = False
+        access.onboarding_completed_at = timezone.now()
+        access.save()
+        Integration.ensure_for_user(user)
 
         self.stdout.write(self.style.SUCCESS(
-            "\nDemo database seeded successfully.\n"
-            "Run with: DB_FILE=demo.sqlite3 venv/bin/python3 manage.py runserver"
+            f"\nDemo data seeded for user '{user.username}'.\n"
+            f"Set its password with: manage.py changepassword {user.username}, then runserver and log in."
         ))
 
 
@@ -317,7 +347,7 @@ def _perf_graph_running(avg_pace_s, hr):
     }
 
 
-def _seed_workouts(rng):
+def _seed_workouts(user, rng):
     from workouts.models import CachedWorkout
 
     workouts = []
@@ -457,6 +487,8 @@ def _seed_workouts(rng):
 
         workouts.append(w)
 
+    for w in workouts:
+        w.user = user
     CachedWorkout.objects.bulk_create(workouts)
     count = len(workouts)
     print(f"  Created {count} workouts")
@@ -537,7 +569,7 @@ MEAL_TEMPLATES = {
 }
 
 
-def _seed_nutrition(rng):
+def _seed_nutrition(user, rng):
     from workouts.models import FoodEntry
     entries = []
     for days_ago in range(30):
@@ -563,11 +595,13 @@ def _seed_nutrition(rng):
                 ai_model="claude-haiku-4-5",
                 ai_confidence="high",
             ))
+    for e in entries:
+        e.user = user
     FoodEntry.objects.bulk_create(entries)
     print(f"  Created {len(entries)} food entries")
 
 
-def _seed_saved_meals():
+def _seed_saved_meals(user):
     from workouts.models import SavedMeal
     saved = [
         SavedMeal(name="Post-workout protein shake", meal="snack",
@@ -587,10 +621,12 @@ def _seed_saved_meals():
                   calories=453, protein_g=47.5, carbs_g=30, fat_g=15.5, fiber_g=5, times_logged=5,
                   items_json=MEAL_TEMPLATES["lunch"][2]["items"]),
     ]
+    for m in saved:
+        m.user = user
     SavedMeal.objects.bulk_create(saved)
 
 
-def _seed_hunger(rng):
+def _seed_hunger(user, rng):
     from workouts.models import HungerCheck
     checks = []
     for days_ago in range(21):
@@ -612,10 +648,12 @@ def _seed_hunger(rng):
                 date=d, context="evening",
                 hunger_level=rng.randint(2, 7),
             ))
+    for c in checks:
+        c.user = user
     HungerCheck.objects.bulk_create(checks)
 
 
-def _seed_symptoms(rng, intervention):
+def _seed_symptoms(user, rng, intervention):
     from workouts.models import SideEffectLog
     # Mild GI symptoms early in medication, tapering off
     logs = []
@@ -631,17 +669,20 @@ def _seed_symptoms(rng, intervention):
             related_intervention=intervention,
             notes="Early dose escalation period" if days_ago > 60 else "",
         ))
+    for log in logs:
+        log.user = user
     SideEffectLog.objects.bulk_create(logs)
     print(f"  Created {len(logs)} symptom logs")
 
 
-def _seed_weekly_review():
+def _seed_weekly_review(user):
     from workouts.models import WeeklyReview
     today = datetime.date.today()
     # Most recently completed Mon–Sun week
     days_since_monday = today.weekday()
     last_monday = today - datetime.timedelta(days=days_since_monday + 7)
     WeeklyReview.objects.create(
+        user=user,
         week_start=last_monday,
         content=SAMPLE_WEEKLY_REVIEW,
         ai_model="claude-sonnet-4-6",

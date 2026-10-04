@@ -1,0 +1,21 @@
+{% if job %}
+<div class="gs-sync-status" id="gs-status-{{ source }}"
+     {% if job.status == "running" %}hx-get="{% url 'gs_sync_status' source %}" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
+  {% if job.status == "running" %}
+    <span class="gs-spinner"></span> Importing your history… <span class="muted">(started {{ job.started_at|timesince }} ago)</span>
+  {% elif job.status == "done" %}
+    <span style="color:#81C784">Imported ✓</span>
+    <span class="muted">
+      {% if source == "peloton" %}{{ job.summary.created|default:0 }} workouts
+      {% elif source == "withings" %}{{ job.summary.fetched|default:0 }} weigh-ins
+      {% else %}{{ job.summary.wellness.synced|default:0 }} days of wellness, {{ job.summary.exercise.created|default:0 }} workouts{% endif %}
+    </span>
+  {% else %}
+    <span style="color:var(--accent-red)">Import failed: {{ job.error }}</span>
+    <form hx-post="{% url 'gs_retry' source %}" hx-target="#gs-status-{{ source }}" hx-swap="outerHTML" style="display:inline;margin-left:0.5rem">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-ghost">Retry</button>
+    </form>
+  {% endif %}
+</div>
+{% endif %}

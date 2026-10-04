@@ -15,6 +15,7 @@ case):
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone as tz
 
@@ -27,11 +28,15 @@ from workouts.sync import (
 _n = 0
 
 
+def owner():
+    return get_user_model().objects.get_or_create(username="owner", defaults={"is_superuser": True})[0]
+
+
 def mk(source, offset_min, minutes, discipline, title, workout_id=None, raw_data=None, **extra):
     global _n
     _n += 1
     return CachedWorkout.objects.create(
-        workout_id=workout_id or f"w{_n}", source=source, title=title, discipline=discipline,
+        user=owner(), workout_id=workout_id or f"w{_n}", source=source, title=title, discipline=discipline,
         created_at=BASE + timedelta(minutes=offset_min), duration_seconds=minutes * 60,
         raw_data=raw_data or {}, **extra,
     )
@@ -129,7 +134,7 @@ class ReconcileOverlapTests(TestCase):
     def setUp(self):
         # google_health is seeded disabled by default (migration 0012) — these
         # reconcilers gate on it being on.
-        Integration.objects.update_or_create(key="google_health", defaults={"is_enabled": True})
+        Integration.objects.update_or_create(user=owner(), key="google_health", defaults={"is_enabled": True})
         self.main = mk("peloton", 0, 45, "circuit", "45 min Lower Body + Run")
         # Real values from the 2026-09-26 case, so an accidental merge would be obvious.
         self.free_weights = mk("google_health", 14, 15, "strength", "Free weights",
@@ -141,7 +146,7 @@ class ReconcileOverlapTests(TestCase):
                             raw_data={"exercise": {"interval": {"startTime": "x"}, "metricsSummary": {"caloriesKcal": 150}}})
 
     def test_both_sub_segments_are_deleted_and_main_workout_is_never_touched(self):
-        result = _reconcile_google_health_duplicates()
+        result = _reconcile_google_health_duplicates(owner())
         self.assertEqual(result["deleted"], 2)
         self.assertEqual(result["augmented"], 0)          # never augmented — see module docstring
         self.assertFalse(CachedWorkout.objects.filter(source="google_health").exists())
@@ -150,13 +155,13 @@ class ReconcileOverlapTests(TestCase):
         self.assertIsNone(self.main.avg_pace_seconds)       # would have been wrongly set to the treadmill segment's own pace
 
     def test_details_flag_overlap_only_matches(self):
-        result = _reconcile_google_health_duplicates()
+        result = _reconcile_google_health_duplicates(owner())
         by_id = {d["google_workout_id"]: d for d in result["details"]}
         self.assertTrue(by_id["google_health_free_weights"]["overlap_only"])
         self.assertEqual(by_id["google_health_free_weights"]["filled"], [])
 
     def test_dry_run_reports_without_deleting_or_writing(self):
-        result = _reconcile_google_health_duplicates(dry_run=True)
+        result = _reconcile_google_health_duplicates(owner(), dry_run=True)
         self.assertEqual(result["matched"], 2)
         self.assertEqual(result["deleted"], 0)
         self.assertEqual(CachedWorkout.objects.filter(source="google_health").count(), 2)
@@ -166,7 +171,7 @@ class ReconcileOverlapTests(TestCase):
         real_dup = mk("google_health", 0, 45, "circuit", "Lower Body + Run",
                       workout_id="google_health_real_dup", distance_miles=3.1,
                       raw_data={"name": "exercises/real_dup", "exercise": {"interval": {"startTime": "2026-01-01T00:00:00Z"}, "metricsSummary": {"distanceMillimeters": 4988000}}})
-        result = _reconcile_google_health_duplicates()
+        result = _reconcile_google_health_duplicates(owner())
         by_id = {d["google_workout_id"]: d for d in result["details"]}
         self.assertFalse(by_id["google_health_real_dup"]["overlap_only"])
         self.main.refresh_from_db()
@@ -178,7 +183,7 @@ class ReconcileOverlapTests(TestCase):
         segment = mk("google_health", 60 + 10, 10, "strength", "Free weights",   # 10 min in: outside _find_workout_match's 5 min window
                      workout_id="google_health_garmin_segment", calories=80,
                      raw_data={"name": "exercises/garmin_segment", "exercise": {"interval": {"startTime": "2026-01-01T00:00:00Z"}, "metricsSummary": {"caloriesKcal": 80}}})
-        result = _reconcile_garmin_google_health_duplicates()
+        result = _reconcile_garmin_google_health_duplicates(owner())
         self.assertEqual(result["deleted"], 1)
         self.assertTrue(result["details"][0]["overlap_only"])
         garmin_main.refresh_from_db()
@@ -186,7 +191,7 @@ class ReconcileOverlapTests(TestCase):
 
     def test_row_with_no_raw_data_still_deletes_cleanly_when_overlapping(self):
         bare = mk("google_health", 20, 10, "strength", "Free weights", workout_id="google_health_bare", raw_data={})
-        result = _reconcile_google_health_duplicates()
+        result = _reconcile_google_health_duplicates(owner())
         by_id = {d["google_workout_id"]: d for d in result["details"]}
         self.assertTrue(by_id["google_health_bare"]["overlap_only"])
         self.assertFalse(CachedWorkout.objects.filter(pk=bare.pk).exists())
@@ -201,7 +206,7 @@ class ReconcileOverlapTests(TestCase):
                       raw_data={"name": "exercises/bootcamp",
                                 "exercise": {"interval": {"startTime": "2026-01-01T00:00:00Z"},
                                             "metricsSummary": {"caloriesKcal": 544}}})
-        result = _reconcile_google_health_duplicates()
+        result = _reconcile_google_health_duplicates(owner())
         self.assertEqual(result["deleted"], 1)
         self.assertFalse(CachedWorkout.objects.filter(workout_id="google_health_bootcamp").exists())
         for w in (push_run, walk, stretch):
@@ -213,7 +218,7 @@ class LiveSyncOverlapTests(TestCase):
     """_run_google_health_exercise_sync's own overlap check, before a row is ever created."""
 
     def setUp(self):
-        Integration.objects.update_or_create(key="google_health", defaults={"is_enabled": True})
+        Integration.objects.update_or_create(user=owner(), key="google_health", defaults={"is_enabled": True})
         self.main = mk("peloton", 0, 45, "circuit", "45 min Lower Body + Run")
 
     def _point(self, offset_min, minutes, discipline_title, calories=100):
@@ -235,7 +240,7 @@ class LiveSyncOverlapTests(TestCase):
         point = self._point(14, 15, "Free weights")
         with patch("workouts.services.google_health_client.GoogleHealthClient") as MockClient:
             MockClient.return_value.get_exercise.return_value = [point]
-            result = _run_google_health_exercise_sync(self.main.created_at.date(), self.main.created_at.date())
+            result = _run_google_health_exercise_sync(owner(), self.main.created_at.date(), self.main.created_at.date())
         self.assertEqual(result["created"], 0)
         self.assertEqual(result["skipped_overlapping_workouts"], 1)
         self.assertFalse(CachedWorkout.objects.filter(source="google_health").exists())
@@ -246,7 +251,7 @@ class LiveSyncOverlapTests(TestCase):
         point = self._point(300, 30, "Evening Yoga")   # 5 hours later — unrelated
         with patch("workouts.services.google_health_client.GoogleHealthClient") as MockClient:
             MockClient.return_value.get_exercise.return_value = [point]
-            result = _run_google_health_exercise_sync(self.main.created_at.date(), self.main.created_at.date())
+            result = _run_google_health_exercise_sync(owner(), self.main.created_at.date(), self.main.created_at.date())
         self.assertEqual(result["created"], 1)
         self.assertEqual(result["skipped_overlapping_workouts"], 0)
 
@@ -256,7 +261,7 @@ class LiveSyncOverlapTests(TestCase):
         point = self._point(7, 72, "Bootcamp", calories=544)
         with patch("workouts.services.google_health_client.GoogleHealthClient") as MockClient:
             MockClient.return_value.get_exercise.return_value = [point]
-            result = _run_google_health_exercise_sync(self.main.created_at.date(), self.main.created_at.date())
+            result = _run_google_health_exercise_sync(owner(), self.main.created_at.date(), self.main.created_at.date())
         self.assertEqual(result["created"], 0)
         self.assertEqual(result["skipped_overlapping_workouts"], 1)
         self.assertFalse(CachedWorkout.objects.filter(source="google_health").exists())

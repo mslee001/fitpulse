@@ -20,6 +20,8 @@ Usage:
 """
 from django.core.management.base import BaseCommand
 
+from workouts.management.user_arg import add_user_argument, resolve_user
+
 
 class Command(BaseCommand):
     help = "Reconcile and delete Garmin CachedWorkout rows that duplicate an existing Peloton workout."
@@ -29,12 +31,13 @@ class Command(BaseCommand):
             "--dry-run", action="store_true",
             help="Report what would be augmented/deleted without writing anything.",
         )
+        add_user_argument(parser)
 
     def handle(self, *args, **options):
         from workouts.sync import _reconcile_garmin_duplicates
 
         dry_run = options["dry_run"]
-        result = _reconcile_garmin_duplicates(dry_run=dry_run)
+        result = _reconcile_garmin_duplicates(resolve_user(options), dry_run=dry_run)
 
         for d in result["details"]:
             if d["discipline"] == "running":

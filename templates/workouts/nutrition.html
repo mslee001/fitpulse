@@ -213,6 +213,7 @@
 {% endif %}
 
 {# ── Log Food ── #}
+{% if can.ai_food_parse %}
 <div class="card" style="margin-bottom:2rem">
   <div class="section-title" style="margin-bottom:1rem">LOG FOOD</div>
   <form method="post" action="{% url 'nutrition_parse' %}"
@@ -277,6 +278,7 @@
   </form>
   <div id="parse-result" style="margin-top:1.25rem"></div>
 </div>
+{% endif %}
 
 <style>
 .serving-chip {
@@ -432,6 +434,7 @@ function setServingNote(text) {
 {% endif %}
 
 {# ── Meal suggestions ── #}
+{% if can.ai_meal_suggest %}
 <div class="card" style="margin-bottom:2rem">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
     <div class="section-title" style="margin-bottom:0">WHAT SHOULD I EAT?</div>
@@ -448,6 +451,7 @@ function setServingNote(text) {
     <p style="color:var(--text-dim);font-size:0.85rem">Based on your remaining macros for the day.</p>
   </div>
 </div>
+{% endif %}
 
 {# ── Saved meals ── #}
 {% if saved_meals %}

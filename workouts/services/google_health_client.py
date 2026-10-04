@@ -1,8 +1,8 @@
 """
 GoogleHealthClient — OAuth 2.0 client for the Google Health API.
 
-Modeled on WithingsClient: tokens stored in the GoogleHealthAuth DB singleton
-(pk=1), auto-refreshed 5 minutes before expiry, single refresh-and-retry on a
+Modeled on WithingsClient: tokens stored per user in the GoogleHealthAuth
+table, auto-refreshed 5 minutes before expiry, single refresh-and-retry on a
 401. Run `google_health_login` to do a fresh OAuth flow.
 
 Credentials from environment variables:
@@ -195,7 +195,8 @@ class GoogleHealthReauthRequired(Exception):
 
 
 class GoogleHealthClient:
-    def __init__(self):
+    def __init__(self, user):
+        self.user = user
         self.client_id = os.environ.get("GOOGLE_HEALTH_CLIENT_ID", "")
         self.client_secret = os.environ.get("GOOGLE_HEALTH_CLIENT_SECRET", "")
         self.redirect_uri = os.environ.get("GOOGLE_HEALTH_REDIRECT_URI", "")
@@ -204,9 +205,9 @@ class GoogleHealthClient:
     # ── Token helpers ─────────────────────────────────────────────────────────
 
     def _load_tokens(self) -> None:
-        """Load tokens from the GoogleHealthAuth DB singleton into self._tokens."""
+        """Load this user's tokens from GoogleHealthAuth into self._tokens."""
         from workouts.models import GoogleHealthAuth
-        auth = GoogleHealthAuth.get()
+        auth = GoogleHealthAuth.for_user(self.user)
         if not auth:
             raise RuntimeError(
                 "No Google Health credentials in DB. "
@@ -220,7 +221,7 @@ class GoogleHealthClient:
         }
 
     def _save_tokens(self, mark_reconnected: bool = False) -> None:
-        """Persist tokens to the GoogleHealthAuth DB singleton.
+        """Persist tokens to this user's GoogleHealthAuth row.
 
         mark_reconnected=True stamps connected_at to now — only appropriate
         for a fresh OAuth authorization (exchange_code), not a routine
@@ -239,7 +240,7 @@ class GoogleHealthClient:
         }
         if mark_reconnected:
             defaults["connected_at"] = dj_timezone.now()
-        GoogleHealthAuth.objects.update_or_create(pk=1, defaults=defaults)
+        GoogleHealthAuth.objects.update_or_create(user=self.user, defaults=defaults)
 
     def _ensure_token_valid(self) -> None:
         """Load from DB if needed, then auto-refresh if within 5 minutes of expiry."""

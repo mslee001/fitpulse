@@ -10,6 +10,7 @@ Workouts before the earliest date will have FTP set to null.
 from datetime import date, datetime, timezone
 from django.core.management.base import BaseCommand
 from workouts.models import CachedWorkout
+from workouts.management.user_arg import add_user_argument, resolve_user
 
 
 FTP_HISTORY = [
@@ -39,16 +40,16 @@ class Command(BaseCommand):
             "--discipline", default="",
             help="Only update workouts with this discipline (default: all cycling)",
         )
+        add_user_argument(parser)
 
     def handle(self, *args, **options):
         dry_run = options["dry_run"]
         discipline = options["discipline"] or None
 
-        qs = CachedWorkout.objects.filter(
-            discipline__in=["cycling", "bike_bootcamp"]
-        )
+        workouts = CachedWorkout.objects.for_user(resolve_user(options))
+        qs = workouts.filter(discipline__in=["cycling", "bike_bootcamp"])
         if discipline:
-            qs = CachedWorkout.objects.filter(discipline=discipline)
+            qs = workouts.filter(discipline=discipline)
 
         updated = skipped = 0
         for w in qs.iterator():

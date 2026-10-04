@@ -103,6 +103,7 @@
 {% endif %}
 
 <!-- AI Commentary -->
+{% if can.ai_body_commentary %}
 <div class="chart-card">
   <div class="chart-header">
     <h3 class="chart-title">AI COMMENTARY</h3>
@@ -116,11 +117,14 @@
       <div style="border-left:3px solid var(--accent-alt);background:var(--bg-raised);padding:1rem 1.25rem;border-radius:var(--r);line-height:1.7">
         {{ commentary|format_nutrition_insights }}
       </div>
+    {% elif ai_unavailable_reason %}
+      {% include "workouts/partials/ai_unavailable.html" %}
     {% else %}
       <p style="color:var(--text-muted);font-size:0.875rem">No commentary yet — requires ANTHROPIC_API_KEY.</p>
     {% endif %}
   </div>
 </div>
+{% endif %}
 
 <!-- Nutrition summary -->
 {% if nutrition_avg_cal or nutrition_targets %}

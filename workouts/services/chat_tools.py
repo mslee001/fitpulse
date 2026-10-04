@@ -10,6 +10,7 @@ bounds both token cost and hallucination risk on multi-day data.
 
 import datetime
 from difflib import get_close_matches
+from functools import partial
 
 from django.db.models import Avg, Count, Min, Max
 
@@ -37,7 +38,7 @@ def _parse_date(d):
     return datetime.date.fromisoformat(str(d))
 
 
-def get_daily_stats_summary(start_date, end_date, metrics, detail=False):
+def get_daily_stats_summary(user, start_date, end_date, metrics, detail=False):
     """Aggregate DailyStats fields over a date range."""
     start_date = _parse_date(start_date)
     end_date = _parse_date(end_date)
@@ -45,7 +46,7 @@ def get_daily_stats_summary(start_date, end_date, metrics, detail=False):
     known = [m for m in metrics if m in ALLOWED_METRICS]
     skipped = [m for m in metrics if m not in ALLOWED_METRICS]
 
-    qs = DailyStats.objects.filter(date__gte=start_date, date__lte=end_date).order_by("date")
+    qs = DailyStats.objects.for_user(user).filter(date__gte=start_date, date__lte=end_date).order_by("date")
     days_with_data = qs.exclude(**{f"{known[0]}__isnull": True}).count() if known else 0
 
     metrics_out = {}
@@ -95,12 +96,12 @@ def get_daily_stats_summary(start_date, end_date, metrics, detail=False):
     return result
 
 
-def get_workout_summary(start_date, end_date, discipline="all"):
+def get_workout_summary(user, start_date, end_date, discipline="all"):
     """Aggregate CachedWorkout over a date range, grouped by discipline."""
     start_date = _parse_date(start_date)
     end_date = _parse_date(end_date)
 
-    qs = CachedWorkout.objects.filter(
+    qs = CachedWorkout.objects.for_user(user).filter(
         created_at__date__gte=start_date, created_at__date__lte=end_date
     )
     if discipline != "all":
@@ -131,18 +132,18 @@ def get_workout_summary(start_date, end_date, discipline="all"):
     }
 
 
-def get_nutrition_summary(start_date, end_date):
+def get_nutrition_summary(user, start_date, end_date):
     """Nutrition adherence summary over an arbitrary date range."""
     start_date = _parse_date(start_date)
     end_date = _parse_date(end_date)
 
-    targets = compute_macro_targets()
+    targets = compute_macro_targets(user)
 
     cal_t = targets.get("calories") if targets else None
     prot_t = targets.get("protein_g") if targets else None
     fiber_t = targets.get("fiber_g") if targets else None
 
-    qs = DailyStats.objects.filter(
+    qs = DailyStats.objects.for_user(user).filter(
         date__gte=start_date, date__lte=end_date, cal_total__isnull=False
     )
     today = datetime.date.today()
@@ -181,18 +182,18 @@ def get_nutrition_summary(start_date, end_date):
     }
 
 
-def get_intervention_context(as_of_date=None, run_before_after=False,
+def get_intervention_context(user, as_of_date=None, run_before_after=False,
                               intervention_name=None, window_days=28):
     """List active interventions, or run a before/after analysis for one."""
     as_of = _parse_date(as_of_date) if as_of_date else datetime.date.today()
 
     if run_before_after and intervention_name:
-        matches = Intervention.objects.filter(name__icontains=intervention_name)
+        matches = Intervention.objects.for_user(user).filter(name__icontains=intervention_name)
         intervention = matches.first()
         if intervention is None:
             return {
                 "error": "not_found",
-                "available": list(Intervention.objects.values_list("name", flat=True)),
+                "available": list(Intervention.objects.for_user(user).values_list("name", flat=True)),
             }
 
         split_date = as_of
@@ -206,6 +207,7 @@ def get_intervention_context(as_of_date=None, run_before_after=False,
         after_end = split_date + datetime.timedelta(days=window_days - 1)
 
         analysis = run_intervention_analysis(
+            user,
             before_start, before_end, after_start, after_end,
         )
 
@@ -242,7 +244,7 @@ def get_intervention_context(as_of_date=None, run_before_after=False,
         return {"error": "intervention_name is required when run_before_after=true"}
 
     active = []
-    for iv in Intervention.objects.all():
+    for iv in Intervention.objects.for_user(user).all():
         if iv.end_date is not None and iv.end_date < as_of:
             continue
         if iv.start_date > as_of:
@@ -258,12 +260,12 @@ def get_intervention_context(as_of_date=None, run_before_after=False,
     return {"as_of_date": as_of.isoformat(), "active_interventions": active}
 
 
-def get_symptoms_and_hunger_summary(start_date, end_date):
+def get_symptoms_and_hunger_summary(user, start_date, end_date):
     """Symptom frequency/severity and hunger-level summary over a date range."""
     start_date = _parse_date(start_date)
     end_date = _parse_date(end_date)
 
-    symptom_qs = SideEffectLog.objects.filter(date__gte=start_date, date__lte=end_date)
+    symptom_qs = SideEffectLog.objects.for_user(user).filter(date__gte=start_date, date__lte=end_date)
     symptoms = {}
     for row in symptom_qs.values("symptom").annotate(count=Count("id"), avg_severity=Avg("severity")):
         symptoms[row["symptom"]] = {
@@ -271,7 +273,7 @@ def get_symptoms_and_hunger_summary(start_date, end_date):
             "avg_severity": round(row["avg_severity"], 1),
         }
 
-    hunger_qs = HungerCheck.objects.filter(date__gte=start_date, date__lte=end_date)
+    hunger_qs = HungerCheck.objects.for_user(user).filter(date__gte=start_date, date__lte=end_date)
     avg_by_context = {}
     for row in hunger_qs.values("context").annotate(avg=Avg("hunger_level")):
         avg_by_context[row["context"]] = round(row["avg"], 1)
@@ -394,10 +396,13 @@ CHAT_TOOLS = [
     },
 ]
 
-TOOL_DISPATCH = {
-    "get_daily_stats_summary": get_daily_stats_summary,
-    "get_workout_summary": get_workout_summary,
-    "get_nutrition_summary": get_nutrition_summary,
-    "get_intervention_context": get_intervention_context,
-    "get_symptoms_and_hunger_summary": get_symptoms_and_hunger_summary,
-}
+def build_tool_dispatch(user):
+    """Tool name → callable with the requesting user already bound. The model
+    picks tools and arguments, never whose data they read."""
+    return {
+        "get_daily_stats_summary": partial(get_daily_stats_summary, user),
+        "get_workout_summary": partial(get_workout_summary, user),
+        "get_nutrition_summary": partial(get_nutrition_summary, user),
+        "get_intervention_context": partial(get_intervention_context, user),
+        "get_symptoms_and_hunger_summary": partial(get_symptoms_and_hunger_summary, user),
+    }

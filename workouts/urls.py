@@ -36,6 +36,7 @@ from .ai import (
     pattern_insights_refresh, pattern_insights_check,
     weekly_review_check,
 )
+from . import admin_views, onboarding_views
 from .program_views import (
     program_list, program_new, program_new_plan, program_detail, program_delete, program_run,
     program_edit, program_duplicate, program_new_blank,
@@ -149,4 +150,28 @@ urlpatterns = [
     path("programs/run-week/<int:pk>/rate/", run_week_rate, name="run_week_rate"),
     path("programs/run/<int:pk>/retrospective/", program_retrospective, name="program_retrospective"),
     path("programs/run/<int:pk>/delete/", program_delete_run, name="program_delete_run"),
+    # Admin: household accounts (owner only)
+    path("settings/users/", admin_views.admin_users, name="admin_users"),
+    path("settings/users/new/", admin_views.admin_user_new, name="admin_user_new"),
+    path("settings/users/<int:pk>/", admin_views.admin_user_detail, name="admin_user_detail"),
+    path("settings/users/<int:pk>/feature/<slug:slug>/", admin_views.admin_user_feature_toggle,
+         name="admin_user_feature_toggle"),
+    path("settings/users/<int:pk>/ai/", admin_views.admin_user_ai, name="admin_user_ai"),
+    path("settings/users/<int:pk>/reset-password/", admin_views.admin_user_reset_password,
+         name="admin_user_reset_password"),
+    path("settings/users/<int:pk>/active/", admin_views.admin_user_active, name="admin_user_active"),
+    path("settings/users/<int:pk>/reset-onboarding/", admin_views.admin_user_reset_onboarding,
+         name="admin_user_reset_onboarding"),
+    path("settings/users/<int:pk>/gh-test-user/", admin_views.admin_user_gh_test_user,
+         name="admin_user_gh_test_user"),
+    # Get Started onboarding + Withings web OAuth
+    path("get-started/", onboarding_views.get_started, name="get_started"),
+    path("get-started/skip/<str:source>/", onboarding_views.gs_skip, name="gs_skip"),
+    path("get-started/unskip/<str:source>/", onboarding_views.gs_unskip, name="gs_unskip"),
+    path("get-started/nutrition/", onboarding_views.gs_nutrition_profile, name="gs_nutrition_profile"),
+    path("get-started/finish/", onboarding_views.gs_finish, name="gs_finish"),
+    path("get-started/status/<str:source>/", onboarding_views.gs_sync_status, name="gs_sync_status"),
+    path("get-started/retry/<str:source>/", onboarding_views.gs_retry, name="gs_retry"),
+    path("auth/withings/connect/", onboarding_views.withings_oauth_connect, name="withings_oauth_connect"),
+    path("auth/withings/callback/", onboarding_views.withings_oauth_callback, name="withings_oauth_callback"),
 ]

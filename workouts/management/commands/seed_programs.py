@@ -6,6 +6,7 @@ from workouts.models import (
     CachedWorkout, Program, ProgramWeek, ProgramSlot, ProgramRun, RunWeek,
 )
 from workouts.programs import workout_local_date
+from workouts.management.user_arg import add_user_argument, resolve_user
 
 HILIT_REGEX = r"W(?:eek)?\s*(?P<week>\d+)[,\s]*D(?:ay)?\s*(?P<day>\d+)"
 
@@ -82,14 +83,18 @@ SPLIT_KNOWN = [
 class Command(BaseCommand):
     help = "Seed the HiLit plan and the Rebecca 3 Day Split programs (idempotent)."
 
+    def add_arguments(self, parser):
+        add_user_argument(parser)
+
     def handle(self, *args, **opts):
+        self.user = resolve_user(opts)
         self._seed_hilit()
         self._seed_split()
         self.stdout.write(self.style.SUCCESS("Seed complete."))
 
     def _seed_hilit(self):
         p, created = Program.objects.get_or_create(
-            slug="hilit",
+            user=self.user, slug="hilit",
             defaults=dict(
                 name="HiLit", kind="plan", instructor="Rebecca Kennedy",
                 match_strategy="achievement", achievement_name="HiLit Training Plan",
@@ -107,7 +112,8 @@ class Command(BaseCommand):
             )
         # Seed an empty current run so the 4-week grid shows immediately.
         if p.active_run is None:
-            first = CachedWorkout.objects.filter(title__icontains="HiLit").order_by("created_at").first()
+            first = (CachedWorkout.objects.for_user(self.user)
+                     .filter(title__icontains="HiLit").order_by("created_at").first())
             start = workout_local_date(first) if first else date.today()
             run = ProgramRun.objects.create(program=p, start_date=start, label="Cycle 1")
             for n in range(1, 5):
@@ -117,7 +123,7 @@ class Command(BaseCommand):
 
     def _seed_split(self):
         p, created = Program.objects.get_or_create(
-            slug="rebecca-3-day-split",
+            user=self.user, slug="rebecca-3-day-split",
             defaults=dict(
                 name="Rebecca 3 Day Split", kind="split", instructor="Rebecca Kennedy",
                 match_strategy="ride_ids", series_id_hint=SPLIT_SERIES_ID,
@@ -129,7 +135,7 @@ class Command(BaseCommand):
         # Refresh title/discipline for each known ride-id from synced history, if present.
         all_ids = {rid for entry in SPLIT_KNOWN for rid in entry["ride_ids"]}
         discovered = {}
-        for w in CachedWorkout.objects.filter(ride_id__in=all_ids):
+        for w in CachedWorkout.objects.for_user(self.user).filter(ride_id__in=all_ids):
             rid = w.ride_id
             if rid and rid not in discovered:
                 discovered[rid] = (w.title or "", w.discipline or "strength")
