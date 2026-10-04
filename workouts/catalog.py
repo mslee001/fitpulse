@@ -12,7 +12,7 @@ or once page >= ceil(total / 100).
 import logging
 import math
 import time
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.db.models import Max
 from django.utils import timezone
@@ -170,6 +170,9 @@ def sync_catalog(user, categories=None, full=False, pause=0.2) -> dict:
                     .update(is_available=False))
             stats["marked_unavailable"] = gone
     summary["total_classes"] = PelotonClass.objects.filter(is_available=True).count()
+    failed = [f"{cat}: {c['error']}" for cat, c in summary["categories"].items() if c["error"]]
+    if failed:   # a top-level "error" makes the SyncJob fail, so the weekly full sync retries
+        summary["error"] = "; ".join(failed)[:500]
     return summary
 
 
@@ -248,3 +251,47 @@ class DifficultyRanker:
         for w in workouts:
             w.difficulty_info = self.rank(classes.get(w.ride_id), w.difficulty_estimate)
         return workouts
+
+
+# ---------------------------------------------------------------------------
+# Weekly full sync (sync_daily)
+# ---------------------------------------------------------------------------
+
+FULL_SYNC_EVERY = timedelta(days=7)   # sync_daily runs a full sync when the last good one is this old
+
+
+def last_full_sync(user):
+    """The most recent successful full catalog sync (a "catalog" SyncJob — the
+    Refresh catalog button and sync_daily's weekly run both record one), or None."""
+    from .models import SyncJob
+    return SyncJob.objects.for_user(user).filter(source="catalog", status="done").order_by("-finished_at").first()
+
+
+def full_sync_due(user, now=None):
+    last = last_full_sync(user)
+    return last is None or last.finished_at is None or (now or timezone.now()) - last.finished_at >= FULL_SYNC_EVERY
+
+
+def catalog_job_running(user):
+    from .background import latest_job
+    job = latest_job(user, "catalog")   # refreshed: a job orphaned by a restart reads as failed
+    return job is not None and job.status == "running"
+
+
+def run_recorded_full_sync(user):
+    """A full sync in this process, recorded as a "catalog" SyncJob exactly like
+    the button's background job (so the Integrations card and full_sync_due see it)."""
+    import json
+    from .models import SyncJob
+    job = SyncJob.objects.create(user=user, source="catalog")
+    try:
+        result = sync_catalog(user, full=True)
+        job.summary = json.loads(json.dumps(result, default=str))
+        job.status, job.error = ("failed", result["error"]) if result.get("error") else ("done", "")
+        return result
+    except Exception as exc:
+        job.status, job.error = "failed", str(exc)[:500]
+        raise
+    finally:
+        job.finished_at = timezone.now()
+        job.save(update_fields=["status", "summary", "error", "finished_at"])
