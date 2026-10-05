@@ -3,35 +3,34 @@
 {% block title %}{{ workout.title }} — FitPulse{% endblock %}
 
 {% block content %}
-{% with dcolor=workout.discipline|discipline_color %}
-<div class="mb-6 flex flex-col gap-4">
-  <a href="{% url 'history' %}" class="text-sm">← History</a>
-  <div class="relative isolate flex flex-col gap-4 md:flex-row md:items-end md:justify-between{% if workout.class_image_url %} ui-panel overflow-hidden{% endif %}" data-vt-target style="view-transition-name: fp-hero">
-    {% if workout.class_image_url %}
-    {# Blurred class art behind the header; the scrim keeps text contrast in both themes. #}
-    <img src="{{ workout.class_image_url }}" alt="" aria-hidden="true" class="absolute inset-0 -z-10 size-full scale-110 object-cover opacity-25 blur-2xl dark:opacity-20">
-    <div class="absolute inset-0 -z-10 bg-base-100/60" aria-hidden="true"></div>
-    {% endif %}
-    <div class="min-w-0">
-      <span class="badge border-0 font-medium" style="color: {{ dcolor }}; background: color-mix(in oklab, {{ dcolor }} 15%, transparent)">{% block discipline_tag %}{{ workout.fitness_discipline_display|default:"Workout" }}{% endblock %}</span>
-      <h1 class="ui-page-title mt-2">{% block page_title %}{{ workout.title|default:"Workout" }}{% endblock %}</h1>
-      <p class="ui-page-sub mt-1">
-        {{ workout.created_at|date:"l, F j, Y · g:i A" }}
-        {% if workout.instructor_name %} · {{ workout.instructor_name }}{% endif %}
-        {% if workout.duration_minutes %} · {{ workout.duration_minutes }} min{% endif %}
-      </p>
-    </div>
-    {% if workout.class_image_url %}
-    <img src="{{ workout.class_image_url }}" alt="" class="aspect-[21/9] w-full rounded-box object-cover md:w-80">
-    {% elif workout.source == "garmin" and workout.discipline %}
-    <div class="garmin-default-img garmin-default-img--{{ workout.discipline }} flex aspect-[21/9] w-full items-center justify-center rounded-box text-6xl md:w-80" aria-hidden="true">{{ workout.discipline|garmin_emoji }}</div>
-    {% endif %}
-  </div>
-</div>
-{% endwith %}
+<a href="{% url 'history' %}" class="mb-4 inline-block text-sm">← History</a>
 
 <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
   <div class="flex min-w-0 flex-col gap-5">
+    {# Header: same width as the cards under it (the sidebar starts beside it). #}
+    {% with dcolor=workout.discipline|discipline_color %}
+    <div class="relative isolate flex flex-col gap-4 md:flex-row md:items-end md:justify-between{% if workout.class_image_url %} ui-panel overflow-hidden{% endif %}" data-vt-target style="view-transition-name: fp-hero">
+      {% if workout.class_image_url %}
+      {# Blurred class art behind the header; the scrim keeps text contrast in both themes. #}
+      <img src="{{ workout.class_image_url }}" alt="" aria-hidden="true" class="absolute inset-0 -z-10 size-full scale-110 object-cover opacity-25 blur-2xl dark:opacity-20">
+      <div class="absolute inset-0 -z-10 bg-base-100/60" aria-hidden="true"></div>
+      {% endif %}
+      <div class="min-w-0">
+        <span class="badge border-0 font-medium" style="color: {{ dcolor }}; background: color-mix(in oklab, {{ dcolor }} 15%, transparent)">{% block discipline_tag %}{{ workout.fitness_discipline_display|default:"Workout" }}{% endblock %}</span>
+        <h1 class="ui-page-title mt-2">{% block page_title %}{{ workout.title|default:"Workout" }}{% endblock %}</h1>
+        <p class="ui-page-sub mt-1">
+          {{ workout.created_at|date:"l, F j, Y · g:i A" }}
+          {% if workout.instructor_name %} · {{ workout.instructor_name }}{% endif %}
+          {% if workout.duration_minutes %} · {{ workout.duration_minutes }} min{% endif %}
+        </p>
+      </div>
+      {% if workout.class_image_url %}
+      <img src="{{ workout.class_image_url }}" alt="" class="aspect-[21/9] w-full shrink-0 rounded-box object-cover md:w-60 xl:w-72">
+      {% elif workout.source == "garmin" and workout.discipline %}
+      <div class="garmin-default-img garmin-default-img--{{ workout.discipline }} flex aspect-[21/9] w-full items-center justify-center rounded-box text-6xl md:w-60 xl:w-72" aria-hidden="true">{{ workout.discipline|garmin_emoji }}</div>
+      {% endif %}
+    </div>
+    {% endwith %}
 
     {% if workout_detail.is_pr %}
     <div role="status" class="ui-panel ui-featured ui-enter flex items-center gap-4">
