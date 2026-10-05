@@ -14,7 +14,7 @@ Each person has their own account and their own data. The first superuser is the
 - **Users page** (owner only, `/settings/users/`) — create accounts with a one-time temporary password, turn individual features on or off per person, switch AI on or off and set a monthly AI spend cap, and see each person's setup and connection status. It never shows anyone's health data
 - **Get Started** — new users change their temporary password, then connect Peloton, Withings and Google Health, fill in a nutrition and coaching profile, and finish setup. Their history imports in the background. Afterwards the page stays available as a setup guide
 - **Dashboard** — overview of total workouts and discipline breakdown
-- **Workout history** — filterable, sortable list of all cached workouts
+- **Workout history** — filterable, sortable list of all cached workouts, each with the class's difficulty in context ("harder than 68% of 30-min Endurance classes") and your effort per minute
 - **Discipline-specific detail pages** — power zone charts for cycling, pace/splits/HR/running form for runs, muscle groups and exercise sets for strength
 - **Running form** — Garmin foot pod metrics (cadence, stride length, vertical oscillation, vertical ratio, ground contact time) overlaid on run charts; walking filtered from averages
 - **Calendar** — monthly grid with per-day workout dots, training readiness scores, and a next-workout AI recommendation
@@ -26,6 +26,7 @@ Each person has their own account and their own data. The first superuser is the
 - **Webhook error log** — failed background syncs are recorded and viewable in the UI (self-pruning after 2 weeks) instead of only living in server logs
 - **Compare** — side-by-side comparison of 2–4 workouts with AI narrative analysis
 - **Programs** — track structured training plans and splits, with progression charts and AI retrospectives
+- **AI training plans** — enter a goal (5K, 10K, half, marathon or a running base) and get a week-by-week plan of real Peloton classes built from your own running history and pace, standalone or alongside another program; review and swap classes before saving, follow it on a run page with days, dates and pace advice, and reassess it mid-way from how your runs have actually gone (see [AI Training Plans](#ai-training-plans))
 - **Strength trends** — per-exercise weight trends and "move up a dumbbell" recommendations from your exercise log
 - **Body composition** — weight trend chart with rolling averages, body composition stacked chart, and recovery sparklines (HRV, sleep, resting HR, body battery) from Withings scale data
 - **Interventions & Trends** — track health interventions (medications, supplements, habits) with dose history; before/after statistical analysis across 20+ wellness metrics with AI interpretation; save and revisit analyses
@@ -205,10 +206,51 @@ Each source is independent — no combined "sync everything" button, and syncing
 | **Garmin Sync All** | Full backfill of all Garmin activities (owner) |
 | **Withings Sync All** | Full Withings history backfill |
 | **Google Health Sync All** | Full Google Health history backfill (wellness + exercise, ~3 years back) |
+| **Refresh catalog** (owner, Peloton card) | Full sync of the shared Peloton class catalog that training plans pick from (~42k classes, a few minutes) |
 
 Withings and Google Health also push updates automatically via webhooks. Withings notifications are routed to the right person by their Withings account; Google Health notifications currently re-sync every connected person for the notified dates.
 
 Peloton sign-ins renew automatically. If Peloton ends one, FitPulse shows a "Peloton needs reconnecting" banner — repeat the connect steps from the **Integrations** page. Garmin and Withings tokens auto-refresh. Google Health refresh tokens expire every 7 days while the Google Cloud project is in "Testing" status — reconnect from the Integrations page when that happens.
+
+---
+
+## AI Training Plans
+
+Programs → **+ New Training Plan** (needs the *Plan import, training plans & retrospectives* AI feature).
+
+### The class catalog
+
+Plans are built from FitPulse's copy of Peloton's on-demand library — running, walking, strength, stretching, pilates, cycling and yoga, about 42,000 classes. It's shared by everyone in the household and synced with the owner's Peloton connection:
+
+- once by the owner: **Settings → Data Sources → Peloton Connection → Refresh catalog** (or `venv/bin/python3 manage.py sync_peloton_catalog --full`)
+- automatically after that: the daily sync checks for new classes every run and does a full refresh once a week
+
+### Building a plan
+
+1. **Goal** — race distance and date (or a 4–16 week running base), optional target time, start date.
+2. **Pace** — FitPulse reads your Peloton pace level from your latest Tread run (you can override it) and shows your zone paces from Peloton's pace chart. With a target time it shows the goal pace, the zone it falls in at your level, and the level whose race-day zone matches it.
+3. **Starting level** — suggested from your history (beginner, returning, intermediate, advanced) with the evidence, and a warning if the time to race day is short for that level.
+4. **Schedule** — training days, a long-run day, max session lengths, tread or outdoor.
+5. **How it fits** — *standalone* (your main training, with optional strength, pilates and yoga) or *alongside* a program you're already doing (runs and short stretches scheduled around its strength days).
+
+Claude Sonnet writes the week-by-week structure from your actual running history; FitPulse then picks a real class for every session (newest classes first, a rating floor, nothing you've taken in the last 60 days, difficulty matched to each session within its class type). A few rules it follows:
+
+- weekly running minutes rise gradually, with lighter weeks in longer plans and a taper before race day
+- easy and long runs stay in your Easy–Moderate zones; quality sessions practise goal pace and faster
+- for a 5K or 10K, the long run builds to longer than the race itself (at least 45 min, about 1.25× race time, at easy pace)
+- session lengths are ones Peloton actually makes (15, 20, 30, 45, 60 …)
+
+The **review page** shows every session with the picked class (difficulty, rating, air date, "taken before" tag, a link that opens the class on Peloton so you can add it to your Stack), any adjustments FitPulse made, and a pace card with advice on when to try the next pace level. **Swap** or **Choose…** any class, then **Create plan**. It becomes a normal program, so your classes are matched automatically as you take them.
+
+### Following it
+
+The plan's run page shows a PLAN card (summary, pace numbers and pace advice), each week's dates and focus, and every session in day order with its day and date ("Wed · Oct 7"). Upcoming sessions have a **Swap** button if you want a different class. Rate each week's effort (1–10) on the run page — it's the clearest signal for reassessing.
+
+### Reassessing mid-way
+
+**Reassess weeks N–end** (in the PLAN card) rewrites the rest of the plan from how it's actually going: sessions done vs planned, your pace and zone on each run, effort per minute and heart rate, missed runs, your weekly ratings, and any change in your Peloton pace level. If it's been too easy, the plan progresses a bit faster (within safe limits); if it's been hard or you've missed runs, it holds steady or eases off — missed sessions are never crammed into later weeks. You review the revised weeks, with a "What changed" list that cites the evidence, and nothing changes until you **Apply**. Completed sessions, earlier weeks and the race day stay as they are.
+
+FitPulse also suggests a reassessment (a banner on every page, no AI cost) when your Peloton pace level changed since the plan was made, you rated two weeks in a row 3/10 or lower (or 8/10 or higher), or you missed two or more planned runs in the last two weeks.
 
 ---
 
@@ -277,6 +319,7 @@ Requires `ANTHROPIC_API_KEY` in `.env`. All AI calls use the Anthropic API direc
 | Pattern insights | Insights page | claude-sonnet-5 (Batch API) | 7 days |
 | Weekly review | Weekly Review page | claude-sonnet-5 (Batch API) | Per week |
 | Plan import, program retrospectives | Programs | claude-haiku-4-5, claude-sonnet-5 | Saved with program |
+| Training plan generation and reassessment | Programs → New Training Plan, plan run page | claude-sonnet-5 | Saved with the plan (about $0.03–0.12 per plan) |
 | Stats chat | Sidebar | claude-sonnet-5 | Per conversation |
 
 Each AI feature can be turned on per person on the Users page, along with a master AI switch and an optional monthly budget in US dollars. Every call's token usage and cost is logged per person and per feature; the Users page shows this month's totals (counts and cost only, never what was asked or answered). When someone reaches their budget, AI cards show "You've reached this month's AI limit. It resets on the 1st." The owner is never capped.
