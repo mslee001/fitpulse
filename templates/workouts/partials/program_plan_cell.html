@@ -1,6 +1,8 @@
+{% load workout_filters %}
 {# A not-yet-done cell on the run grid. AI training-plan slots dated today or later get a Swap button. #}
 <div class="pcell pcell-todo{% if cell.slot.optional %} pcell-optional{% endif %}" id="pcell-{{ cell.slot.pk }}">
-  <span class="pcell-title">{% if cell.slot.peloton_ride_id and cell.slot.spec_json %}<a href="https://members.onepeloton.com/classes/player/{{ cell.slot.peloton_ride_id }}" target="_blank" rel="noopener">{{ cell.slot.title }}</a>{% else %}{{ cell.slot.title }}{% endif %}</span>
+  {% if cell.day_label %}<span class="pcell-day">{{ cell.day_label }}</span>{% endif %}
+  <span class="pcell-title">{% if cell.slot.peloton_ride_id and cell.slot.spec_json %}<a href="{{ cell.slot.peloton_ride_id|peloton_class_url }}" target="_blank" rel="noopener" title="Open on Peloton to add it to your Stack">{{ cell.slot.title }}</a>{% else %}{{ cell.slot.title }}{% endif %}</span>
   {% if cell.slot.optional %}<span class="pcell-sub">optional</span>{% endif %}
   {% if cell.difficulty %}<span class="pcell-sub" title="Peloton members rate each class against their own fitness, so this only compares classes of the same type and length.">difficulty {{ cell.difficulty.difficulty|floatformat:1 }}{% if cell.difficulty.phrase %} · {{ cell.difficulty.phrase }}{% endif %}</span>{% endif %}
   {% if cell.swappable and can.programs %}

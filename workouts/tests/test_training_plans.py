@@ -776,3 +776,73 @@ class LengthAndTextTests(PlanTestCase):
         self.assertEqual(tp._clip(text, 60), "Start easy in the Easy zone through week 4.")
         self.assertEqual(tp._clip("word " * 30, 22), "word word word word…")
         self.assertEqual(tp._clip("short", 100), "short")
+
+
+class RunPageTests(PlanTestCase):
+    def created(self, **over):
+        comp = Program.objects.create(user=self.a, name="Split", slug="s", kind="split")
+        ProgramSlot.objects.create(week=ProgramWeek.objects.create(program=comp, number=1), day=2, title="Legs",
+                                   discipline="strength")
+        ProgramRun.objects.create(program=comp, start_date=TODAY - timedelta(days=30))
+        draft = PlanDraft.objects.create(user=self.a, inputs_json=self.inputs(mode="alongside",
+                                         companion_program_id=str(comp.pk), mobility="1", **over))
+        spec = full_spec()
+        for wk in spec["weeks"]:
+            wk["slots"].append(spec_slot(5, tid="t_yoga", disc="yoga", minutes=20, optional=True))
+        spec["pace_guidance"] = "Stay at Level 4 and run goal-pace work in the Challenging zone."
+        with patch.object(llm, "call_json", return_value=spec):
+            tp._generate(draft.pk)
+        draft.refresh_from_db()
+        return tp.create_program_from_draft(draft, "Fall 10K"), draft
+
+    def page(self, program):
+        return self.client_a.get(reverse("program_run", args=[program.active_run.pk])).content.decode()
+
+    def test_optional_sessions_in_upcoming_weeks_are_listed(self):
+        program, _ = self.created()
+        html = self.page(program)
+        yoga_titles = set(ProgramSlot.objects.filter(week__program=program, discipline="yoga")
+                          .values_list("title", flat=True))
+        self.assertEqual(sum(html.count(t) for t in yoga_titles), 7)    # one per week, none hidden
+
+    def test_optional_session_hidden_once_a_later_week_has_completions(self):
+        program, _ = self.created()
+        wk3 = ProgramSlot.objects.filter(week__program=program, week__number=3, discipline="running").first()
+        w = self.run_workout(self.a, WED_START + timedelta(days=14), ride_id=wk3.peloton_ride_id, wid="wk3")
+        ProgramWorkout.objects.create(run_week=program.active_run.run_weeks.get(sequence=3), slot=wk3, workout=w)
+        wk1_yoga = ProgramSlot.objects.get(week__program=program, week__number=1, discipline="yoga")
+        wk5_yoga = ProgramSlot.objects.get(week__program=program, week__number=5, discipline="yoga")
+        html = self.page(program)
+        self.assertNotIn(wk1_yoga.title, html)       # week 1 is behind you
+        self.assertIn(wk5_yoga.title, html)
+
+    def test_days_dates_and_week_details(self):
+        program, _ = self.created()
+        html = self.page(program)
+        self.assertIn("Wed · Oct 7", html)          # week 1 Wednesday is the start date
+        self.assertIn("Fri · Oct 16", html)          # week 2 Friday
+        self.assertIn("Oct 5 – Oct 11", html)
+        self.assertIn("build", html)
+
+    def test_plan_card_shows_summary_and_pace_advice(self):
+        program, _ = self.created(goal="10k", target_time="55:00")
+        html = self.page(program)
+        self.assertIn("Stay at Level 4 and run goal-pace work", html)
+        self.assertIn("Goal pace", html)
+
+    def test_older_plans_read_pace_advice_from_their_draft(self):
+        program, _ = self.created()
+        goal = dict(program.goal_json)
+        goal.pop("pace_summary"), goal.pop("weeks_info")
+        Program.objects.filter(pk=program.pk).update(goal_json=goal)
+        program.refresh_from_db()
+        self.assertIn("Stay at Level 4 and run goal-pace work", self.page(program))
+
+
+class ClassLinkTests(PlanTestCase):
+    def test_links_open_class_details_not_the_player(self):
+        url = "https://members.onepeloton.com/home/?modal=classDetailsModal&classId=t_end-30-0"
+        self.assertEqual(PelotonClass.objects.get(pk="t_end-30-0").peloton_url, url)
+        from workouts.templatetags.workout_filters import peloton_class_url
+        self.assertEqual(peloton_class_url("t_end-30-0"), url)
+        self.assertEqual(peloton_class_url(""), "")

@@ -148,29 +148,7 @@ def program_training_plan_draft(request, pk):
 
 
 def _pace_summary(draft):
-    """Display lines for the review page's pace card (from inputs["pace"] + the spec)."""
-    inputs, spec = draft.inputs_json, draft.spec_json
-    p = inputs.get("pace") or {}
-    lines = []
-    if p.get("level"):
-        lines.append(f"Peloton pace level {p['level']}")
-    if p.get("goal_pace_s"):
-        goal = f"Goal pace {tp._fmt_pace(p['goal_pace_s'])}"
-        if p.get("goal_zone"):
-            goal += f" ({p['goal_zone']} zone at Level {p['level']})"
-        lines.append(goal)
-        if p.get("race_level") and p.get("level") and p["race_level"] <= p["level"]:
-            lines.append(f"Level {p['level']} already covers goal pace")
-        elif p.get("race_level"):
-            lines.append(f"Race-pace level {p['race_level']}")
-    est = p.get("estimate")
-    if est:
-        lines.append(f"Current estimate {tp._fmt_hms(est['seconds'])} from training runs"
-                     + (f" · {p['gap_pct']}% to go" if p.get("gap_pct") and p["gap_pct"] > 0 else ""))
-    longest = max((sl["duration_min"] for _, sl in tp.iter_slots(spec) if sl["discipline"] == "running"), default=0)
-    if longest:
-        lines.append(f"Longest run {longest} min" + (f" (target {p['long_run_min']}+)" if p.get("long_run_min") else ""))
-    return {"lines": lines, "guidance": spec.get("pace_guidance", ""), "stretch": p.get("stretch")}
+    return tp.pace_summary(draft.inputs_json, draft.spec_json)
 
 
 def program_training_plan_status(request, pk):
@@ -292,7 +270,9 @@ def program_slot_swap(request, pk):
     if not slot_swappable(slot, entry):
         return HttpResponseBadRequest("Only upcoming, not-yet-done training-plan slots can be swapped.")
     new = tp.swap_program_slot(slot)
+    d = plan_slot_date(slot)
     return render(request, "workouts/partials/program_plan_cell.html", {
-        "cell": {"slot": slot, "entry": None, "swappable": True, "difficulty": DifficultyRanker().rank(new)},
+        "cell": {"slot": slot, "entry": None, "swappable": True, "difficulty": DifficultyRanker().rank(new),
+                 "day_label": f"{tp.DAY_NAMES.get(slot.day, '')} · {d:%b} {d.day}" if d else ""},
         "swap_note": "" if new else "No other matching class right now.",
     })

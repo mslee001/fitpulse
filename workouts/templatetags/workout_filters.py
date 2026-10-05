@@ -506,3 +506,10 @@ def ai_plan_tag(program):
         race = date.fromisoformat(goal["race_date"])
         return f"AI plan · {RACE_LABELS.get(goal['goal'], 'Race')} on {race:%b} {race.day}"
     return f"AI plan · {goal['weeks']}-week base" if goal.get("weeks") else "AI plan · running base"
+
+
+@register.filter
+def peloton_class_url(ride_id):
+    """Peloton class-details link for a ride id (add to Stack, start on the Tread)."""
+    from workouts.models import peloton_class_url as url
+    return url(ride_id) if ride_id else ""
