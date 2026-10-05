@@ -1545,12 +1545,15 @@ Rules:
 
 def _render_compare_analysis_html(text, ids_param=""):
     from django.http import HttpResponse
+    from django.template.loader import render_to_string
     regen = (
         f'<button class="btn btn-ghost btn-xs mt-4"'
         f' hx-get="/api/compare/analysis/?ids={ids_param}"'
         f' hx-target="#compare-ai-body" hx-swap="innerHTML"'
         f' hx-indicator="#compare-ai-spinner">Regenerate</button>'
-        f'<span id="compare-ai-spinner" class="loading loading-spinner loading-xs htmx-indicator ml-3"></span>'
+        f'<div id="compare-ai-spinner" class="mt-4 hidden [&.htmx-request]:block">'
+        + render_to_string("workouts/partials/ai_skeleton.html", {"what": "the comparison"})
+        + '</div>'
     )
     if not text:
         return HttpResponse(f'<p class="text-sm text-muted">Analysis unavailable.</p>{regen}')
@@ -1567,7 +1570,7 @@ def _render_compare_analysis_html(text, ids_param=""):
     headline_html = f'<div class="cai-headline">{headline}</div>' if headline else ""
     bullets_html = "".join(f'<li class="insights-item">{b}</li>' for b in bullets)
     list_html = f'<ul class="insights-list">{bullets_html}</ul>' if bullets_html else ""
-    return HttpResponse(f'{headline_html}{list_html}{regen}')
+    return HttpResponse(f'<div class="ui-enter">{headline_html}{list_html}</div>{regen}')
 
 
 # ---------------------------------------------------------------------------

@@ -42,7 +42,7 @@
       {% endwith %}
       {% if effort_zones.total_effort_points %}
       <div class="ui-stat ui-stat-hero">
-        <div class="ui-stat-label">Effort points</div>
+        <div class="ui-stat-label">Effort points {% metric_help "effort_points" %}</div>
         <div class="ui-stat-value text-success">{{ effort_zones.total_effort_points|floatformat:1 }}</div>
       </div>
       {% endif %}
@@ -157,7 +157,7 @@
 
         {% if run_form.cadence %}
         <div class="ui-stat bg-inset shadow-none">
-          <div class="ui-stat-label">Cadence</div>
+          <div class="ui-stat-label">Cadence {% metric_help "run_cadence" %}</div>
           <div class="ui-stat-value {% if run_form.cadence >= 165 %}text-success{% elif run_form.cadence >= 155 %}text-warning{% else %}text-error{% endif %}">
             {{ run_form.cadence|floatformat:0 }}<span class="ui-stat-unit">spm</span>
           </div>
@@ -167,7 +167,7 @@
 
         {% if run_form.stride_length %}
         <div class="ui-stat bg-inset shadow-none">
-          <div class="ui-stat-label">Stride length</div>
+          <div class="ui-stat-label">Stride length {% metric_help "stride_length" %}</div>
           <div class="ui-stat-value">{{ run_form.stride_length|floatformat:1 }}<span class="ui-stat-unit">cm</span></div>
           <div class="ui-stat-sub">shorter = less overstriding</div>
         </div>
@@ -175,7 +175,7 @@
 
         {% if run_form.vertical_oscillation %}
         <div class="ui-stat bg-inset shadow-none">
-          <div class="ui-stat-label">Vert. oscillation</div>
+          <div class="ui-stat-label">Vert. oscillation {% metric_help "vertical_oscillation" %}</div>
           <div class="ui-stat-value {% if run_form.vertical_oscillation <= 7.5 %}text-success{% elif run_form.vertical_oscillation <= 9 %}text-warning{% else %}text-error{% endif %}">
             {{ run_form.vertical_oscillation|floatformat:1 }}<span class="ui-stat-unit">cm</span>
           </div>
@@ -185,7 +185,7 @@
 
         {% if run_form.vertical_ratio %}
         <div class="ui-stat bg-inset shadow-none">
-          <div class="ui-stat-label">Vert. ratio</div>
+          <div class="ui-stat-label">Vert. ratio {% metric_help "vertical_ratio" %}</div>
           <div class="ui-stat-value {% if run_form.vertical_ratio <= 8 %}text-success{% elif run_form.vertical_ratio <= 10 %}text-warning{% else %}text-error{% endif %}">
             {{ run_form.vertical_ratio|floatformat:1 }}<span class="ui-stat-unit">%</span>
           </div>
@@ -195,7 +195,7 @@
 
         {% if run_form.ground_contact_time %}
         <div class="ui-stat bg-inset shadow-none">
-          <div class="ui-stat-label">Ground contact</div>
+          <div class="ui-stat-label">Ground contact {% metric_help "ground_contact_time" %}</div>
           <div class="ui-stat-value {% if run_form.ground_contact_time <= 260 %}text-success{% elif run_form.ground_contact_time <= 300 %}text-warning{% else %}text-error{% endif %}">
             {{ run_form.ground_contact_time|floatformat:0 }}<span class="ui-stat-unit">ms</span>
           </div>

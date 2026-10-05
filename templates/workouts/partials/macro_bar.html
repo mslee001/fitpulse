@@ -5,5 +5,5 @@
     <span class="ml-auto font-mono tabular-nums">{{ consumed }}<span class="text-muted"> / {{ target }}</span></span>
     {% if note %}<span class="basis-full text-right text-xs {{ note_tone|default:'text-muted' }}">{{ note }}</span>{% endif %}
   </div>
-  {% if target %}<div class="ui-bar"><span style="width: {{ pct }}%; max-width: 100%; background: var(--chart-{{ slot }})"></span></div>{% endif %}
+  {% if target %}<div class="ui-bar ui-bar-grow"><span style="--fp-w: {{ pct }}%; max-width: 100%; background: var(--chart-{{ slot }})"></span></div>{% endif %}
 </div>

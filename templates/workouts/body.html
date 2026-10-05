@@ -29,7 +29,7 @@
     <div class="ui-stat-value">{% if current_weight %}{{ current_weight|floatformat:1 }}<span class="ui-stat-unit">lb</span>{% else %}—{% endif %}</div>
   </div>
   <div class="ui-stat">
-    <div class="ui-stat-label">Body fat</div>
+    <div class="ui-stat-label">Body fat {% metric_help "fat_ratio" %}</div>
     <div class="ui-stat-value">{% if current_fat_pct %}{{ current_fat_pct|floatformat:1 }}<span class="ui-stat-unit">%</span>{% else %}—{% endif %}</div>
   </div>
   <div class="ui-stat">

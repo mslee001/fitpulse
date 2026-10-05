@@ -1,6 +1,6 @@
 <div class="feature-row">
   <form hx-post="{% url 'admin_user_feature_toggle' target.pk row.slug %}"
-        hx-target="closest .feature-row" hx-swap="outerHTML">
+        hx-target="closest .feature-row" hx-swap="outerHTML transition:true">
     {% csrf_token %}
     <label class="flex min-h-11 cursor-pointer items-start gap-3 py-1.5{% if row.ai and not target.is_superuser and not target.access.ai_enabled %} opacity-60{% endif %}">
       <input type="checkbox" class="toggle toggle-sm toggle-primary mt-0.5" {% if row.granted or target.is_superuser %}checked{% endif %} onchange="htmx.trigger(this.form, 'submit')"

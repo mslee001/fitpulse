@@ -77,7 +77,7 @@
             hx-indicator="#compare-ai-spinner">
       Generate analysis
     </button>
-    <span id="compare-ai-spinner" class="loading loading-spinner loading-xs htmx-indicator ml-3"></span>
+    <div id="compare-ai-spinner" class="mt-4 hidden [&.htmx-request]:block">{% include "workouts/partials/ai_skeleton.html" with what="the comparison" %}</div>
   </div>
 </div>
 {% endif %}

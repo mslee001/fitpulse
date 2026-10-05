@@ -380,7 +380,7 @@ function setServingNote(text) {
       </form>
       <details class="dropdown dropdown-end">
         <summary class="btn btn-sm rounded-none border-l border-subtle px-2 [&::-webkit-details-marker]:hidden list-none" title="Log a different serving size" aria-label="Log a different serving of {{ sm.name }}">%</summary>
-        <div class="dropdown-content z-30 mt-1 w-56 rounded-box border border-subtle bg-base-100 p-3 shadow-lg">
+        <div class="dropdown-content z-30 mt-1 w-56 rounded-box border border-subtle ui-glass p-3 shadow-lg">
           <form method="post" action="{% url 'nutrition_relog' sm.pk %}" class="flex flex-col gap-2">
             {% csrf_token %}
             <input type="hidden" name="date" value="{{ page_date|date:'Y-m-d' }}">

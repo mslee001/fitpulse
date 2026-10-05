@@ -6,7 +6,7 @@
   {% if cell.slot.optional %}<span class="text-xs text-muted">optional</span>{% endif %}
   {% if cell.difficulty %}<span class="text-xs text-muted" title="Peloton members rate each class against their own fitness, so this only compares classes of the same type and length.">difficulty {{ cell.difficulty.difficulty|floatformat:1 }}{% if cell.difficulty.phrase %} · {{ cell.difficulty.phrase }}{% endif %}</span>{% endif %}
   {% if cell.swappable and can.programs %}
-  <form class="mt-1" hx-post="{% url 'program_slot_swap' cell.slot.pk %}" hx-target="#pcell-{{ cell.slot.pk }}" hx-swap="outerHTML">
+  <form class="mt-1" hx-post="{% url 'program_slot_swap' cell.slot.pk %}" hx-target="#pcell-{{ cell.slot.pk }}" hx-swap="outerHTML transition:true">
     {% csrf_token %}<button type="submit" class="btn btn-xs btn-ghost">Swap</button>
   </form>
   {% endif %}

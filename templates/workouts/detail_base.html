@@ -6,7 +6,7 @@
 {% with dcolor=workout.discipline|discipline_color %}
 <div class="mb-6 flex flex-col gap-4">
   <a href="{% url 'history' %}" class="text-sm">← History</a>
-  <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+  <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between" data-vt-target style="view-transition-name: fp-hero">
     <div class="min-w-0">
       <span class="badge border-0 font-medium" style="color: {{ dcolor }}; background: color-mix(in oklab, {{ dcolor }} 15%, transparent)">{% block discipline_tag %}{{ workout.fitness_discipline_display|default:"Workout" }}{% endblock %}</span>
       <h1 class="ui-page-title mt-2">{% block page_title %}{{ workout.title|default:"Workout" }}{% endblock %}</h1>
@@ -96,7 +96,7 @@
       <div class="max-h-96 overflow-y-auto">
       {% for w in class_history %}
       <div class="flex items-center gap-3 border-b border-subtle py-2 last:border-0">
-        <a href="{% url 'workout_detail' w.workout_id %}" class="min-w-0 flex-1 text-base-content hover:no-underline">
+        <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="min-w-0 flex-1 text-base-content hover:no-underline">
           <div class="text-sm font-medium">{{ w.created_at|date:"M j, Y" }}</div>
           <div class="flex flex-wrap gap-x-3 font-mono text-xs text-muted">
             {% block history_item_stats %}{% endblock %}

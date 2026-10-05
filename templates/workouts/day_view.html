@@ -38,7 +38,7 @@
         <div class="absolute inset-0 flex items-center justify-center font-mono text-3xl font-medium tabular-nums">{{ stats.readiness_score }}</div>
       </div>
       <div class="flex flex-col gap-1">
-        <div class="font-semibold">Training readiness</div>
+        <div class="font-semibold">Training <span class="whitespace-nowrap">readiness {% if stats.readiness_is_computed %}{% metric_help "readiness_estimated" %}{% else %}{% metric_help "training_readiness" %}{% endif %}</span></div>
         {% if stats.readiness_label %}
         <div class="text-sm font-semibold {{ stats.readiness_color|tone }}">{{ stats.readiness_label|title }}</div>
         {% endif %}
@@ -53,7 +53,7 @@
       <h2 class="ui-panel-title mb-3">Recovery signals</h2>
       <dl class="ui-kv">
         {% if stats.hrv_last_night %}
-        <div><dt>HRV last night</dt><dd class="{{ stats.hrv_status|tone }}">{{ stats.hrv_last_night|floatformat:0 }} ms · {{ stats.hrv_status_display }}</dd></div>
+        <div><dt>HRV last night {% metric_help "hrv" %}</dt><dd class="{{ stats.hrv_status|tone }}">{{ stats.hrv_last_night|floatformat:0 }} ms · {{ stats.hrv_status_display }}</dd></div>
         {% endif %}
         {% if stats.hrv_weekly_avg %}
         <div><dt>HRV weekly avg</dt><dd>{{ stats.hrv_weekly_avg|floatformat:0 }} ms</dd></div>
@@ -62,10 +62,10 @@
         <div><dt>HRV range</dt><dd>{{ stats.hrv_min }}–{{ stats.hrv_max }} ms</dd></div>
         {% endif %}
         {% if stats.resting_hr %}
-        <div><dt>Resting HR</dt><dd>{{ stats.resting_hr }} bpm</dd></div>
+        <div><dt>Resting HR {% metric_help "resting_hr" %}</dt><dd>{{ stats.resting_hr }} bpm</dd></div>
         {% endif %}
         {% if stats.sleep_score %}
-        <div><dt>Sleep score</dt><dd class="{% if stats.sleep_score >= 75 %}text-success{% elif stats.sleep_score >= 50 %}text-warning{% else %}text-error{% endif %}">{{ stats.sleep_score }}</dd></div>
+        <div><dt>Sleep score {% metric_help "sleep_score" %}</dt><dd class="{% if stats.sleep_score >= 75 %}text-success{% elif stats.sleep_score >= 50 %}text-warning{% else %}text-error{% endif %}">{{ stats.sleep_score }}</dd></div>
         {% endif %}
         {% if stats.sleep_minutes %}
         <div><dt>Sleep duration</dt><dd>{{ stats.sleep_minutes|div:60|floatformat:0 }}h {{ stats.sleep_minutes|mod:60 }}m</dd></div>
@@ -80,13 +80,13 @@
         <div><dt>Light sleep</dt><dd>{{ stats.sleep_light_seconds|div:60|floatformat:0 }}m</dd></div>
         {% endif %}
         {% if stats.stress_avg %}
-        <div><dt>Avg stress</dt><dd class="{% if stats.stress_avg < 26 %}text-success{% elif stats.stress_avg < 51 %}text-warning{% else %}text-error{% endif %}">{{ stats.stress_avg }}</dd></div>
+        <div><dt>Avg stress {% metric_help "stress" %}</dt><dd class="{% if stats.stress_avg < 26 %}text-success{% elif stats.stress_avg < 51 %}text-warning{% else %}text-error{% endif %}">{{ stats.stress_avg }}</dd></div>
         {% endif %}
         {% if stats.body_battery_start is not None %}
-        <div><dt>Body battery</dt><dd>{% if is_today %}{{ stats.body_battery_start }} at wakeup{% else %}{{ stats.body_battery_start }} → {{ stats.body_battery_end|default:"?" }}{% endif %}</dd></div>
+        <div><dt>Body battery {% metric_help "body_battery" %}</dt><dd>{% if is_today %}{{ stats.body_battery_start }} at wakeup{% else %}{{ stats.body_battery_start }} → {{ stats.body_battery_end|default:"?" }}{% endif %}</dd></div>
         {% endif %}
         {% if stats.vo2_max_running %}
-        <div><dt>VO2 max (running)</dt><dd>{{ stats.vo2_max_running|floatformat:1 }}</dd></div>
+        <div><dt>VO2 max (running) {% metric_help "vo2_max" %}</dt><dd>{{ stats.vo2_max_running|floatformat:1 }}</dd></div>
         {% endif %}
         {% if stats.respiration_avg %}
         <div><dt>Respiration avg</dt><dd>{{ stats.respiration_avg|floatformat:1 }} br/min</dd></div>
@@ -131,7 +131,7 @@
         <div><dt>Intensity minutes</dt><dd>{{ stats.moderate_intensity_minutes|default:0 }} moderate · {{ stats.vigorous_intensity_minutes|default:0 }} vigorous</dd></div>
         {% endif %}
         {% if stats.active_zone_minutes %}
-        <div><dt>Active zone minutes</dt><dd>{{ stats.active_zone_minutes }}</dd></div>
+        <div><dt>Active zone minutes {% metric_help "azm" %}</dt><dd>{{ stats.active_zone_minutes }}</dd></div>
         {% endif %}
         {% if stats.sedentary_minutes %}
         <div><dt>Sedentary time</dt><dd>{{ stats.sedentary_minutes|div:60|floatformat:0 }}h {{ stats.sedentary_minutes|mod:60 }}m</dd></div>
@@ -160,7 +160,7 @@
         <div><dt>Status</dt><dd class="font-sans">{{ stats.training_status|title }}</dd></div>
         {% endif %}
         {% if stats.training_load %}
-        <div><dt>Acute load</dt><dd>{{ stats.training_load|floatformat:0 }}</dd></div>
+        <div><dt>Acute load {% metric_help "training_load" %}</dt><dd>{{ stats.training_load|floatformat:0 }}</dd></div>
         {% endif %}
       </dl>
       {% if load_focus_rows %}
@@ -262,7 +262,7 @@
       <div class="flex flex-col gap-2">
         {% for w in workouts %}
         {% with color=discipline_colors|get_item:w.discipline|default:"#888888" %}
-        <a href="{% url 'workout_detail' w.workout_id %}" class="flex flex-col gap-2 rounded-xl bg-inset p-3 text-base-content hover:no-underline hover:bg-base-300">
+        <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="ui-lift flex flex-col gap-2 rounded-xl bg-inset p-3 text-base-content hover:no-underline hover:bg-base-300">
           <span class="flex items-center gap-3">
             <span class="flex size-11 shrink-0 items-center justify-center rounded-xl text-xs font-semibold" style="color: {{ color }}; background: color-mix(in oklab, {{ color }} 15%, transparent)" aria-hidden="true">{{ w.discipline|slice:":3"|upper }}</span>
             <span class="min-w-0 flex-1">

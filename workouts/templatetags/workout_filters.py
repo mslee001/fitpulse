@@ -540,3 +540,38 @@ def peloton_class_url(ride_id):
     """Peloton class-details link for a ride id (add to Stack, start on the Tread)."""
     from workouts.models import peloton_class_url as url
     return url(ride_id) if ride_id else ""
+
+
+@register.filter
+def ring_offset(score, circumference=301.6):
+    """stroke-dashoffset that leaves `score`% (0–100) of a ring's arc drawn."""
+    try:
+        pct = min(max(float(score), 0.0), 100.0)
+    except (TypeError, ValueError):
+        pct = 0.0
+    return round(float(circumference) * (1 - pct / 100), 1)
+
+
+@register.simple_tag(takes_context=True)
+def metric_help(context, slug):
+    """An "i" button that opens a popover explaining a metric (workouts/glossary.py).
+    Unknown slugs raise in DEBUG and render nothing in production.
+
+    A simple_tag rendering its own template, not an inclusion_tag: inclusion tags copy
+    the Context, which Django 4.2 can't do on Python 3.14 (production's runtime)."""
+    from django.conf import settings
+    from django.template.loader import render_to_string
+    from workouts.glossary import METRIC_HELP
+    if slug not in METRIC_HELP:
+        if settings.DEBUG:
+            raise template.TemplateSyntaxError(f"metric_help: unknown slug {slug!r}")
+        return ""
+    # Popover ids must be unique per page; count per request.
+    request = context.get("request")
+    if request is not None:
+        n = request._metric_help_n = getattr(request, "_metric_help_n", 0) + 1
+    else:
+        n = context.render_context["_metric_help_n"] = context.render_context.get("_metric_help_n", 0) + 1
+    title, text = METRIC_HELP[slug]
+    return render_to_string("workouts/partials/metric_help.html",
+                            {"uid": f"{slug.replace('_', '-')}-{n}", "title": title, "text": text})

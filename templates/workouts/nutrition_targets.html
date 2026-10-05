@@ -124,7 +124,7 @@
       <dl class="ui-kv mt-3 border-t border-subtle pt-1">
         {% if targets.weight_lb %}<div><dt>Latest Withings weigh-in{% if targets.weight_date %} ({{ targets.weight_date }}){% endif %}</dt><dd>{{ targets.weight_lb }} lb{% if targets.lean_mass_lb %} · {{ targets.lean_mass_lb }} lb lean{% endif %}</dd></div>{% endif %}
         {% if targets.bmr %}<div><dt>BMR</dt><dd>{{ targets.bmr }}</dd></div>
-        <div><dt>TDEE ({{ targets.activity_level }})</dt><dd>{{ targets.tdee }}</dd></div>{% endif %}
+        <div><dt>TDEE ({{ targets.activity_level }}) {% metric_help "tdee" %}</dt><dd>{{ targets.tdee }}</dd></div>{% endif %}
       </dl>
       {% endif %}
     </div>

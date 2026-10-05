@@ -1,14 +1,14 @@
 {% load workout_filters %}
 {% if error %}
-<div role="alert" class="alert alert-soft alert-error">{{ error }}</div>
+<div role="alert" class="ui-enter alert alert-soft alert-error">{{ error }}</div>
 {% elif result and not result.ok %}
-<div role="alert" class="alert alert-soft alert-error">
+<div role="alert" class="ui-enter alert alert-soft alert-error">
   Couldn't parse that — try rephrasing or enter macros manually below.
 </div>
 {% elif result and result.items %}
 
 {% with confidence=result.confidence %}
-<form method="post" action="/nutrition/api/log/" id="save-food-form">
+<form method="post" action="/nutrition/api/log/" id="save-food-form" class="ui-enter">
   {% csrf_token %}
   <input type="hidden" name="date" value="{{ page_date }}">
   <input type="hidden" name="raw_text" value="{{ raw_text }}">

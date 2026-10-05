@@ -35,7 +35,7 @@
           {% else %}
           <a href="{% url 'day_view' cell.date|date:'Y-m-d' %}"
              aria-label="{{ cell.date|date:'l, F j' }}{% if cell.workouts %}: {{ cell.workouts|length }} workout{{ cell.workouts|length|pluralize }}{% endif %}{% if cell.stats and cell.stats.readiness_score is not None %}, readiness {{ cell.stats.readiness_score }}{% endif %}{% if cell.nutrition_status %}, nutrition logged{% endif %}"
-             class="flex min-h-16 flex-col gap-1 rounded-xl bg-base-100 p-1.5 text-base-content shadow-sm hover:no-underline hover:bg-base-300 sm:min-h-24 sm:p-2{% if cell.is_today %} ring-2 ring-primary{% endif %}{% if cell.is_future %} opacity-40{% endif %}">
+             class="ui-press flex min-h-16 flex-col gap-1 rounded-xl bg-base-100 p-1.5 text-base-content shadow-sm hover:no-underline hover:bg-base-300 sm:min-h-24 sm:p-2{% if cell.is_today %} ring-2 ring-primary{% endif %}{% if cell.is_future %} opacity-40{% endif %}">
             <div class="flex items-start justify-between gap-1">
               <span class="text-xs font-semibold sm:text-sm{% if cell.is_today %} text-primary{% endif %}">{{ cell.date.day }}</span>
               {% if cell.stats and cell.stats.readiness_score is not None %}

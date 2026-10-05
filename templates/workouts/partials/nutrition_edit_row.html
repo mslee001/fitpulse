@@ -33,7 +33,7 @@
         <button type="button" class="btn btn-ghost btn-xs"
                 hx-get="{% url 'nutrition_entry_row' entry.pk %}"
                 hx-target="closest tr"
-                hx-swap="outerHTML">Cancel</button>
+                hx-swap="outerHTML transition:true">Cancel</button>
       </div>
     </form>
   </td>

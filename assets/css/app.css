@@ -109,8 +109,18 @@
   --color-inset: color-mix(in oklab, var(--color-base-content) 5%, var(--color-base-100));
 }
 
+/* Count-up number (.ui-count): a registered integer so it can transition. */
+@property --fp-n { syntax: '<integer>'; inherits: false; initial-value: 0; }
+
 /* Chart series palette, validated for both themes. Read via window.fpChart. */
 @layer base {
+  /* Motion: one easing, three durations (CLAUDE.md → Styling → Motion). */
+  :root {
+    --fp-ease: cubic-bezier(.2, .7, .2, 1);
+    --fp-fast: 200ms;   /* hover, press, popovers, inserted rows */
+    --fp-fade: 300ms;   /* crossfades: theme, page */
+    --fp-show: 900ms;   /* signature moments only */
+  }
   :root, [data-theme="dark"] {
     --chart-1: #14A394; --chart-2: #3987E5; --chart-3: #D95926;
     --chart-4: #9085E9; --chart-5: #C98500; --chart-6: #D55181;
@@ -130,6 +140,19 @@
   /* Plain links are primary-colored; components (btn, menu, link) set their own. */
   a { color: var(--color-primary); }
   a:hover { text-decoration: underline; }
+
+  /* Invisible polish */
+  :where(.font-mono, code, kbd, td, .ui-stat-value) { font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+  /* Smooth <details> where supported (Chrome/Edge); elsewhere they open instantly.
+     daisyUI collapses animate themselves; nav dropdowns should appear at once. */
+  :root { interpolate-size: allow-keywords; }
+  details:not(.collapse, .dropdown)::details-content {
+    block-size: 0; overflow-y: clip;
+    transition: block-size var(--fp-fast) var(--fp-ease), content-visibility var(--fp-fast) allow-discrete;
+  }
+  details:not(.collapse, .dropdown)[open]::details-content { block-size: auto; }
 }
 
 /* FitPulse components: patterns daisyUI doesn't have. Keep this list short; anything
@@ -212,4 +235,70 @@
 
   /* Stats chat answers: <ul class="chat-list"> from format_chat_answer. */
   .chat-list { @apply list-disc pl-5 space-y-1; }
+
+  /* ── Motion (CLAUDE.md → Styling → Motion) ── */
+  /* Hover lift: cards that navigate somewhere. */
+  .ui-lift { transition: translate var(--fp-fast) var(--fp-ease), box-shadow var(--fp-fast) var(--fp-ease); }
+  .ui-lift:hover { translate: 0 -2px; @apply shadow-md; }
+
+  /* Press: tappable things that are NOT .btn (daisyUI buttons have their own). */
+  .ui-press { transition: scale 120ms var(--fp-ease); }
+  .ui-press:active { scale: .97; }
+
+  /* Arrive: inserted rows/cards and first paint fade up 6px. */
+  .ui-enter { transition: opacity var(--fp-fast) var(--fp-ease), translate var(--fp-fast) var(--fp-ease); }
+  @starting-style { .ui-enter { opacity: 0; translate: 0 6px; } }
+
+  /* Today only: staggered tiles. Each child sets style="--i: N". */
+  @keyframes fp-up { from { opacity: 0; translate: 0 8px; } }
+  .ui-stagger > * { animation: fp-up 320ms var(--fp-ease) both; animation-delay: calc(var(--i, 0) * 40ms); }
+
+  /* Signature: count-up number. The real value is in a sibling .sr-only for screen readers. */
+  .ui-count { --fp-n: var(--fp-to); counter-reset: fpn var(--fp-n); transition: --fp-n var(--fp-show) var(--fp-ease); }
+  @starting-style { .ui-count { --fp-n: 0; } }
+  .ui-count::after { content: counter(fpn); }
+
+  /* Signature: ring sweep. The final offset comes in as style="--fp-ring-to: N" (a custom
+     property, not an inline stroke-dashoffset, which would outrank @starting-style). */
+  .ui-ring-arc { stroke-dashoffset: var(--fp-ring-to); transition: stroke-dashoffset var(--fp-show) var(--fp-ease); }
+  @starting-style { .ui-ring-arc { stroke-dashoffset: var(--fp-ring-c, 301.6); } }
+
+  /* Signature: bars that grow on first paint (Today nutrition, Nutrition totals ONLY).
+     Width comes in as style="--fp-w: N%" for the same reason as the ring. */
+  .ui-bar-grow > span { width: var(--fp-w); transition: width 700ms var(--fp-ease); }
+  @starting-style { .ui-bar-grow > span { width: 0; } }
+
+  /* Glass: floating surfaces only (nav, dropdowns, chat panel, compare bar). */
+  .ui-glass { @apply bg-base-100/80 backdrop-blur-md; }
+
+  /* Phone: a stat grid becomes a horizontal snap row (Today + Day view only). */
+  .ui-stat-swipe { @apply max-sm:-mx-4 max-sm:flex max-sm:snap-x max-sm:snap-mandatory max-sm:overflow-x-auto max-sm:px-4 max-sm:pb-2 max-sm:scroll-px-4; scrollbar-width: none; }
+  .ui-stat-swipe > * { @apply max-sm:shrink-0 max-sm:basis-[44%] max-sm:snap-start; }
+
+  /* Metric help popovers ({% metric_help %}): under their "i" button where anchor
+     positioning exists; elsewhere the browser's centered top-layer card. */
+  @supports (anchor-name: --a) {
+    [popover][style*="position-anchor"] {
+      inset: auto; top: calc(anchor(bottom) + 6px); left: anchor(left);
+      position-try-fallbacks: flip-block, flip-inline;
+    }
+  }
+
+  /* Invisible polish */
+  .ui-page-title, .ui-section-title, .ui-panel-title { text-wrap: balance; }
+}
+
+/* Page transitions: every same-origin navigation crossfades (Chrome/Edge, Safari 18.2+);
+   one named element (fp-hero) morphs from a clicked card into the page header. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--fp-fade); }
+::view-transition-group(fp-hero) { animation-duration: 350ms; animation-timing-function: var(--fp-ease); }
+
+/* Reduced motion: the one deliberately unlayered rule. It only removes motion, so it
+   must beat every layer (including daisyUI's own transitions). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }

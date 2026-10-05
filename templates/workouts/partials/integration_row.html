@@ -36,7 +36,7 @@
     </a>
     {% endif %}
     <form hx-post="{% url 'integration_toggle' integration.key %}" hx-trigger="change"
-          hx-target="#integration-row-{{ integration.key }}" hx-swap="outerHTML">
+          hx-target="#integration-row-{{ integration.key }}" hx-swap="outerHTML transition:true">
       {% csrf_token %}
       <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
         <input type="checkbox" class="toggle toggle-primary" aria-label="{{ integration.display_name }} enabled"{% if integration.is_enabled %} checked{% endif %}>

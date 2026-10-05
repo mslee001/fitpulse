@@ -22,7 +22,7 @@
   <h2 class="ui-section-title">Current</h2>
   <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
     {% for p in current_programs %}
-    <a class="kind-scope--{{ p.kind }} ui-panel flex flex-col gap-2 border-l-4 border-primary text-base-content hover:no-underline hover:bg-base-300" href="{% url 'program_detail' p.slug %}">
+    <a data-vt-hero class="kind-scope--{{ p.kind }} ui-panel ui-lift flex flex-col gap-2 border-l-4 border-primary text-base-content hover:no-underline hover:bg-base-300" href="{% url 'program_detail' p.slug %}">
       <span class="badge badge-sm badge-outline text-primary">{{ p.get_kind_display }}</span>
       <span class="text-lg font-semibold">{{ p.name }}</span>
       {% if p.instructor %}<span class="text-sm text-muted">{{ p.instructor }}</span>{% endif %}
@@ -41,7 +41,7 @@
   <h2 class="ui-section-title">{% if current_programs %}Past programs{% else %}Programs{% endif %}</h2>
   <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
     {% for p in past_programs %}
-    <a class="kind-scope--{{ p.kind }} ui-panel flex flex-col gap-2 border-l-4 border-primary text-base-content hover:no-underline hover:bg-base-300" href="{% url 'program_detail' p.slug %}">
+    <a data-vt-hero class="kind-scope--{{ p.kind }} ui-panel ui-lift flex flex-col gap-2 border-l-4 border-primary text-base-content hover:no-underline hover:bg-base-300" href="{% url 'program_detail' p.slug %}">
       <span class="badge badge-sm badge-outline text-primary">{{ p.get_kind_display }}</span>
       <span class="text-lg font-semibold">{{ p.name }}</span>
       {% if p.instructor %}<span class="text-sm text-muted">{{ p.instructor }}</span>{% endif %}

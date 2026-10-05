@@ -88,7 +88,7 @@
 </head>
 <body class="min-h-screen">
 
-  <nav class="sticky top-0 z-40 bg-base-200/90 backdrop-blur border-b border-subtle">
+  <nav class="ui-glass sticky top-0 z-40 border-b border-subtle">
     <div class="mx-auto max-w-[1400px] px-4 lg:px-8 h-16 flex items-center gap-4">
       <a href="{% url 'today' %}" class="text-xl font-bold tracking-tight text-base-content hover:no-underline">FitPulse</a>
 
@@ -98,7 +98,7 @@
         {% if can.training %}
         <details class="dropdown nav-group {% block nav_training %}{% endblock %}" data-nav-group="training">
           <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Training {% include "workouts/partials/nav_caret.html" %}</summary>
-          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box bg-base-100 p-2 shadow-lg border border-subtle">
+          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% include "workouts/partials/nav_items.html" with group="training" %}
           </ul>
         </details>
@@ -107,7 +107,7 @@
         {% if can.body or can.interventions or can.symptoms %}
         <details class="dropdown nav-group {% block nav_body_group %}{% endblock %}" data-nav-group="body">
           <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Body {% include "workouts/partials/nav_caret.html" %}</summary>
-          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box bg-base-100 p-2 shadow-lg border border-subtle">
+          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% include "workouts/partials/nav_items.html" with group="body" %}
           </ul>
         </details>
@@ -116,7 +116,7 @@
         {% if can.nutrition %}
         <details class="dropdown nav-group {% block nav_nutrition_group %}{% endblock %}" data-nav-group="nutrition">
           <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Nutrition {% include "workouts/partials/nav_caret.html" %}</summary>
-          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box bg-base-100 p-2 shadow-lg border border-subtle">
+          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% include "workouts/partials/nav_items.html" with group="nutrition" %}
           </ul>
         </details>
@@ -125,7 +125,7 @@
         {% if can.ai_pattern_insights or can.ai_weekly_review or can.interventions %}
         <details class="dropdown nav-group {% block nav_insights_group %}{% endblock %}" data-nav-group="insights">
           <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Insights {% include "workouts/partials/nav_caret.html" %}</summary>
-          <ul class="dropdown-content menu z-50 mt-2 w-56 rounded-box bg-base-100 p-2 shadow-lg border border-subtle">
+          <ul class="dropdown-content menu z-50 mt-2 w-56 rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% include "workouts/partials/nav_items.html" with group="insights" %}
           </ul>
         </details>
@@ -135,7 +135,7 @@
       <div class="ml-auto flex items-center gap-2">
         <details class="dropdown dropdown-end sync-menu">
           <summary class="list-none [&::-webkit-details-marker]:hidden btn btn-sm btn-primary rounded-full"><span class="inline-block [.syncing_&]:animate-spin" aria-hidden="true">↻</span> Sync</summary>
-          <ul class="dropdown-content menu z-50 mt-2 w-80 max-sm:fixed max-sm:inset-x-4 max-sm:top-16 max-sm:w-auto max-h-[calc(100vh-5rem)] flex-nowrap overflow-y-auto rounded-box bg-base-100 p-2 shadow-lg border border-subtle">
+          <ul class="dropdown-content menu z-50 mt-2 w-80 max-sm:fixed max-sm:inset-x-4 max-sm:top-16 max-sm:w-auto max-h-[calc(100vh-5rem)] flex-nowrap overflow-y-auto rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% enabled_integrations as enabled %}
             {% last_synced as ls %}{% if ls %}
             <li class="menu-title py-1 text-xs font-normal text-muted">Last synced: {{ ls|date:"M j, Y g:i A" }}</li>
@@ -301,7 +301,7 @@
       <svg class="size-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.8 7.04L4 20l1.04-4.6A8 8 0 1 1 21 12Z"/></svg>
     </button>
 
-    <div class="absolute inset-y-0 right-0 flex w-full sm:w-[420px] flex-col bg-base-100 sm:rounded-l-box shadow-xl pointer-events-auto invisible translate-x-full transition-[translate,visibility] duration-200 group-data-[open=true]:visible group-data-[open=true]:translate-x-0" role="dialog" aria-label="Ask your stats">
+    <div class="ui-glass absolute inset-y-0 right-0 flex w-full sm:w-[420px] flex-col sm:rounded-l-box shadow-xl pointer-events-auto invisible translate-x-full transition-[translate,visibility] duration-200 group-data-[open=true]:visible group-data-[open=true]:translate-x-0" role="dialog" aria-label="Ask your stats">
       <div class="flex items-center justify-between gap-2 border-b border-subtle px-4 py-3">
         <h2 class="font-semibold">Ask your stats</h2>
         <div class="flex items-center gap-1">
@@ -504,10 +504,38 @@
         document.dispatchEvent(new CustomEvent('cadence:themechange'));
       }
       applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+      // Crossfade the switch (charts update inside the callback, so they fade too).
+      function switchTheme(next) {
+        var apply = function () { applyTheme(next); };
+        var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (document.startViewTransition && !reduce) document.startViewTransition(apply);
+        else apply();
+      }
       btn.addEventListener('click', function() {
         var current = document.documentElement.getAttribute('data-theme') || 'dark';
-        applyTheme(current === 'dark' ? 'light' : 'dark');
+        switchTheme(current === 'dark' ? 'light' : 'dark');
       });
+    })();
+
+    // Card → page header morph (cross-document View Transitions). Only one element per
+    // page may be named fp-hero: the clicked link (or its [data-vt-card] wrapper) takes
+    // the name from the page's own header ([data-vt-target]) just before navigating.
+    (function() {
+      function resetHero() {
+        document.querySelectorAll('[data-vt-hero], [data-vt-card]').forEach(function (el) { el.style.viewTransitionName = ''; });
+        document.querySelectorAll('[data-vt-target]').forEach(function (el) { el.style.viewTransitionName = 'fp-hero'; });
+      }
+      document.addEventListener('click', function (e) {
+        var a = e.target.closest && e.target.closest('a[data-vt-hero]');
+        if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target === '_blank') return;
+        document.querySelectorAll('[data-vt-target]').forEach(function (el) { el.style.viewTransitionName = 'none'; });
+        (a.closest('[data-vt-card]') || a).style.viewTransitionName = 'fp-hero';
+      });
+      // Coming back (Back button / bfcache): let the morph back play, then reset.
+      window.addEventListener('pagereveal', function (e) {
+        if (e.viewTransition) e.viewTransition.finished.finally(resetHero); else resetHero();
+      });
+      window.addEventListener('pageshow', function (e) { if (e.persisted && !('onpagereveal' in window)) resetHero(); });
     })();
 
     (function() {

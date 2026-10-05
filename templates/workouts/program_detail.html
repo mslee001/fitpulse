@@ -6,7 +6,7 @@
 {% block content %}
 <div class="kind-scope--{{ program.kind }}">
 <div class="ui-page-header">
-  <div>
+  <div data-vt-target style="view-transition-name: fp-hero">
     <a href="{% url 'program_list' %}" class="text-sm">&larr; Programs</a>
     <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
       <span class="badge badge-sm badge-outline text-primary">{{ program.get_kind_display }}</span>

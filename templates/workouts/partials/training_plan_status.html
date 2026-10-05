@@ -1,5 +1,6 @@
 <div class="ui-panel flex flex-wrap items-center gap-x-2 gap-y-1" id="tp-status" role="status"
      {% if draft.status == "generating" %}hx-get="{% url 'program_training_plan_status' draft.pk %}" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
-  <span class="flex items-center gap-2"><span class="loading loading-spinner loading-sm shrink-0 text-primary" aria-hidden="true"></span>{% if draft.kind == 'reassess' %}Reassessing your plan from how it's gone so far…{% else %}Building your plan…{% endif %} this usually takes under a minute.</span>
+  <span class="flex items-center gap-2">{% if draft.kind == 'reassess' %}Reassessing your plan from how it's gone so far…{% else %}Building your plan…{% endif %} this usually takes under a minute.</span>
   <span class="text-muted">(started {{ draft.created_at|timesince }} ago)</span>
+  <div class="mt-3 w-full">{% include "workouts/partials/ai_skeleton.html" with what="your plan" %}</div>
 </div>

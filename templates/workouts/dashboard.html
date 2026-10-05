@@ -48,7 +48,7 @@
   <h2 class="ui-section-title">By discipline</h2>
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
     {% for slug, label, count, color in discipline_counts %}
-    <a href="{% url 'history' %}?discipline={{ slug }}" class="ui-panel !p-0 overflow-hidden text-base-content hover:no-underline hover:bg-base-300">
+    <a href="{% url 'history' %}?discipline={{ slug }}" class="ui-panel ui-lift !p-0 overflow-hidden text-base-content hover:no-underline hover:bg-base-300">
       <div class="h-1" style="background: {{ color }}"></div>
       <div class="flex flex-col gap-1 p-4">
         <div class="text-sm font-medium" style="color: {{ color }}">{{ label }}</div>

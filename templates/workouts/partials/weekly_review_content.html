@@ -2,17 +2,16 @@
 {% if error %}
 <div role="alert" class="alert alert-soft alert-error">{{ error }}</div>
 {% elif pending %}
-<div class="flex items-center gap-2 py-2 text-sm text-muted" role="status"
+<div class="flex flex-col gap-3 py-2" role="status"
   hx-get="{% url 'weekly_review_check' %}?week={{ week_start|date:'Y-m-d' }}"
   hx-trigger="load, every 30s"
   hx-target="this"
   hx-swap="outerHTML">
-  <span class="loading loading-dots loading-sm text-primary" aria-hidden="true"></span>
-  <span>Generating your weekly review — Claude Sonnet is crunching the numbers. This usually takes a few minutes.
-  <span class="block text-xs">Checking automatically every 30s…</span></span>
+  {% include "workouts/partials/ai_skeleton.html" with what="your weekly review" %}
+  <p class="text-xs text-muted">Generating your weekly review — Claude Sonnet is crunching the numbers. This usually takes a few minutes. Checking automatically every 30s…</p>
 </div>
 {% elif review %}
-<div>
+<div class="ui-enter">
   {{ review.content|format_nutrition_insights }}
 </div>
 {% endif %}

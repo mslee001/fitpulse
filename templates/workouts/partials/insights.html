@@ -2,17 +2,16 @@
 {% if error %}
 <div role="alert" class="alert alert-soft alert-error">{{ error }}</div>
 {% elif pending %}
-<div class="flex items-center gap-2 py-2 text-sm text-muted" role="status"
+<div class="flex flex-col gap-3 py-2" role="status"
   hx-get="{% url 'analytics_check_insights' %}"
   hx-trigger="load, every 30s"
   hx-target="#insights-content"
   hx-swap="innerHTML">
-  <span class="loading loading-dots loading-sm text-primary" aria-hidden="true"></span>
-  <span>Batch submitted — Claude Haiku is analyzing your data. This usually takes a few minutes.
-  <span class="block text-xs">Checking automatically every 30s…</span></span>
+  {% include "workouts/partials/ai_skeleton.html" with what="insights" %}
+  <p class="text-xs text-muted">Batch submitted — Claude Haiku is analyzing your data. This usually takes a few minutes. Checking automatically every 30s…</p>
 </div>
 {% else %}
-<div>
+<div class="ui-enter">
   {{ insights|format_nutrition_insights }}
 </div>
 {% if generated_at %}

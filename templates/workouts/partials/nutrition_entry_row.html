@@ -34,7 +34,7 @@
       <button type="button" class="btn btn-ghost btn-xs btn-square"
               hx-get="{% url 'nutrition_edit' entry.pk %}"
               hx-target="closest tr"
-              hx-swap="outerHTML"
+              hx-swap="outerHTML transition:true"
               aria-label="Edit entry" title="Edit entry">✎</button>
       <form method="post" action="{% url 'nutrition_delete' entry.pk %}" onsubmit="return confirm('Remove this entry?')">
         {% csrf_token %}

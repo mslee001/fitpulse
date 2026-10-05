@@ -2,7 +2,7 @@
 <div class="mb-2" id="rw-rating-{{ row.run_week.pk }}">
   {% if row.has_done %}
     <form hx-post="{% url 'run_week_rate' row.run_week.pk %}"
-          hx-target="#rw-rating-{{ row.run_week.pk }}" hx-swap="outerHTML"
+          hx-target="#rw-rating-{{ row.run_week.pk }}" hx-swap="outerHTML transition:true"
           class="flex flex-wrap items-center gap-2">
       {% csrf_token %}
       <label class="flex items-center gap-2 text-sm text-muted">RPE

@@ -21,14 +21,14 @@
   </div>
   {% if r.cls or r.alternates %}
   <div class="flex flex-wrap items-start gap-1 md:justify-end">
-    <form hx-post="{% url 'program_training_plan_swap' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML">
+    <form hx-post="{% url 'program_training_plan_swap' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML transition:true">
       {% csrf_token %}<input type="hidden" name="key" value="{{ r.key }}">
       <button type="submit" class="btn btn-xs">Swap</button>
     </form>
     {% if r.alternates %}
     <details class="dropdown dropdown-end">
       <summary class="btn btn-xs btn-ghost list-none [&::-webkit-details-marker]:hidden">Choose…</summary>
-      <form class="dropdown-content z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-box border border-subtle bg-base-100 p-2 shadow-lg" hx-post="{% url 'program_training_plan_pick' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML">
+      <form class="dropdown-content z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-box border border-subtle ui-glass p-2 shadow-lg" hx-post="{% url 'program_training_plan_pick' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML transition:true">
         {% csrf_token %}<input type="hidden" name="key" value="{{ r.key }}">
         <select name="ride_id" class="select select-sm w-full" aria-label="Choose a class" onchange="this.form.requestSubmit()">
           <option value="">Pick a class…</option>

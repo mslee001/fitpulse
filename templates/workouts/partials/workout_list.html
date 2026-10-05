@@ -9,7 +9,7 @@ sentinel, which replace the previous sentinel inside the same grid.
 {% if page == 1 %}<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 [&>.scroll-sentinel]:col-span-full">{% endif %}
   {% for w in workouts %}
   {% with disc_color=discipline_colors|get_item:w.discipline|default:"#888888" %}
-  <div class="ui-panel !p-0 relative flex flex-col overflow-hidden">
+  <div data-vt-card class="ui-panel ui-lift{% if page > 1 %} ui-enter{% endif %} !p-0 relative flex flex-col overflow-hidden">
     <div class="h-1 shrink-0" style="background: {{ disc_color }}"></div>
 
     {% if w.class_image_url %}
@@ -32,7 +32,7 @@ sentinel, which replace the previous sentinel inside the same grid.
         <span>{{ w.created_at|date:"M j, Y" }}</span>
       </div>
 
-      <a href="{% url 'workout_detail' w.workout_id %}" class="font-semibold leading-snug text-base-content">
+      <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="font-semibold leading-snug text-base-content">
         {{ w.title|default:"Untitled Workout" }}
       </a>
 
