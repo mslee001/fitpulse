@@ -1,50 +1,39 @@
-<tr class="food-log-row food-log-row--editing" id="food-entry-{{ entry.pk }}">
-  <td colspan="9" class="edit-row-cell">
-    <form method="post" action="{% url 'nutrition_edit' entry.pk %}">
+<tr class="border-b border-subtle bg-inset max-md:block" id="food-entry-{{ entry.pk }}">
+  <td colspan="9" class="max-md:block max-md:px-0 max-md:py-3">
+    <form method="post" action="{% url 'nutrition_edit' entry.pk %}" class="flex flex-col gap-2">
       {% csrf_token %}
-      <div class="edit-row-top">
-        <select name="meal" class="edit-input edit-input--meal">
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-[10rem_1fr]">
+        <select name="meal" class="select select-sm w-full" aria-label="Meal">
           <option value="">— Meal —</option>
           {% for val,label in meal_choices %}
           <option value="{{ val }}"{% if entry.meal == val %} selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
-        <input type="text" name="raw_text" value="{{ entry.raw_text }}"
-               class="edit-input edit-input--desc" placeholder="Food description">
+        <input type="text" name="raw_text" value="{{ entry.raw_text }}" class="input input-sm w-full" placeholder="Food description" aria-label="Food description">
       </div>
-      <div class="edit-row-bottom">
-        <label class="edit-macro">
-          <span class="edit-macro-lbl">Cal</span>
-          <input type="number" name="calories" value="{{ entry.calories|floatformat:0 }}"
-                 class="edit-input edit-input--num" step="1" min="0">
+      <div class="grid grid-cols-3 gap-2 sm:grid-cols-5">
+        <label class="flex flex-col gap-0.5 text-xs text-muted">Cal
+          <input type="number" name="calories" value="{{ entry.calories|floatformat:0 }}" class="input input-xs w-full font-mono" step="1" min="0">
         </label>
-        <label class="edit-macro">
-          <span class="edit-macro-lbl">Protein g</span>
-          <input type="number" name="protein_g" value="{{ entry.protein_g|floatformat:1 }}"
-                 class="edit-input edit-input--num" step="0.1" min="0">
+        <label class="flex flex-col gap-0.5 text-xs text-muted">Protein g
+          <input type="number" name="protein_g" value="{{ entry.protein_g|floatformat:1 }}" class="input input-xs w-full font-mono" step="0.1" min="0">
         </label>
-        <label class="edit-macro">
-          <span class="edit-macro-lbl">Carbs g</span>
-          <input type="number" name="carbs_g" value="{{ entry.carbs_g|floatformat:1 }}"
-                 class="edit-input edit-input--num" step="0.1" min="0">
+        <label class="flex flex-col gap-0.5 text-xs text-muted">Carbs g
+          <input type="number" name="carbs_g" value="{{ entry.carbs_g|floatformat:1 }}" class="input input-xs w-full font-mono" step="0.1" min="0">
         </label>
-        <label class="edit-macro">
-          <span class="edit-macro-lbl">Fat g</span>
-          <input type="number" name="fat_g" value="{{ entry.fat_g|floatformat:1 }}"
-                 class="edit-input edit-input--num" step="0.1" min="0">
+        <label class="flex flex-col gap-0.5 text-xs text-muted">Fat g
+          <input type="number" name="fat_g" value="{{ entry.fat_g|floatformat:1 }}" class="input input-xs w-full font-mono" step="0.1" min="0">
         </label>
-        <label class="edit-macro">
-          <span class="edit-macro-lbl">Fiber g</span>
-          <input type="number" name="fiber_g" value="{{ entry.fiber_g|floatformat:1 }}"
-                 class="edit-input edit-input--num" step="0.1" min="0">
+        <label class="flex flex-col gap-0.5 text-xs text-muted">Fiber g
+          <input type="number" name="fiber_g" value="{{ entry.fiber_g|floatformat:1 }}" class="input input-xs w-full font-mono" step="0.1" min="0">
         </label>
-        <div class="edit-row-btns">
-          <button type="submit" class="btn btn-primary btn-sm">Save</button>
-          <button type="button" class="btn btn-ghost btn-sm"
-                  hx-get="{% url 'nutrition_entry_row' entry.pk %}"
-                  hx-target="closest tr"
-                  hx-swap="outerHTML">Cancel</button>
-        </div>
+      </div>
+      <div class="flex gap-2">
+        <button type="submit" class="btn btn-primary btn-xs">Save</button>
+        <button type="button" class="btn btn-ghost btn-xs"
+                hx-get="{% url 'nutrition_entry_row' entry.pk %}"
+                hx-target="closest tr"
+                hx-swap="outerHTML">Cancel</button>
       </div>
     </form>
   </td>
