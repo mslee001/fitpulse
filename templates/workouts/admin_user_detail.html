@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load workout_filters %}
 {% block title %}{{ target.username }} — Users — FitPulse{% endblock %}
 {% block nav_training %}active{% endblock %}
 
@@ -21,7 +22,7 @@
       <div><dt>Name</dt><dd class="font-sans">{{ target.get_full_name|default:"—" }}</dd></div>
       <div><dt>Email</dt><dd class="break-all">{{ target.email|default:"—" }}</dd></div>
       <div><dt>Status</dt><dd class="font-sans">{% if target.is_active %}Active{% else %}<span class="text-warning">Deactivated</span>{% endif %}</dd></div>
-      <div><dt>Last login</dt><dd>{{ target.last_login|date:"M j, Y g:i A"|default:"never" }}</dd></div>
+      <div><dt>Last login</dt><dd>{% if target.last_login %}{{ target.last_login|reltime }}{% else %}never{% endif %}</dd></div>
       <div><dt>Created</dt><dd>{{ target.date_joined|date:"M j, Y" }}</dd></div>
     </dl>
     {% if not target.is_superuser %}
@@ -123,7 +124,7 @@
               </div>
               {% if c.webhook_active is not None %}<div class="text-xs text-muted">webhook {% if c.webhook_active %}on{% else %}off{% endif %}</div>{% endif %}
             </td>
-            <td class="whitespace-nowrap font-mono text-xs">{{ c.integration.last_synced_at|date:"M j, g:i A"|default:"never" }}</td>
+            <td class="whitespace-nowrap font-mono text-xs">{% if c.integration.last_synced_at %}{{ c.integration.last_synced_at|reltime }}{% else %}never{% endif %}</td>
             <td>{% if c.job %}{{ c.job.get_status_display }}{% if c.job.finished_at %} <span class="text-xs text-muted">{{ c.job.finished_at|date:"M j" }}</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           </tr>
           {% endfor %}

@@ -24,7 +24,7 @@
         <div>
           <h2 class="ui-panel-title">Week of {{ current_review.week_start|date:"M j" }} – {{ current_review.week_end|date:"M j, Y" }}</h2>
           {% if not current_review.batch_id %}
-          <div class="text-xs text-muted">Generated {{ current_review.generated_at|date:"M j, Y g:i A" }}</div>
+          <div class="text-xs text-muted">Generated {{ current_review.generated_at|reltime }}</div>
           {% endif %}
         </div>
         {% if not current_review.batch_id %}

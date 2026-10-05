@@ -1,0 +1,21 @@
+{% comment %}
+Tabs for the current page's nav group (workouts/navigation.py section_tabs), shown when
+the group has 2+ visible tabs. Included once from base.html; pages outside a group
+(Today, Day view, Settings, detail pages…) get nothing. Links in a <nav> with
+aria-current, not ARIA tabs: they navigate, they don't switch panels.
+{% endcomment %}
+{% if section_tabs %}
+<nav aria-label="{{ section_tabs.label }} pages" id="section-tabs" class="tabs tabs-box tabs-sm mb-6 w-full flex-nowrap overflow-x-auto [scrollbar-width:none]">
+  {% for t in section_tabs.items %}<a href="{{ t.url }}" class="tab min-h-9 whitespace-nowrap hover:no-underline{% if t.current %} tab-active{% else %} text-muted{% endif %}"{% if t.current %} aria-current="page"{% endif %}>{{ t.label|safe }}</a>{% endfor %}
+</nav>
+<script>
+  (function() {
+    // Phone: bring the current tab into view when the strip overflows.
+    var strip = document.getElementById('section-tabs');
+    var cur = strip && strip.querySelector('[aria-current]');
+    if (!cur || strip.scrollWidth <= strip.clientWidth) return;
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    cur.scrollIntoView({ inline: 'center', block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  })();
+</script>
+{% endif %}

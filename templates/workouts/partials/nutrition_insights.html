@@ -13,7 +13,7 @@
 {% elif insights %}
 <div class="ui-enter">{{ insights|format_nutrition_insights }}</div>
 {% if generated_at %}
-<div class="mt-3 text-xs text-muted">Generated {{ generated_at|timesince }} ago &middot; powered by Claude Sonnet (batch)</div>
+<div class="mt-3 text-xs text-muted">Generated {{ generated_at|reltime }} &middot; powered by Claude Sonnet (batch)</div>
 {% endif %}
 {% else %}
 <p class="text-sm text-muted">Log some nutrition data, then click <strong>↺ Refresh</strong> to generate AI insights.</p>

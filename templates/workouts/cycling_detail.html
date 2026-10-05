@@ -19,6 +19,7 @@
       <div class="ui-stat ui-stat-hero">
         <div class="ui-stat-label">Total output</div>
         <div class="ui-stat-value">{{ workout.output_watts|format_watts }}<span class="ui-stat-unit"></span></div>
+        {% include "workouts/partials/vs_avg_chip.html" with c=vs_avg.output %}
         {% if type_stats.max_output and type_stats.max_output != workout.output_watts %}
         <div class="ui-stat-sub">Best: {{ type_stats.max_output|format_watts }}</div>
         {% endif %}
@@ -28,6 +29,7 @@
       <div class="ui-stat">
         <div class="ui-stat-label">Avg power</div>
         <div class="ui-stat-value">{{ workout.avg_watts|floatformat:0 }}<span class="ui-stat-unit">W</span></div>
+        {% include "workouts/partials/vs_avg_chip.html" with c=vs_avg.watts %}
         {% if type_stats.avg_power %}<div class="ui-stat-sub">Avg: {{ type_stats.avg_power|floatformat:0 }} W</div>{% endif %}
       </div>
       {% endif %}
@@ -42,6 +44,7 @@
       <div class="ui-stat">
         <div class="ui-stat-label">Avg cadence</div>
         <div class="ui-stat-value">{{ workout.avg_cadence|floatformat:0 }}<span class="ui-stat-unit">rpm</span></div>
+        {% include "workouts/partials/vs_avg_chip.html" with c=vs_avg.cadence %}
         {% if type_stats.avg_cadence %}<div class="ui-stat-sub">Avg: {{ type_stats.avg_cadence|floatformat:0 }} rpm</div>{% endif %}
       </div>
       {% endif %}
@@ -78,6 +81,7 @@
       <div class="ui-stat">
         <div class="ui-stat-label">Avg HR</div>
         <div class="ui-stat-value">{{ workout.heart_rate_avg|floatformat:0 }}<span class="ui-stat-unit">bpm</span></div>
+        {% include "workouts/partials/vs_avg_chip.html" with c=vs_avg.hr %}
       </div>
       {% endif %}
       {% if workout.heart_rate_max %}
@@ -90,6 +94,7 @@
       <div class="ui-stat">
         <div class="ui-stat-label">Calories</div>
         <div class="ui-stat-value">{{ workout.calories|floatformat:0 }}</div>
+        {% include "workouts/partials/vs_avg_chip.html" with c=vs_avg.calories %}
       </div>
       {% endif %}
     </div>
@@ -132,15 +137,7 @@
         <h2 class="ui-panel-title">Heart rate zones</h2>
         <span class="text-sm text-muted">from Google Health &middot; session totals, not a time series</span>
       </div>
-      <div class="flex flex-col gap-2">
-        {% for zone in gh_hr_zones %}
-        <div class="grid grid-cols-[7.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm">
-          <div class="flex items-center gap-2 font-medium"><span class="size-2 shrink-0 rounded-full" style="background:{{ zone.color }}" aria-hidden="true"></span>{{ zone.label }}</div>
-          <div class="ui-bar"><div class="h-full rounded-full" style="width:{{ zone.pct }}%;background:{{ zone.color }}"></div></div>
-          <div class="text-right font-mono tabular-nums">{{ zone.time_str }}</div>
-        </div>
-        {% endfor %}
-      </div>
+      {% include "workouts/partials/zone_bar.html" with zones=gh_hr_zones %}
     </div>
     {% endif %}
 
@@ -701,23 +698,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const zoneBreakdown = document.getElementById("hrZoneBreakdown");
   if (zoneCard && zoneBreakdown && hrMeta?.zones?.length) {
     const zoneNames = ["Warm Up", "Easy", "Aerobic", "Threshold", "Max"];
-    const totalDur = hrMeta.zones.reduce((s, z) => s + (z.duration || 0), 0);
-    if (totalDur > 0) {
-      let html = "";
-      hrMeta.zones.forEach((z, i) => {
-        const dur = z.duration || 0;
-        const pct = Math.round((dur / totalDur) * 100);
-        const col = ZONE_COLORS[i];
-        const timeStr = dur ? `${Math.floor(dur/60)}m ${String(dur%60).padStart(2,"0")}s` : "—";
-        html += `<div class="grid grid-cols-[7.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm">
-          <div class="flex items-center gap-2 font-medium"><span class="size-2 shrink-0 rounded-full" style="background:${col}" aria-hidden="true"></span>Z${i+1} ${zoneNames[i] || ""}</div>
-          <div class="ui-bar"><div class="h-full rounded-full" style="width:${pct}%; background:${col}"></div></div>
-          <div class="text-right font-mono tabular-nums">${timeStr}</div>
-        </div>`;
-      });
-      zoneBreakdown.innerHTML = html;
-      zoneCard.style.display = "";
-    }
+    const zones = hrMeta.zones.map((z, i) => ({ label: `Z${i+1} ${zoneNames[i] || ""}`.trim(), secs: z.duration || 0, color: ZONE_COLORS[i] }));
+    if (fpZoneBar(zoneBreakdown, zones)) zoneCard.style.display = "";
   }
 
   // Power zone breakdown card

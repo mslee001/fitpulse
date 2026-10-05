@@ -1,0 +1,15 @@
+{% comment %}
+Time in heart-rate zones as one stacked bar + a legend: zones = [{label, short?, seconds,
+pct, time_str, color}] (views._google_health_hr_zones). Segments share the bar by
+time (flex-grow), with the panel showing through 2px gaps; a zone under 3% gets no
+visible legend entry but keeps its title and a screen-reader line. The JS twin,
+fpZoneBar() in detail_base.html, renders the same markup for the Peloton/Garmin zones.
+{% endcomment %}
+<div class="flex flex-col gap-2.5">
+  <div class="flex h-3 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
+    {% for z in zones %}{% if z.seconds %}<span class="h-full min-w-0.5" style="flex: {{ z.seconds }} 1 0; background: {{ z.color }}" title="{{ z.label }} · {{ z.time_str }}"></span>{% endif %}{% endfor %}
+  </div>
+  <div class="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs">
+    {% for z in zones %}{% if z.seconds %}<span class="{% if z.pct < 3 %}sr-only{% else %}flex items-center gap-1.5{% endif %}"><span class="size-2 shrink-0 rounded-full" style="background: {{ z.color }}" aria-hidden="true"></span>{{ z.label }} · {{ z.time_str }}</span>{% endif %}{% endfor %}
+  </div>
+</div>

@@ -12,8 +12,8 @@ import logging
 import urllib.parse
 
 from django.contrib import messages
-from django.db.models import Avg, Count, Max, Min, Q
-from django.db.models.functions import TruncWeek
+from django.db.models import Avg, Count, Max, Min, Q, Sum
+from django.db.models.functions import TruncMonth, TruncWeek
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -125,8 +125,6 @@ def history(request):
 
     if q:
         qs = qs.filter(title__icontains=q)
-    if discipline:
-        qs = qs.filter(discipline=discipline)
     if instructor:
         qs = qs.filter(instructor_name=instructor)
     if duration:
@@ -150,6 +148,12 @@ def history(request):
         except ValueError:
             date_to = ""
 
+    # Pill counts: the current filters except the discipline itself.
+    pill_counts = dict(qs.order_by().values_list("discipline").annotate(n=Count("pk")))
+    pill_total = sum(pill_counts.values())
+    if discipline:
+        qs = qs.filter(discipline=discipline)
+
     allowed_sorts = {
         "-created_at", "created_at",
         "-output_watts", "-avg_watts", "-avg_cadence",
@@ -168,6 +172,28 @@ def history(request):
     total    = qs.count()
     has_next = (offset + per_page) < total
 
+    # Month headers (date sorts only): counts cover the whole month under the current
+    # filters, not just this page. A month continuing from the previous scroll page
+    # (last_month=YYYY-MM) doesn't repeat its header.
+    last_month = request.GET.get("last_month", "") if page > 1 else ""
+    if sort in ("-created_at", "created_at"):
+        months = {
+            (timezone.localtime(r["m"]).year, timezone.localtime(r["m"]).month) if timezone.is_aware(r["m"])
+            else (r["m"].year, r["m"].month): (r["n"], r["secs"] or 0)
+            for r in qs.order_by().annotate(m=TruncMonth("created_at")).values("m")
+            .annotate(n=Count("pk"), secs=Sum("duration_seconds"))
+        }
+        prev = last_month
+        for w in workouts:
+            local = timezone.localtime(w.created_at)
+            key = f"{local:%Y-%m}"
+            w.month_head = None
+            if key != prev:
+                n, secs = months.get((local.year, local.month), (0, 0))
+                w.month_head = {"label": f"{local:%B %Y}", "count": n, "seconds": secs}
+            prev = key
+        last_month = prev
+
     disc_slugs = (
         CachedWorkout.objects.for_user(request.user)
         .values_list("discipline", flat=True)
@@ -178,7 +204,7 @@ def history(request):
         for slug in disc_slugs
     ]
     discipline_pills = [
-        (slug, display, DISCIPLINE_COLORS.get(slug, "#888888"))
+        (slug, display, DISCIPLINE_COLORS.get(slug, "#888888"), pill_counts.get(slug, 0))
         for slug, display in disciplines
     ]
     durations = sorted(set(
@@ -205,6 +231,9 @@ def history(request):
         "has_next": has_next,
         "page": page,
         "total": total,
+        "pill_total": pill_total,
+        "last_month": last_month,
+        "pills_oob": bool(request.htmx) and page == 1,
         "filters": {
             "discipline": discipline,
             "instructor": instructor,
@@ -386,6 +415,29 @@ def _manual_movement_context(workout):
     }
 
 
+def _vs_avg(type_stats, metrics):
+    """'vs your average' chips for a detail page's stat tiles.
+
+    metrics = {key: (this workout's value, the type average, direction)}, direction
+    "higher"/"lower" (which way is better, the same rules as Compare) or None (HR: no
+    better or worse). Returns {key: {"pct", "up", "better"}}; a metric is left out when
+    either value is missing or it's within 1%, and every chip when there are fewer
+    than 3 other workouts of the type.
+    """
+    if (type_stats.get("count") or 0) < 3:
+        return {}
+    out = {}
+    for key, (value, avg, direction) in metrics.items():
+        if not value or not avg:
+            continue
+        diff = (value - avg) / avg * 100
+        if abs(diff) < 1:
+            continue
+        better = None if direction is None else (diff > 0) == (direction == "higher")
+        out[key] = {"pct": round(abs(diff)), "up": diff > 0, "better": better}
+    return out
+
+
 def _run_detail(request, workout):
     client = _peloton_client_or_none(request.user)
     perf = _get_perf_dict(workout, client)
@@ -476,6 +528,12 @@ def _run_detail(request, workout):
         "class_history": _class_history_sidebar(workout),
         "garmin_activity_url": _garmin_activity_url(workout),
         "type_stats": type_stats,
+        "vs_avg": _vs_avg(type_stats, {
+            "pace": (workout.avg_pace_seconds, type_stats.get("avg_pace"), "lower"),
+            "distance": (workout.distance_miles, type_stats.get("avg_distance"), "higher"),
+            "hr": (workout.heart_rate_avg, type_stats.get("avg_hr"), None),
+            "calories": (workout.calories, type_stats.get("avg_calories"), "higher"),
+        }),
         "recent_runs": json.dumps(recent_runs),
         "workout_detail": _workout_detail_fields(workout),
         "run_form": run_form,
@@ -538,6 +596,12 @@ def _walking_detail(request, workout):
         "class_history": _class_history_sidebar(workout),
         "garmin_activity_url": _garmin_activity_url(workout),
         "type_stats": type_stats,
+        "vs_avg": _vs_avg(type_stats, {
+            "pace": (workout.avg_pace_seconds, type_stats.get("avg_pace"), "lower"),
+            "distance": (workout.distance_miles, type_stats.get("avg_distance"), "higher"),
+            "hr": (workout.heart_rate_avg, type_stats.get("avg_hr"), None),
+            "calories": (workout.calories, type_stats.get("avg_calories"), "higher"),
+        }),
         "recent_walks": json.dumps(recent_walks),
         "workout_detail": _workout_detail_fields(workout),
         "gh_hr_zones": gh_hr_zones,
@@ -595,6 +659,13 @@ def _cycling_detail(request, workout):
         "perf_avg_summaries": perf.get("average_summaries", {}),
         "class_history": _class_history_sidebar(workout),
         "type_stats": type_stats,
+        "vs_avg": _vs_avg(type_stats, {
+            "output": (workout.output_watts, type_stats.get("avg_output"), "higher"),
+            "watts": (workout.avg_watts, type_stats.get("avg_power"), "higher"),
+            "cadence": (workout.avg_cadence, type_stats.get("avg_cadence"), "higher"),
+            "hr": (workout.heart_rate_avg, type_stats.get("avg_hr"), None),
+            "calories": (workout.calories, type_stats.get("avg_calories"), "higher"),
+        }),
         "recent_rides": json.dumps(recent_rides),
         "workout_detail": detail_fields,
         "ftp": workout.ftp,
@@ -662,6 +733,10 @@ def _strength_detail(request, workout):
         "class_history": _class_history_sidebar(workout),
         "garmin_activity_url": _garmin_activity_url(workout),
         "type_stats": type_stats,
+        "vs_avg": _vs_avg(type_stats, {
+            "hr": (workout.heart_rate_avg, type_stats.get("avg_hr"), None),
+            "calories": (workout.calories, type_stats.get("avg_calories"), "higher"),
+        }),
         "recent_strength": json.dumps(recent_strength),
         "workout_detail": detail_fields,
         "exercise_sets": json.dumps(workout.exercise_sets_json or []),
@@ -1743,6 +1818,12 @@ def calendar_view(request, year=None, month=None):
             all_ok = False
         return "green" if all_ok else "yellow"
 
+    # Heat mode: each day's training minutes in five steps (CLAUDE.md → Styling).
+    def _heat_pct(minutes):
+        if minutes <= 0:
+            return 0
+        return 15 if minutes < 30 else 30 if minutes < 60 else 50 if minutes < 90 else 70
+
     grid = []
     for week in _cal.monthcalendar(year, month):
         row = []
@@ -1752,7 +1833,10 @@ def calendar_view(request, year=None, month=None):
             else:
                 d = datetime.date(year, month, day_num)
                 s = stats_by_date.get(d)
+                minutes = round(sum(w["duration_seconds"] or 0 for w in workouts_by_date.get(d, [])) / 60)
                 row.append({
+                    "minutes": minutes,
+                    "heat_pct": _heat_pct(minutes),
                     "date": d,
                     "is_today": d == today,
                     "is_future": d > today,
@@ -1761,6 +1845,15 @@ def calendar_view(request, year=None, month=None):
                     "nutrition_status": _nutrition_status(s),
                 })
         grid.append(row)
+
+    # Month summary strip, from the data above (no new queries).
+    readiness = [st.readiness_score for st in stats_by_date.values() if st.readiness_score is not None]
+    month_summary = {
+        "workouts": sum(len(ws) for ws in workouts_by_date.values()),
+        "seconds": sum(w["duration_seconds"] or 0 for ws in workouts_by_date.values() for w in ws),
+        "active_days": len(workouts_by_date),
+        "avg_readiness": round(sum(readiness) / len(readiness)) if readiness else None,
+    }
 
     used_disciplines = {w["discipline"] for ws in workouts_by_date.values() for w in ws}
     legend_colors = {d: c for d, c in DISCIPLINE_COLORS.items() if d in used_disciplines}
@@ -1783,6 +1876,7 @@ def calendar_view(request, year=None, month=None):
         "discipline_colors": DISCIPLINE_COLORS,
         "legend_colors": legend_colors,
         "load_focus_rows": _load_focus_rows(today_stats),
+        "month_summary": month_summary,
     })
 
 

@@ -1,31 +1,9 @@
-{% comment %}
+{% load workout_filters %}{% comment %}
 One nav group's menu items, shared by the desktop dropdowns and the mobile panel
 in base.html so the two can't drift apart. Pass group="training" / "body" /
-"nutrition" / "insights". Renders <li> items for a daisyUI menu.
+"nutrition" / "insights". Renders <li> items for a daisyUI menu. The items come from
+workouts/navigation.py (NAV_GROUPS), already filtered for the user; None is a divider. Labels are constants
+from code, so |safe keeps them byte-identical to the old hand-written menu.
 {% endcomment %}
-{% if group == "training" %}
-<li><a href="{% url 'history' %}">Workouts</a></li>
-<li><a href="{% url 'dashboard' %}">Dashboard</a></li>
-<li><a href="{% url 'compare' %}">Compare</a></li>
-<li><a href="{% url 'calendar' %}">Calendar</a></li>
-<li><a href="{% url 'analytics' %}">Analytics</a></li>
-{% if can.programs %}<li><a href="{% url 'program_list' %}">Programs</a></li>{% endif %}
-{% if can.strength %}<li><a href="{% url 'strength_trends' %}">Strength</a></li>{% endif %}
-<li aria-hidden="true"></li>
-<li><a class="text-muted" href="{% url 'settings' %}">Settings</a></li>
-{% if is_owner %}<li><a class="text-muted" href="{% url 'admin_users' %}">Users</a></li>{% endif %}
-{% elif group == "body" %}
-{% if can.interventions %}<li><a href="{% url 'interventions' %}">Interventions</a></li>{% endif %}
-{% if can.symptoms %}<li><a href="{% url 'symptoms' %}">Symptoms</a></li>{% endif %}
-{% if can.body %}<li><a href="{% url 'body' %}">Analytics</a></li>{% endif %}
-{% elif group == "nutrition" %}
-<li><a href="{% url 'nutrition' %}">Today's Log</a></li>
-<!-- <li><a href="{% url 'nutrition_targets' %}">Targets</a></li> -->
-<li><a href="{% url 'nutrition_analytics' %}">Analytics</a></li>
-<li aria-hidden="true"></li>
-<li><a class="text-muted" href="{% url 'nutrition_targets' %}">Macro Settings</a></li>
-{% elif group == "insights" %}
-{% if can.ai_pattern_insights %}<li><a href="{% url 'insights' %}">Pattern Insights</a></li>{% endif %}
-{% if can.ai_weekly_review %}<li><a href="{% url 'weekly_review' %}">Weekly Review</a></li>{% endif %}
-{% if can.interventions %}<li><a href="{% url 'intervention_analysis' %}">Intervention Analysis</a></li>{% endif %}
-{% endif %}
+{% for item in nav|dict_get:group %}{% if item %}<li><a {% if item.muted %}class="text-muted" {% endif %}href="{{ item.url }}">{{ item.label|safe }}</a></li>{% else %}<li aria-hidden="true"></li>{% endif %}
+{% endfor %}

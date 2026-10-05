@@ -226,7 +226,11 @@ function setServingNote(text) {
   </div>
 </div>
 {% else %}
-<div class="ui-empty max-lg:order-3">Nothing logged yet{% if not is_today %} for {{ page_date|date:"M j" }}{% endif %}.</div>
+<div class="ui-empty max-lg:order-3">
+  {% include "workouts/partials/icon.html" with name="utensils" class="size-8 text-faint" %}
+  <p class="font-medium text-base-content">Nothing logged yet{% if not is_today %} for {{ page_date|date:"M j" }}{% endif %}</p>
+  <p class="text-sm">Describe what you ate or add a photo, and it shows up here.</p>
+</div>
 {% endif %}
 
 {% if weekly and weekly.days_logged > 0 %}

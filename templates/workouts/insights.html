@@ -16,7 +16,7 @@
   </div>
   <div class="ui-page-actions">
     {% if generated_at %}
-    <span class="text-xs text-muted">Generated {{ generated_at|timesince }} ago</span>
+    <span class="text-xs text-muted">Generated {{ generated_at|reltime }}</span>
     {% endif %}
     <button type="button" class="btn btn-sm"
             hx-post="{% url 'pattern_insights_refresh' %}"

@@ -265,7 +265,10 @@
         {% endfor %}
       </div>
       {% else %}
-      <div class="ui-empty">No workouts recorded this day.</div>
+      <div class="ui-empty">
+        {% include "workouts/partials/icon.html" with name="dumbbell" class="size-8 text-faint" %}
+        <p class="font-medium text-base-content">No workouts recorded this day</p>
+      </div>
       {% endif %}
     </div>
 

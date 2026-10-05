@@ -250,7 +250,11 @@
       {% endfor %}
     </div>
     {% else %}
-    <div class="ui-empty py-6">No workouts logged yet today.</div>
+    <div class="ui-empty py-6">
+      {% include "workouts/partials/icon.html" with name="dumbbell" class="size-8 text-faint" %}
+      <p class="font-medium text-base-content">No workouts logged yet today</p>
+      <p class="text-sm">Sync after a class and it shows up here.</p>
+    </div>
     {% endif %}
   </div>
 </section>

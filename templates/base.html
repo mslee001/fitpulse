@@ -138,10 +138,10 @@
           <ul class="dropdown-content menu z-50 mt-2 w-80 max-sm:fixed max-sm:inset-x-4 max-sm:top-16 max-sm:w-auto max-h-[calc(100vh-5rem)] flex-nowrap overflow-y-auto rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% enabled_integrations as enabled %}
             {% last_synced as ls %}{% if ls %}
-            <li class="menu-title py-1 text-xs font-normal text-muted">Last synced: {{ ls|date:"M j, Y g:i A" }}</li>
+            <li class="menu-title py-1 text-xs font-normal text-muted">Last synced {{ ls|reltime }}</li>
             {% endif %}
             {% last_daily_sync as lds %}{% if lds %}
-            <li class="menu-title py-1 text-xs font-normal text-muted">Last auto-sync: {{ lds|date:"M j, Y g:i A" }}</li>
+            <li class="menu-title py-1 text-xs font-normal text-muted">Last auto-sync {{ lds|reltime }}</li>
             {% endif %}
             {% if ls or lds %}<li></li>{% endif %}
             {% if 'peloton' in enabled %}
@@ -290,6 +290,7 @@
       });
     </script>
     {% endif %}
+    {% include "workouts/partials/section_tabs.html" %}
     {% block content %}{% endblock %}
   </main>
 

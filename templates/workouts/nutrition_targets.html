@@ -194,7 +194,11 @@
     {% endif %}
 
     {% else %}
-    <div class="ui-empty">Fill in your profile to see computed targets.</div>
+    <div class="ui-empty">
+      {% include "workouts/partials/icon.html" with name="utensils" class="size-8 text-faint" %}
+      <p class="font-medium text-base-content">No targets yet</p>
+      <p class="text-sm">Fill in your profile to see computed targets.</p>
+    </div>
     {% endif %}
 
     <p class="text-sm leading-relaxed text-muted">

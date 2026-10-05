@@ -16,7 +16,7 @@
   logs: false;
   include: properties, rootcolor, rootscrollgutter, svg, button, badge, alert, dropdown,
            menu, join, table, input, select, textarea, fieldset, label, checkbox, radio,
-           toggle, fileinput, collapse, loading, chat, link, skeleton;
+           toggle, fileinput, collapse, loading, chat, link, skeleton, tab;
 }
 
 /* FitPulse "Soft modern" themes. Names match the existing data-theme values, so the
@@ -279,6 +279,11 @@
      Width comes in as style="--fp-w: N%" for the same reason as the ring. */
   .ui-bar-grow > span { width: var(--fp-w); transition: width 700ms var(--fp-ease); }
   @starting-style { .ui-bar-grow > span { width: 0; } }
+
+  /* Check pop: a program run cell's ✓ scales in once when it first renders done (page
+     load or the HTMX swap after a completion). */
+  .ui-check { display: inline-block; transition: scale var(--fp-fast) var(--fp-ease), opacity var(--fp-fast) var(--fp-ease); }
+  @starting-style { .ui-check { scale: .4; opacity: 0; } }
 
   /* Glass: floating surfaces only (nav, dropdowns, chat panel, compare bar). */
   .ui-glass { @apply bg-base-100/80 backdrop-blur-md; }

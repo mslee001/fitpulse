@@ -13,8 +13,9 @@
 
 {% if not weighted and not unweighted %}
 <div class="ui-empty">
-  <p>No logged exercises yet. Log sets, reps, weight and effort on a strength or circuit workout's
-    <strong>Class exercises</strong> card and they'll show up here.</p>
+  {% include "workouts/partials/icon.html" with name="dumbbell" class="size-8 text-faint" %}
+  <p class="font-medium text-base-content">No logged exercises yet</p>
+  <p class="text-sm">Log sets, reps, weight and effort on a strength or circuit workout's <strong>Class exercises</strong> card and they'll show up here.</p>
 </div>
 {% else %}
 

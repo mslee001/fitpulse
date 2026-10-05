@@ -2,7 +2,7 @@ from django.template import Context, Template, TemplateSyntaxError
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from workouts.glossary import METRIC_HELP
-from workouts.templatetags.workout_filters import format_next_workout, ring_offset, tone
+from workouts.templatetags.workout_filters import format_next_workout, reltime, ring_offset, tone
 
 
 class ToneFilterTests(SimpleTestCase):
@@ -72,3 +72,34 @@ class MetricHelpTagTests(SimpleTestCase):
     @override_settings(DEBUG=False)
     def test_unknown_slug_renders_nothing_in_production(self):
         self.assertEqual(self.render('{% metric_help "nope" %}').strip(), "")
+
+
+class ReltimeTests(SimpleTestCase):
+    def setUp(self):
+        from datetime import datetime
+        from django.utils import timezone
+        self.now = timezone.make_aware(datetime(2026, 10, 4, 15, 0))
+
+    def text(self, **delta):
+        import re
+        from datetime import timedelta
+        html = reltime(self.now - timedelta(**delta), now=self.now)
+        return re.search(r">([^<]*)</time>", html).group(1)
+
+    def test_steps(self):
+        self.assertEqual(self.text(seconds=20), "just now")
+        self.assertEqual(self.text(minutes=5), "5 min ago")
+        self.assertEqual(self.text(hours=2), "2 h ago")
+        self.assertEqual(self.text(hours=20), "yesterday")       # Oct 3, 7 PM
+        self.assertEqual(self.text(days=3), "3 days ago")
+        self.assertEqual(self.text(days=20), "Sep 14")
+        self.assertEqual(self.text(days=400), "Aug 30, 2025")
+
+    def test_future_reads_just_now(self):
+        self.assertEqual(self.text(minutes=-10), "just now")
+
+    def test_markup_has_iso_and_full_title(self):
+        html = reltime(self.now, now=self.now)
+        self.assertIn('datetime="2026-10-04T15:00:00-07:00"', html)
+        self.assertIn('title="Sun, Oct 4, 2026, 3:00 PM"', html)
+        self.assertEqual(reltime(None), "")

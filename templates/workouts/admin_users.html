@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load workout_filters %}
 {% block title %}Users — FitPulse{% endblock %}
 {% block nav_training %}active{% endblock %}
 
@@ -27,7 +28,7 @@
             {% if row.user.is_superuser %}<span class="badge badge-sm badge-soft badge-primary ml-1">Owner</span>{% endif %}
           </td>
           <td>{% if row.user.is_active %}yes{% else %}<span class="text-muted">no</span>{% endif %}</td>
-          <td class="whitespace-nowrap">{% if row.user.last_login %}{{ row.user.last_login|date:"M j, Y" }}{% else %}<span class="text-muted">never</span>{% endif %}</td>
+          <td class="whitespace-nowrap">{% if row.user.last_login %}{{ row.user.last_login|reltime }}{% else %}<span class="text-muted">never</span>{% endif %}</td>
           <td>{{ row.setup }}</td>
           <td class="whitespace-nowrap">{{ row.features }} of {{ feature_total }}</td>
           <td class="text-right font-mono tabular-nums">{{ row.ai }}</td>

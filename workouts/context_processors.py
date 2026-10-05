@@ -15,12 +15,65 @@ class _Can:
         return self._cache[slug]
 
 
+class _LazyNav(dict):
+    """nav.training / nav|dict_get:group → that group's visible items
+    (navigation.nav_for), built on first use and cached for the request."""
+    def __init__(self, user, can):
+        super().__init__()
+        self.user, self.can = user, can
+
+    def __missing__(self, group):
+        from .navigation import NAV_GROUPS, nav_for
+        if group not in NAV_GROUPS:
+            raise KeyError(group)
+        self[group] = nav_for(self.user, group, self.can)
+        return self[group]
+
+    def get(self, group, default=None):
+        try:
+            return self[group]
+        except KeyError:
+            return default
+
+
+class _LazyTabs:
+    """The section tabs for the current page (navigation.section_tabs): `label`, `items`;
+    falsy when the page has none."""
+    def __init__(self, user, url_name, can):
+        self.user, self.url_name, self.can = user, url_name, can
+        self._value = False
+
+    def _load(self):
+        if self._value is False:
+            from .navigation import section_tabs
+            self._value = section_tabs(self.user, self.url_name, self.can) if self.url_name else None
+        return self._value
+
+    def __bool__(self):
+        return bool(self._load())
+
+    @property
+    def label(self):
+        return self._load()[0]
+
+    @property
+    def items(self):
+        return self._load()[1]
+
+
 def access(request):
     u = getattr(request, "user", None)
     if not u or not u.is_authenticated:
         return {}
-    return {"can": _Can(u), "is_owner": u.is_superuser, "setup_pending": _LazyPending(u),
-            "peloton_reconnect": _LazyPelotonReconnect(u), "plan_nudges": _LazyPlanNudges(u)}
+    from .navigation import group_for_url_name
+    can = _Can(u)
+    match = getattr(request, "resolver_match", None)
+    url_name = match.url_name if match else None
+    return {"can": can, "is_owner": u.is_superuser, "setup_pending": _LazyPending(u),
+            "peloton_reconnect": _LazyPelotonReconnect(u), "plan_nudges": _LazyPlanNudges(u),
+            "nav": _LazyNav(u, can), "nav_current_url_name": url_name,
+            "nav_current_group": group_for_url_name(url_name),
+            "section_tabs": _LazyTabs(u, url_name, can)}
 
 
 class _LazyPending:

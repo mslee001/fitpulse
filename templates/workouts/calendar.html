@@ -10,6 +10,11 @@
     <div class="ui-page-sub">Calendar</div>
     <h1 class="ui-page-title">{{ month_name }}</h1>
   </div>
+  <div class="ui-page-actions">
+  <div class="join" role="group" aria-label="Calendar view">
+    <button type="button" class="btn btn-sm join-item aria-pressed:btn-primary aria-pressed:btn-soft" data-cal-mode="dots" aria-pressed="true" onclick="setCalendarMode('dots', true)">Dots</button>
+    <button type="button" class="btn btn-sm join-item aria-pressed:btn-primary aria-pressed:btn-soft" data-cal-mode="heat" aria-pressed="false" onclick="setCalendarMode('heat', true)">Heat</button>
+  </div>
   <div class="join">
     <a href="{% url 'calendar_month' prev_year prev_month %}" class="btn btn-sm join-item">← Prev</a>
     <a href="{% url 'calendar' %}" class="btn btn-sm join-item">Today</a>
@@ -17,12 +22,32 @@
     <a href="{% url 'calendar_month' next_year next_month %}" class="btn btn-sm join-item">Next →</a>
     {% endif %}
   </div>
+  </div>
+</div>
+
+<div class="ui-stat-grid mb-5">
+  <div class="ui-stat !p-3">
+    <div class="ui-stat-label">Workouts</div>
+    <div class="ui-stat-value text-xl">{{ month_summary.workouts }}</div>
+  </div>
+  <div class="ui-stat !p-3">
+    <div class="ui-stat-label">Training time</div>
+    <div class="ui-stat-value text-xl">{{ month_summary.seconds|format_duration_hm }}</div>
+  </div>
+  <div class="ui-stat !p-3">
+    <div class="ui-stat-label">Active days</div>
+    <div class="ui-stat-value text-xl">{{ month_summary.active_days }}</div>
+  </div>
+  <div class="ui-stat !p-3">
+    <div class="ui-stat-label">Avg readiness</div>
+    <div class="ui-stat-value text-xl">{% if month_summary.avg_readiness is not None %}{{ month_summary.avg_readiness }}{% else %}—{% endif %}</div>
+  </div>
 </div>
 
 <div class="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
 
-  <!-- Month grid -->
-  <div class="min-w-0">
+  <!-- Month grid (data-mode: dots | heat, on the wrapper so the legend follows too) -->
+  <div class="min-w-0" id="cal-grid" data-mode="dots">
     <div class="grid grid-cols-7 gap-1 sm:gap-2">
       {% for day_name in "Mon,Tue,Wed,Thu,Fri,Sat,Sun"|split:"," %}
       <div class="pb-1 text-center text-xs font-medium text-muted">{{ day_name }}</div>
@@ -34,16 +59,18 @@
           <div class="min-h-16 sm:min-h-24" aria-hidden="true"></div>
           {% else %}
           <a href="{% url 'day_view' cell.date|date:'Y-m-d' %}"
-             aria-label="{{ cell.date|date:'l, F j' }}{% if cell.workouts %}: {{ cell.workouts|length }} workout{{ cell.workouts|length|pluralize }}{% endif %}{% if cell.stats and cell.stats.readiness_score is not None %}, readiness {{ cell.stats.readiness_score }}{% endif %}{% if cell.nutrition_status %}, nutrition logged{% endif %}"
-             class="ui-press flex min-h-16 flex-col gap-1 rounded-xl bg-base-100 p-1.5 text-base-content shadow-sm hover:no-underline hover:bg-base-300 sm:min-h-24 sm:p-2{% if cell.is_today %} ring-2 ring-primary{% endif %}{% if cell.is_future %} opacity-40{% endif %}">
+             aria-label="{{ cell.date|date:'l, F j' }}{% if cell.workouts %}: {{ cell.workouts|length }} workout{{ cell.workouts|length|pluralize }}, {{ cell.minutes }} min{% endif %}{% if cell.stats and cell.stats.readiness_score is not None %}, readiness {{ cell.stats.readiness_score }}{% endif %}{% if cell.nutrition_status %}, nutrition logged{% endif %}"
+             style="--heat: {{ cell.heat_pct }}%"
+             class="ui-press flex min-h-16 flex-col gap-1 rounded-xl bg-base-100 p-1.5 text-base-content shadow-sm hover:no-underline hover:bg-base-300 sm:min-h-24 sm:p-2 [[data-mode=heat]_&]:bg-[color-mix(in_oklab,var(--color-primary)_var(--heat),var(--color-base-100))]{% if cell.heat_pct >= 50 %} dark:[[data-mode=heat]_&]:text-primary-content{% endif %}{% if cell.is_today %} ring-2 ring-primary{% endif %}{% if cell.is_future %} opacity-40{% endif %}">
             <div class="flex items-start justify-between gap-1">
               <span class="text-xs font-semibold sm:text-sm{% if cell.is_today %} text-primary{% endif %}">{{ cell.date.day }}</span>
               {% if cell.stats and cell.stats.readiness_score is not None %}
-              <span class="hidden font-mono text-xs sm:inline {{ cell.stats.readiness_color|tone }}">{{ cell.stats.readiness_score }}</span>
+              <span class="hidden font-mono text-xs sm:inline {{ cell.stats.readiness_color|tone }}{% if cell.heat_pct >= 50 %} [[data-mode=heat]_&]:text-current{% endif %}">{{ cell.stats.readiness_score }}</span>
               {% endif %}
             </div>
+            {% if cell.minutes %}<span class="hidden font-mono text-xs [[data-mode=heat]_&]:inline">{{ cell.minutes }}m</span>{% endif %}
             {% if cell.workouts %}
-            <div class="flex flex-wrap items-center gap-1">
+            <div class="flex flex-wrap items-center gap-1 [[data-mode=heat]_&]:hidden">
               {% for w in cell.workouts|slice:":3" %}
               <span class="size-2 rounded-full" style="background: {{ discipline_colors|get_item:w.discipline|default:'#888888' }}" title="{{ w.title }}"></span>
               {% endfor %}
@@ -58,19 +85,48 @@
         {% endfor %}
       {% endfor %}
     </div>
+    <script>
+      // Dots or Heat (training-minutes shading), remembered per browser. Runs right after
+      // the grid so a saved Heat mode applies before the first paint.
+      function setCalendarMode(mode, save) {
+        document.getElementById('cal-grid').dataset.mode = mode;
+        document.querySelectorAll('[data-cal-mode]').forEach(function(b) {
+          b.setAttribute('aria-pressed', String(b.dataset.calMode === mode));
+        });
+        if (save) { try { localStorage.setItem('calendarMode', mode); } catch (e) {} }
+      }
+      (function() {
+        var m = null;
+        try { m = localStorage.getItem('calendarMode'); } catch (e) {}
+        if (m === 'heat') setCalendarMode('heat', false);
+      })();
+    </script>
 
     <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
+      <span class="contents [[data-mode=heat]_&]:hidden">
       {% for disc, color in legend_colors.items %}
       <span class="flex items-center gap-1.5">
         <span class="size-2 rounded-full" style="background: {{ color }}"></span>
         {{ disc|title }}
       </span>
       {% endfor %}
+      </span>
+      <span class="hidden items-center gap-1.5 [[data-mode=heat]_&]:flex">
+        Training minutes:
+        <span class="flex gap-0.5" aria-hidden="true">
+          <span class="size-3 rounded-sm bg-base-100 ring-1 ring-subtle"></span>
+          <span class="size-3 rounded-sm bg-primary/15"></span>
+          <span class="size-3 rounded-sm bg-primary/30"></span>
+          <span class="size-3 rounded-sm bg-primary/50"></span>
+          <span class="size-3 rounded-sm bg-primary/70"></span>
+        </span>
+        <span class="font-mono text-xs">0 · 1–29 · 30–59 · 60–89 · 90+</span>
+      </span>
       <span class="flex items-center gap-1.5">
         <span class="size-1.5 rounded-full bg-success"></span>
         Nutrition logged
       </span>
-      <span class="hidden sm:inline lg:ml-auto">Numbers = training readiness score</span>
+      <span class="hidden sm:inline lg:ml-auto">Numbers = training readiness score<span class="hidden [[data-mode=heat]_&]:inline"> · minutes = training time</span></span>
     </div>
   </div>
 

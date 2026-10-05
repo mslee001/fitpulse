@@ -580,3 +580,40 @@ def metric_help(context, slug):
     title, text = METRIC_HELP[slug]
     return render_to_string("workouts/partials/metric_help.html",
                             {"uid": f"{slug.replace('_', '-')}-{n}", "title": title, "text": text})
+
+
+@register.filter
+def reltime(value, now=None):
+    """'just now' / '5 min ago' / '2 h ago' / 'yesterday' / '3 days ago' / 'Sep 14', as a
+    <time> with the full local timestamp on hover. For sync/renewal/generated stamps
+    only, never for when a workout, meal or symptom happened (those keep real dates).
+    Future times (clock skew) read 'just now'. `now` is for tests."""
+    import datetime as _dt
+    from django.utils import timezone
+    from django.utils.html import format_html
+    if not value:
+        return ""
+    if not isinstance(value, _dt.datetime):
+        value = _dt.datetime.combine(value, _dt.time())
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value)
+    now = now or timezone.now()
+    local, local_now = timezone.localtime(value), timezone.localtime(now)
+    secs = (now - value).total_seconds()
+    days = (local_now.date() - local.date()).days
+    if secs < 60:
+        text = "just now"
+    elif secs < 3600:
+        text = f"{int(secs // 60)} min ago"
+    elif days == 0 or secs < 6 * 3600:
+        text = f"{int(secs // 3600)} h ago"
+    elif days == 1:
+        text = "yesterday"
+    elif days < 7:
+        text = f"{days} days ago"
+    elif local.year == local_now.year:
+        text = f"{local:%b} {local.day}"
+    else:
+        text = f"{local:%b} {local.day}, {local.year}"
+    full = f"{local:%a, %b} {local.day}, {local.year}, {local:%I:%M %p}".replace(", 0", ", ")
+    return format_html('<time datetime="{}" title="{}">{}</time>', local.isoformat(), full, text)

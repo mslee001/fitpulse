@@ -56,7 +56,11 @@
 {% endif %}
 
 {% if not current_programs and not past_programs %}
-<div class="ui-empty">No programs yet.</div>
+<div class="ui-empty">
+  {% include "workouts/partials/icon.html" with name="calendar" class="size-8 text-faint" %}
+  <p class="font-medium text-base-content">No programs yet</p>
+  <p class="text-sm">Start one with <strong>+ New split</strong> above to track your classes week by week.</p>
+</div>
 {% endif %}
 </div>
 {% endblock %}
