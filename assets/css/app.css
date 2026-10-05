@@ -119,6 +119,11 @@
     --chart-1: #0E8C7E; --chart-2: #2A78D6; --chart-3: #E2602B;
     --chart-4: #4A3AA7; --chart-5: #A87400; --chart-6: #C94F7C;
   }
+  /* Intervention category colors (domain colors, shown as dots next to the name). */
+  :root {
+    --cat-medication: #ff35da; --cat-supplement: #B4FF39; --cat-hormone: #A78BFA;
+    --cat-lifestyle: #00D1FF; --cat-surgery: #FF8A65; --cat-other: #888899;
+  }
   body { @apply bg-base-200 text-base-content font-sans antialiased; }
 }
 

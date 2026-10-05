@@ -109,7 +109,6 @@ a:hover { text-decoration: underline; }
   font-size: 2.2rem; font-weight: 800; line-height: 1;
   color: var(--text);
 }
-.stat-unit { font-size: 1rem; color: var(--text-muted); margin-left: 2px; }
 
 /* ── Discipline pills (history filter) ───────── */
 
@@ -158,23 +157,6 @@ a:hover { text-decoration: underline; }
   font-family: var(--font-sans);
   font-size: 0.8rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--text-muted);
-}
-.chart-toggles { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-.chart-toggle {
-  padding: 0.25rem 0.75rem;
-  font-family: var(--font-sans);
-  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
-  background: var(--bg); color: var(--text-muted);
-  border: 1px solid var(--fp-border); border-radius: 4px;
-  cursor: pointer; transition: all 0.15s;
-}
-.chart-toggle:hover {
-  color: var(--accent); border-color: var(--accent);
-}
-.chart-toggle.active {
-  color: var(--toggle-color, var(--accent-alt));
-  border-color: var(--toggle-color, var(--accent-alt));
-  background: var(--bg-raised);
 }
 
 /* ── Detail layout ───────────────────────────── */
@@ -391,30 +373,6 @@ a:hover { text-decoration: underline; }
 
 /* ── Interventions ─────────────────────────────── */
 
-:root {
-  --cat-medication:  #ff35da;
-  --cat-supplement:  #B4FF39;
-  --cat-hormone:     #A78BFA;
-  --cat-lifestyle:   #00D1FF;
-  --cat-surgery:     #FF8A65;
-  --cat-other:       #888899;
-}
-
-.cat-badge {
-  display: inline-block;
-  font-family: var(--font-sans);
-  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-}
-.cat-medication { color: var(--cat-medication); }
-.cat-supplement { color: var(--cat-supplement); }
-.cat-hormone    { color: var(--cat-hormone);    }
-.cat-lifestyle  { color: var(--cat-lifestyle);  }
-.cat-surgery    { color: var(--cat-surgery);    }
-.cat-other      { color: var(--cat-other);      }
 
 /* ── Programs ───────────────────────────────────── */
 
@@ -479,12 +437,6 @@ a:hover { text-decoration: underline; }
   padding: 1.5rem;
   margin-bottom: 1.5rem;
 }
-.add-form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
 .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
 .form-label {
   font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
@@ -501,17 +453,6 @@ a:hover { text-decoration: underline; }
 .form-textarea { resize: vertical; min-height: 70px; }
 
 /* ── Body page ─────────────────────────────────── */
-
-.body-stats-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.delta-positive { color: var(--accent-green); font-weight: 700; }
-.delta-negative { color: var(--accent-red);   font-weight: 700; }
-.delta-neutral  { color: var(--text-muted);   }
 
 .range-toggle-row {
   display: flex; gap: 0.4rem; flex-wrap: wrap;
@@ -547,66 +488,7 @@ a:hover { text-decoration: underline; }
 
 /* ── Analysis / Trends ─────────────────────────── */
 
-.trends-controls-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem 1.5rem;
-  align-items: end;
-  margin-top: 1rem;
-}
-
-.analysis-table {
-  width: 100%; border-collapse: collapse;
-  font-size: 0.85rem;
-}
-.analysis-table th {
-  font-family: var(--font-sans);
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-muted); padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--fp-border);
-  text-align: left;
-}
-.analysis-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--fp-border); }
-.analysis-table tbody tr:last-child td { border-bottom: none; }
-.analysis-table tbody tr:hover td { background: var(--bg-hover); }
-
-.analysis-group-header td {
-  font-family: var(--font-sans);
-  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-dim); padding: 0.75rem 0.75rem 0.3rem;
-  background: var(--bg-raised) !important;
-}
-.analysis-improved { background: rgba(180, 255, 57, 0.06); }
-.analysis-worsened { background: rgba(255, 59, 92, 0.06); }
-.analysis-neutral  { background: transparent; }
 .analysis-nodata td { color: var(--text-dim); }
-
-.ai-interpretation { font-size: 0.9rem; line-height: 1.75; }
-.ai-interpretation h2 {
-  font-family: var(--font-sans);
-  font-size: 1.1rem; font-weight: 700; letter-spacing: 0.06em;
-  color: var(--accent); margin: 1.25rem 0 0.5rem;
-  text-transform: uppercase;
-}
-.ai-interpretation h2:first-child { margin-top: 0; }
-.ai-interpretation p { margin-bottom: 0.75rem; }
-.ai-interpretation ul { padding-left: 1.2rem; margin-bottom: 0.75rem; }
-.ai-interpretation li { margin-bottom: 0.3rem; }
-
-.saved-analyses-table {
-  width: 100%; border-collapse: collapse; font-size: 0.875rem;
-}
-.saved-analyses-table th {
-  font-family: var(--font-sans);
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-muted); padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--fp-border);
-  text-align: left;
-}
-.saved-analyses-table td {
-  padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--fp-border);
-  color: var(--text-muted);
-}
-.saved-analyses-table tr:last-child td { border-bottom: none; }
-.saved-analyses-table tr:hover td { background: var(--bg-hover); }
 
 /* ── Intervention list items ────────────────────────── */
 
@@ -658,28 +540,7 @@ a:hover { text-decoration: underline; }
 
 /* ── Dose edit panel (full-width table row) ─────────── */
 
-.dose-edit-panel {
-  background: var(--bg-raised);
-  padding: 1rem 1.25rem;
-  border-radius: 4px;
-}
-
-.dose-edit-row td {
-  padding: 0 !important;
-  border-bottom: 2px solid var(--accent) !important;
-}
-
 /* ── Trends date window labels ──────────────────────── */
-
-.window-label {
-  font-family: var(--font-sans);
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
-  color: var(--text-dim); text-transform: uppercase;
-  grid-column: 1 / -1;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid var(--fp-border);
-  margin-top: 0.5rem;
-}
 
 /* ── Nutrition ─────────────────────────────── */
 
@@ -1031,18 +892,6 @@ a:hover { text-decoration: underline; }
 .target-computed { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.2rem; }
 
 /* Nutrition summary card on body page */
-.nutrition-summary-card {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-.nutr-stat { text-align: center; }
-.nutr-stat-val {
-  font-family: var(--font-sans);
-  font-size: 1.6rem; font-weight: 800; line-height: 1;
-}
-.nutr-stat-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.2rem; }
 
 /* Streak badges (nutrition page) */
 .streak-badge {
@@ -1209,7 +1058,6 @@ a:hover { text-decoration: underline; }
   .page-header { margin-bottom: 1.5rem; }
 
   /* ── Symptoms: single column ── */
-  .symptoms-grid { grid-template-columns: 1fr !important; }
 
   /* ── Nutrition food log: hide less-critical columns ── */
   .food-log-table .col-carbs,
@@ -1232,7 +1080,6 @@ a:hover { text-decoration: underline; }
   /* ── Day view: wellness sidebar below main content ── */
 
   /* ── Weekly review: sidebar below main content ── */
-  .review-layout { grid-template-columns: 1fr !important; }
 
   /* ── Detail pages (cycling, run, strength, etc.): sidebar below ── */
 
