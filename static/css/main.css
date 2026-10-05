@@ -3442,3 +3442,9 @@ a:hover { text-decoration: underline; }
 .tp-plan-card { margin-bottom: 1.5rem; }
 .tp-plan-summary { margin: 0; font-family: 'Barlow', sans-serif; font-size: 0.92rem; line-height: 1.55; }
 .pcell-day { font-family: 'Barlow Condensed', sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+
+/* Plan reassessment (run page + review page) */
+.tp-nudge { margin: 0.25rem 0 0.75rem; font-size: 0.86rem; }
+.tp-changes { margin-top: 0.75rem; }
+.tp-changes .tp-evidence { margin-bottom: 0; }
+.tp-was { margin: 0 0 0.4rem; font-size: 0.8rem; color: var(--text-dim); }

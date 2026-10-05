@@ -846,3 +846,179 @@ class ClassLinkTests(PlanTestCase):
         from workouts.templatetags.workout_filters import peloton_class_url
         self.assertEqual(peloton_class_url("t_end-30-0"), url)
         self.assertEqual(peloton_class_url(""), "")
+
+
+WEEK4_DAY = date(2026, 10, 28)     # a Wednesday in plan week 4 (week 1 = Oct 5–11) → reassess weeks 5–7
+
+
+def reassess_spec(from_week=5, weeks=7):
+    out = {"plan_name": "x", "summary": "Runs are going well; adding a little more.", "assumptions": [],
+           "pace_guidance": "Try Level 5 in week 6.", "changes": ["Week 5 long run 45 → 45 min: kept"],
+           "weeks": []}
+    for n in range(from_week, weeks + 1):
+        out["weeks"].append({"number": n, "phase": "build", "focus": "f",
+                             "slots": [spec_slot(3, minutes=20), spec_slot(6, minutes=45)]})
+    return out
+
+
+class ReassessTests(PlanTestCase):
+    def setUp(self):
+        super().setUp()
+        p = patch("workouts.training_plans.timezone.localdate", return_value=WEEK4_DAY)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def plan(self):
+        draft = PlanDraft.objects.create(user=self.a, inputs_json=self.inputs())
+        with patch.object(llm, "call_json", return_value=full_spec()):
+            tp._generate(draft.pk)
+        draft.refresh_from_db()
+        return tp.create_program_from_draft(draft, "Fall 10K")
+
+    def complete(self, program, week, day, minutes=30, pace=None, wid=None):
+        slot = ProgramSlot.objects.get(week__program=program, week__number=week, day=day)
+        w = self.run_workout(self.a, tp.week_dates(tp.source_draft(program).inputs_json, week)[day - 1],
+                             minutes=minutes, ride_id=slot.peloton_ride_id, wid=wid or f"done-{week}-{day}")
+        if pace:
+            w.avg_pace_seconds = pace
+            w.save()
+        ProgramWorkout.objects.create(run_week=program.active_run.run_weeks.get(sequence=week), slot=slot, workout=w)
+        return w
+
+    # ── availability ───────────────────────────────────────────────────────────
+
+    def test_window_is_next_week_through_the_end(self):
+        program = self.plan()
+        self.assertEqual(tp.reassess_window(program, WEEK4_DAY), ((5, 7), ""))
+        self.assertIsNone(tp.reassess_window(program, SAT_RACE)[0])              # last week started
+        split = Program.objects.create(user=self.a, name="Split", slug="sp", kind="split")
+        self.assertIsNone(tp.reassess_window(split, WEEK4_DAY)[0])
+        PlanDraft.objects.filter(pk=program.goal_json["draft_id"]).delete()
+        program.refresh_from_db()
+        self.assertIn("original inputs", tp.reassess_window(program, WEEK4_DAY)[1])
+
+    # ── nudge signals ─────────────────────────────────────────────────────────
+
+    def test_signals_easy_ratings(self):
+        program = self.plan()
+        for seq, rpe in ((2, 3), (3, 2)):
+            program.active_run.run_weeks.filter(sequence=seq).update(rpe=rpe)
+        for wk in (2, 3):
+            for day in (3, 6):
+                self.complete(program, wk, day)
+        reasons = tp.reassess_signals(program, WEEK4_DAY)
+        self.assertEqual(reasons, ["you rated your last two weeks 3/10 and 2/10 — it may be too easy"])
+
+    def test_signals_missed_runs_and_cooldown(self):
+        program = self.plan()
+        self.complete(program, 2, 3)        # weeks 2–3 planned 4 runs, 1 done → 3 missed
+        self.assertEqual(tp.reassess_signals(program, WEEK4_DAY), ["3 planned runs were missed in the last two weeks"])
+        goal = dict(program.goal_json, reassessments=[{"date": (WEEK4_DAY - timedelta(days=2)).isoformat()}])
+        Program.objects.filter(pk=program.pk).update(goal_json=goal)
+        program.refresh_from_db()
+        self.assertEqual(tp.reassess_signals(program, WEEK4_DAY), [])
+
+    def test_signals_pace_level_change(self):
+        program = self.plan()
+        goal = dict(program.goal_json, pace_level=4)
+        Program.objects.filter(pk=program.pk).update(goal_json=goal)
+        program.refresh_from_db()
+        for wk in (2, 3):
+            for day in (3, 6):
+                self.complete(program, wk, day)
+        w = self.run_workout(self.a, WEEK4_DAY - timedelta(days=1), wid="lvl5")
+        w.performance_graph_json = {"pace_level": "Level 5", "pace_zones": [{"name": "Easy", "fast_pace": 13,
+                                                                             "slow_pace": 14}]}
+        w.save()
+        self.assertIn("your Peloton pace level is now 5 (the plan was built for Level 4)",
+                      tp.reassess_signals(program, WEEK4_DAY))
+
+    # ── progress context ──────────────────────────────────────────────────────
+
+    def test_progress_context_planned_vs_done(self):
+        program = self.plan()
+        self.complete(program, 1, 3, minutes=30, pace=13 * 60 + 40)
+        program.active_run.run_weeks.filter(sequence=1).update(rpe=4, note="felt easy")
+        self.run_workout(self.a, date(2026, 10, 10), minutes=25, title="Extra Outdoor Run", wid="extra")
+        inputs = dict(tp.source_draft(program).inputs_json, pace={"level": 4})
+        text = tp.progress_context(program, 5, inputs, WEEK4_DAY)
+        self.assertIn("PROGRESS SO FAR (weeks 1–4 of 7", text)
+        self.assertIn("Week 1 (Oct 5): planned 2 runs · 75 min; done 1 · 30 min; rated 4/10 (\"felt easy\")", text)
+        self.assertIn("13:40/mi (Moderate at Level 4)", text)
+        self.assertIn("Sat Endurance 45 min easy → missed", text)
+        self.assertIn('unplanned run: "Extra Outdoor Run" · 25 min', text)
+
+    # ── generate + apply ──────────────────────────────────────────────────────
+
+    def test_generate_and_apply(self):
+        program = self.plan()
+        done = self.complete(program, 2, 3)
+        kept_ids = {s.pk for s in ProgramSlot.objects.filter(week__program=program, week__number__lt=5)}
+        race = ProgramSlot.objects.get(week__program=program, title="Race day: 10K")
+        with patch("workouts.training_plans.start_generation"):
+            draft = tp.start_reassessment(program, WEEK4_DAY)
+        self.assertEqual((draft.kind, draft.from_week, draft.program_id), ("reassess", 5, program.pk))
+        with patch.object(llm, "call_json", return_value=reassess_spec()) as call:
+            tp._generate(draft.pk)
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, "ready", draft.error)
+        prompt = call.call_args.args[0]
+        self.assertIn("You are revising weeks 5–7", prompt)
+        self.assertIn("PROGRESS SO FAR", prompt)
+        self.assertIn("CURRENT PLAN (weeks 5–7", prompt)
+        self.assertIn("REVISION RULES", prompt)
+        self.assertEqual([w["number"] for w in draft.spec_json["weeks"]], [5, 6, 7])
+        kept_rides = {s.peloton_ride_id for s in ProgramSlot.objects.filter(pk__in=kept_ids)}
+        self.assertFalse(kept_rides & {p["ride_id"] for p in draft.picks_json.values()})
+
+        page = self.client_a.get(reverse("program_training_plan_draft", args=[draft.pk])).content.decode()
+        self.assertIn("Reassess: weeks 5–7", page)
+        self.assertIn("Apply changes", page)
+        self.assertIn("What changed", page)
+
+        resp = self.client_a.post(reverse("program_training_plan_create", args=[draft.pk]))
+        self.assertRedirects(resp, reverse("program_run", args=[program.active_run.pk]), fetch_redirect_response=False)
+        program.refresh_from_db()
+        self.assertEqual({s.pk for s in ProgramSlot.objects.filter(week__program=program, week__number__lt=5)},
+                         kept_ids)                                   # earlier weeks untouched
+        self.assertTrue(ProgramSlot.objects.filter(pk=race.pk).exists())
+        self.assertTrue(ProgramWorkout.objects.filter(workout=done).exists())
+        wk5 = ProgramSlot.objects.filter(week__program=program, week__number=5).order_by("day")
+        self.assertEqual([(s.day, s.duration_min) for s in wk5], [(3, 20), (6, 45)])
+        self.assertEqual(program.goal_json["reassessments"][-1]["from_week"], 5)
+        self.assertEqual(program.goal_json["pace_summary"]["guidance"], "Try Level 5 in week 6.")
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, "created")
+        run_page = self.client_a.get(reverse("program_run", args=[program.active_run.pk])).content.decode()
+        self.assertIn("Reassessed Oct 28", run_page)
+        self.assertIn("Week 5 long run 45 → 45 min: kept", run_page)
+
+    def test_discard_leaves_plan_alone(self):
+        program = self.plan()
+        before = list(ProgramSlot.objects.filter(week__program=program).values_list("pk", flat=True))
+        with patch("workouts.training_plans.start_generation"):
+            draft = tp.start_reassessment(program, WEEK4_DAY)
+        resp = self.client_a.post(reverse("program_training_plan_discard", args=[draft.pk]))
+        self.assertRedirects(resp, reverse("program_run", args=[program.active_run.pk]), fetch_redirect_response=False)
+        self.assertEqual(list(ProgramSlot.objects.filter(week__program=program).values_list("pk", flat=True)), before)
+
+    def test_reassess_button_and_route(self):
+        program = self.plan()
+        page = self.client_a.get(reverse("program_run", args=[program.active_run.pk])).content.decode()
+        self.assertIn("Reassess weeks 5–7", page)
+        with patch("workouts.training_plans.start_generation") as start:
+            resp = self.client_a.post(reverse("program_reassess", args=[program.slug]))
+        draft = PlanDraft.objects.get(kind="reassess")
+        self.assertRedirects(resp, reverse("program_training_plan_draft", args=[draft.pk]),
+                             fetch_redirect_response=False)
+        start.assert_called_once()
+        access = access_for(self.b)       # with the feature, someone else's plan is a 404, not a 403
+        access.features, access.ai_enabled = ["training", "programs", "ai_program_tools"], True
+        access.save()
+        self.assertEqual(self.client_b.post(reverse("program_reassess", args=[program.slug])).status_code, 404)
+
+    def test_nudge_banner_on_every_page(self):
+        program = self.plan()
+        self.complete(program, 2, 3)
+        html = self.client_a.get("/").content.decode()
+        self.assertIn("Fall 10K may need a refresh: 3 planned runs were missed in the last two weeks", html)

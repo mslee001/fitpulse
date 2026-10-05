@@ -94,6 +94,7 @@ class IsolationTests(TwoUserTestCase):
             ("program_training_plan_retry", [self.draft.pk]), ("program_training_plan_swap", [self.draft.pk]),
             ("program_training_plan_pick", [self.draft.pk]), ("program_training_plan_create", [self.draft.pk]),
             ("program_training_plan_discard", [self.draft.pk]), ("program_slot_swap", [self.slot.pk]),
+            ("program_reassess", ["alice-split"]),
         ]
         before = self.counts()
         for name, args in gets:

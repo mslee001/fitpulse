@@ -1,5 +1,5 @@
 <div class="add-form-card tp-status" id="tp-status"
      {% if draft.status == "generating" %}hx-get="{% url 'program_training_plan_status' draft.pk %}" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
-  <span class="gs-spinner"></span> Building your plan… this usually takes under a minute.
+  <span class="gs-spinner"></span> {% if draft.kind == 'reassess' %}Reassessing your plan from how it's gone so far…{% else %}Building your plan…{% endif %} this usually takes under a minute.
   <span class="muted">(started {{ draft.created_at|timesince }} ago)</span>
 </div>

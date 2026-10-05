@@ -1032,9 +1032,11 @@ def _gate_replacement(allowed, level, entry_name, duration, setting):
     return None, None
 
 
-def validate_spec(spec, inputs, allowed):
+def validate_spec(spec, inputs, allowed, first_week=1, kept_longest=0):
     """Repair what's cheap, drop what isn't, and return (clean_spec, warnings).
-    Raises PlanSpecInvalid when too much was dropped or a week has no run."""
+    Raises PlanSpecInvalid when too much was dropped or a week has no run.
+    A reassessment validates only weeks first_week…; kept_longest is the longest
+    run in the weeks it keeps (for the long-run check)."""
     warnings = []
     weeks_wanted = inputs["weeks"]
     start, race = plan_dates(inputs)
@@ -1047,17 +1049,17 @@ def validate_spec(spec, inputs, allowed):
         except (TypeError, ValueError):
             continue
         by_number.setdefault(n, wk)
-    extra = sorted(n for n in by_number if not 1 <= n <= weeks_wanted)
+    extra = sorted(n for n in by_number if not first_week <= n <= weeks_wanted)
     if extra:
-        warnings.append(f"Dropped extra week(s) {', '.join(map(str, extra))} beyond the plan's {weeks_wanted}.")
-    missing = [n for n in range(1, weeks_wanted + 1) if n not in by_number]
+        warnings.append(f"Dropped week(s) {', '.join(map(str, extra))} outside weeks {first_week}–{weeks_wanted}.")
+    missing = [n for n in range(first_week, weeks_wanted + 1) if n not in by_number]
     if missing:
         raise PlanSpecInvalid(f"The AI's plan is missing week(s) {', '.join(map(str, missing))}.")
 
     total = dropped = 0
     rounded = []          # "Week 3 Sun 35→30" — reported as one line
     clean_weeks = []
-    for n in range(1, weeks_wanted + 1):
+    for n in range(first_week, weeks_wanted + 1):
         wk = by_number[n]
         phase = wk.get("phase") if wk.get("phase") in PHASES else "build"
         dates = week_dates(inputs, n)
@@ -1157,8 +1159,8 @@ def validate_spec(spec, inputs, allowed):
                            + ", ".join(rounded) + " min.")
     long_min = (inputs.get("pace") or {}).get("long_run_min")
     if long_min:
-        longest = max((sl["duration_min"] for wk in clean_weeks for sl in wk["slots"]
-                       if sl["discipline"] == "running"), default=0)
+        longest = max([sl["duration_min"] for wk in clean_weeks for sl in wk["slots"]
+                       if sl["discipline"] == "running"] + [kept_longest])
         reachable = min(long_min, inputs["max_weekend_min"] if inputs.get("long_day") in (6, 7, None)
                         else inputs["max_weekday_min"])
         if longest < reachable:
@@ -1168,6 +1170,7 @@ def validate_spec(spec, inputs, allowed):
              "summary": str(spec.get("summary") or ""),
              "assumptions": [str(a) for a in (spec.get("assumptions") or []) if a][:8],
              "pace_guidance": _clip(spec.get("pace_guidance"), 900),
+             "changes": [_clip(c, 300) for c in (spec.get("changes") or []) if c][:6],
              "weeks": clean_weeks}
     return clean, warnings
 
@@ -1344,10 +1347,13 @@ def _pick_entry(ranked, duration, spec_slot, ctx):
     return entry
 
 
-def pick_classes(user, spec, inputs, today=None):
+def pick_classes(user, spec, inputs, today=None, exclude_program=None, used=()):
     """{"<week>-<day>-<order>": {"ride_id", "alternates", ["repeat", "last_taken"]}}
-    for every slot. Deterministic for the same inputs, catalog and history."""
-    ctx = PickContext(user, inputs.get("level"), inputs.get("weeks"), today=today)
+    for every slot. Deterministic for the same inputs, catalog and history.
+    A reassessment passes its program (whose pins aren't "another program's")
+    and the ride ids it keeps, so no class appears twice in the plan."""
+    ctx = PickContext(user, inputs.get("level"), inputs.get("weeks"), exclude_program=exclude_program, today=today)
+    ctx.used |= set(used)
     picks = {}
     for week, slot in iter_slots(spec):
         ranked, duration = rank_candidates(slot, week, ctx)
@@ -1421,17 +1427,31 @@ def _generate(draft_pk):
     from . import ai, llm
     from .models import PlanDraft, WebhookError
 
-    draft = PlanDraft.objects.select_related("user").get(pk=draft_pk)
+    draft = PlanDraft.objects.select_related("user", "program").get(pk=draft_pk)
     user, inputs = draft.user, draft.inputs_json
     try:
-        draft.context_text = build_fitness_context(user, inputs)
+        fitness = build_fitness_context(user, inputs)
+        reassess = None
+        if draft.kind == "reassess":
+            reassess = {"from_week": draft.from_week,
+                        "progress": progress_context(draft.program, draft.from_week, inputs),
+                        "current_plan": remaining_plan_text(draft.program, draft.from_week)}
+            draft.context_text = "\n\n".join([fitness, reassess["progress"], reassess["current_plan"]])
+        else:
+            draft.context_text = fitness
         draft.save(update_fields=["context_text", "updated_at"])   # inspectable even if the AI fails
         menu_text, allowed = catalog_menu(inputs)
         if not allowed["types"]:
             raise PlanSpecInvalid("The class catalog has nothing that fits these settings.")
-        raw = ai.generate_training_plan_spec(user, inputs, draft.context_text, menu_text)
-        spec, warnings = validate_spec(raw, inputs, allowed)
-        picks = pick_classes(user, spec, inputs)
+        raw = ai.generate_training_plan_spec(user, inputs, fitness, menu_text, reassess=reassess)
+        if reassess:
+            kept_ids, kept_longest = kept_plan(draft.program, draft.from_week)
+            spec, warnings = validate_spec(raw, inputs, allowed, first_week=draft.from_week,
+                                           kept_longest=kept_longest)
+            picks = pick_classes(user, spec, inputs, exclude_program=draft.program, used=kept_ids)
+        else:
+            spec, warnings = validate_spec(raw, inputs, allowed)
+            picks = pick_classes(user, spec, inputs)
         draft.spec_json, draft.picks_json, draft.warnings = spec, picks, warnings
         draft.ai_model, draft.status, draft.error = raw.get("model", ""), "ready", ""
     except ai.AI_UNAVAILABLE as e:
@@ -1527,6 +1547,33 @@ def slot_notes(spec_slot, instructor=""):
     return " · ".join(p for p in parts if p)
 
 
+def week_slot_data(spec_week, picks, classes):
+    """create_plan slot dicts for one spec week, each filled with its picked class."""
+    slots = []
+    for slot in spec_week["slots"]:
+        pick = picks.get(slot_key(spec_week["number"], slot)) or {}
+        c = classes.get(pick.get("ride_id"))
+        duration = c.duration_min if c else (pick.get("duration_min") or slot["duration_min"])
+        slots.append({
+            "day": slot["day"], "order": slot["order"],
+            "title": c.title if c else f"{slot['class_type']} · {duration} min",
+            "discipline": "strength" if slot["discipline"] == "pilates" else slot["discipline"],
+            "duration_min": duration, "ride_id": c.ride_id if c else "",
+            "optional": slot["optional"], "notes": slot_notes(slot, c.instructor_name if c else ""),
+            "spec": dict(slot),
+        })
+    return slots
+
+
+def race_slot_data(inputs):
+    """The title-only, optional race-day slot (deliberately no any-class matcher)."""
+    return {"day": inputs["race_weekday"], "order": 9,
+            "title": f"Race day: {RACE_LABELS.get(inputs['goal'], 'Race')}",
+            "discipline": "running", "optional": True, "ride_id": "",
+            "notes": "Informational — not matched automatically (an any-run matcher would claim every "
+                     "unplanned run in the plan window)."}
+
+
 def create_program_from_draft(draft, name):
     """Save a ready draft as a ride-id-pinned plan and start its run on the plan's
     start date. Doesn't touch any other program's run."""
@@ -1539,27 +1586,9 @@ def create_program_from_draft(draft, name):
     start, race = plan_dates(inputs)
     weeks_data = []
     for wk in spec["weeks"]:
-        slots = []
-        for slot in wk["slots"]:
-            pick = picks.get(slot_key(wk["number"], slot)) or {}
-            c = classes.get(pick.get("ride_id"))
-            duration = c.duration_min if c else (pick.get("duration_min") or slot["duration_min"])
-            notes = slot_notes(slot, c.instructor_name if c else "")
-            slots.append({
-                "day": slot["day"], "order": slot["order"],
-                "title": c.title if c else f"{slot['class_type']} · {duration} min",
-                "discipline": "strength" if slot["discipline"] == "pilates" else slot["discipline"],
-                "duration_min": duration, "ride_id": c.ride_id if c else "",
-                "optional": slot["optional"], "notes": notes, "spec": dict(slot),
-            })
+        slots = week_slot_data(wk, picks, classes)
         if inputs.get("race_week") == wk["number"] and race:
-            label = RACE_LABELS.get(inputs["goal"], "Race")
-            slots.append({
-                "day": inputs["race_weekday"], "order": 9, "title": f"Race day: {label}",
-                "discipline": "running", "optional": True, "ride_id": "",
-                "notes": "Informational — not matched automatically (an any-run matcher would claim every "
-                         "unplanned run in the plan window).",
-            })
+            slots.append(race_slot_data(inputs))
         weeks_data.append({"number": wk["number"], "slots": slots})
 
     end = race or (week_dates(inputs, inputs["weeks"])[-1])
@@ -1605,3 +1634,236 @@ def swap_program_slot(slot):
     slot.notes = slot_notes(slot.spec_json, c.instructor_name)
     slot.save(update_fields=["peloton_ride_id", "title", "alt_ride_ids", "duration_min", "notes"])
     return c
+
+
+# ---------------------------------------------------------------------------
+# Reassessing a plan mid-way: Sonnet rewrites the remaining weeks from how the
+# runs so far actually went; the user reviews, then it's applied in place
+# (same Program, same run, completed weeks untouched).
+# ---------------------------------------------------------------------------
+
+REASSESS_COOLDOWN = timedelta(days=7)   # no nudge within a week of the last reassessment
+EASY_RPE, HARD_RPE = 3, 8               # two rated weeks in a row at/below (or at/above) → nudge
+MISSED_RUNS_NUDGE = 2                   # planned runs missed over the last two finished weeks → nudge
+
+
+def plan_week_for(program, day):
+    """Which plan week a date falls in (1-based; ≤ 0 before the plan starts)."""
+    start = date.fromisoformat(program.goal_json["start_date"])
+    return (day - (start - timedelta(days=start.weekday()))).days // 7 + 1
+
+
+def source_draft(program):
+    """The draft a plan was generated from (holds its original inputs)."""
+    from .models import PlanDraft
+    draft_id = (program.goal_json or {}).get("draft_id")
+    return PlanDraft.objects.for_user(program.user).filter(pk=draft_id, kind="new").first() if draft_id else None
+
+
+def reassess_window(program, today=None):
+    """((from_week, last_week), "") a reassessment would rewrite — next Monday's
+    week through the end — or (None, reason) when it isn't available."""
+    goal = program.goal_json or {}
+    if not goal.get("start_date"):
+        return None, "Only AI training plans can be reassessed."
+    if program.active_run is None:
+        return None, "This plan has no active cycle."
+    today = today or timezone.localdate()
+    weeks = goal.get("weeks") or program.weeks.count()
+    from_week = max(plan_week_for(program, today) + 1, 1)
+    if from_week > weeks:
+        return None, "The plan's last week has already started."
+    if source_draft(program) is None:
+        return None, "The plan's original inputs are gone, so it can't be reassessed."
+    return (from_week, weeks), ""
+
+
+def _planned_runs(program, weeks):
+    return [s for s in ProgramSlot.objects.filter(week__program=program, week__number__in=weeks)
+            .select_related("week") if s.spec_json.get("discipline") == "running"]
+
+
+def reassess_signals(program, today=None):
+    """Plain-language reasons the plan may need a refresh (no AI involved), for the
+    nudge banner. Empty when nothing stands out, or right after a reassessment."""
+    from .models import ProgramWorkout
+    window, _ = reassess_window(program, today)
+    if not window:
+        return []
+    today = today or timezone.localdate()
+    goal = program.goal_json
+    last = (goal.get("reassessments") or [{}])[-1].get("date")
+    if last and today - date.fromisoformat(last) < REASSESS_COOLDOWN:
+        return []
+    run = program.active_run
+    reasons = []
+    level = latest_pace_level(program.user)
+    if (level and goal.get("pace_level") and level["level"] != goal["pace_level"]
+            and level["date"] >= date.fromisoformat(goal["start_date"])):
+        reasons.append(f"your Peloton pace level is now {level['level']} (the plan was built for "
+                       f"Level {goal['pace_level']})")
+    rated = list(run.run_weeks.filter(rpe__isnull=False).order_by("-sequence")[:2])
+    if len(rated) == 2 and all(r.rpe <= EASY_RPE for r in rated):
+        reasons.append(f"you rated your last two weeks {rated[1].rpe}/10 and {rated[0].rpe}/10 — it may be too easy")
+    elif len(rated) == 2 and all(r.rpe >= HARD_RPE for r in rated):
+        reasons.append(f"you rated your last two weeks {rated[1].rpe}/10 and {rated[0].rpe}/10 — it may be too hard")
+    current = plan_week_for(program, today)
+    finished = [w for w in (current - 1, current - 2) if w >= 1]
+    planned = [s for s in _planned_runs(program, finished) if not s.optional]
+    done = set(ProgramWorkout.objects.filter(run_week__run=run, slot__in=planned).values_list("slot_id", flat=True))
+    missed = sum(1 for s in planned if s.pk not in done)
+    if missed >= MISSED_RUNS_NUDGE:
+        reasons.append(f"{missed} planned runs were missed in the last two weeks")
+    return reasons
+
+
+def _done_line(w, level):
+    bits = [f'"{w.title}"', f"{round(_minutes(w))} min"]
+    if w.avg_pace_seconds:
+        pace = _fmt_pace(w.avg_pace_seconds)
+        if level:
+            pace += f" ({zone_for_pace(level, w.avg_pace_seconds)} at Level {level})"
+        bits.append(pace)
+    if w.effort_per_min:
+        bits.append(f"{w.effort_per_min} effort pts/min")
+    if w.heart_rate_avg_best:
+        bits.append(f"HR {round(w.heart_rate_avg_best)}")
+    return " · ".join(bits)
+
+
+def progress_context(program, from_week, inputs, today=None):
+    """PROGRESS SO FAR: each week before from_week — planned vs done (pace and zone,
+    effort per minute, HR), the week's rating, unplanned runs — plus pace-level
+    change. Every number comes from the database."""
+    from .models import ProgramWorkout
+    today = today or timezone.localdate()
+    run = program.active_run
+    goal = program.goal_json
+    level = (inputs.get("pace") or {}).get("level")
+    weeks = list(range(1, from_week))
+    out = [f"PROGRESS SO FAR (weeks 1–{from_week - 1} of {goal.get('weeks')}; today is {today:%a %b} {today.day})"]
+    entries = {e.slot_id: e.workout for e in ProgramWorkout.objects.filter(run_week__run=run)
+               .select_related("workout") if e.slot_id}
+    on_grid = {w.pk for w in entries.values()}
+    ratings = {rw.sequence: rw for rw in run.run_weeks.all()}
+    start = date.fromisoformat(goal["start_date"])
+    monday = start - timedelta(days=start.weekday())
+    slots_by_week = defaultdict(list)
+    for s in ProgramSlot.objects.filter(week__program=program, week__number__in=weeks).select_related("week"):
+        if s.spec_json:
+            slots_by_week[s.week.number].append(s)
+    for n in weeks:
+        wk_start = monday + timedelta(weeks=n - 1)
+        slots = sorted(slots_by_week[n], key=lambda s: (s.day or 0, s.order))
+        planned_runs = [s for s in slots if s.spec_json.get("discipline") == "running"]
+        done_runs = [entries[s.pk] for s in planned_runs if s.pk in entries]
+        head = (f"Week {n} ({wk_start:%b} {wk_start.day}): planned {len(planned_runs)} runs · "
+                f"{sum(s.duration_min or 0 for s in planned_runs)} min; done {len(done_runs)} · "
+                f"{round(sum(_minutes(w) for w in done_runs))} min")
+        rw = ratings.get(n)
+        if rw and rw.rpe:
+            head += f"; rated {rw.rpe}/10" + (f' ("{rw.note.strip()[:120]}")' if rw.note.strip() else "")
+        out.append(head)
+        for s in slots:
+            sp = s.spec_json
+            plan = (f"{DAY_NAMES.get(s.day, '?')} {sp.get('class_type', s.title)} {s.duration_min} min "
+                    f"{sp.get('intensity', '')}" + (f" [{sp['pace_zone']}]" if sp.get("pace_zone") else "")
+                    + (" (optional)" if s.optional else ""))
+            w = entries.get(s.pk)
+            out.append(f"  - {plan} → " + (f"done: {_done_line(w, level)}" if w else "missed"))
+        extra = (CachedWorkout.objects.for_user(program.user)
+                 .filter(discipline__in=RUN_DISCIPLINES, created_at__date__gte=wk_start,
+                         created_at__date__lte=wk_start + timedelta(days=6)).exclude(pk__in=on_grid))
+        for w in extra:
+            out.append(f"  - unplanned run: {_done_line(w, level)}")
+    p = inputs.get("pace") or {}
+    if goal.get("pace_level") and p.get("level") and p["level"] != goal["pace_level"]:
+        out.append(f"Peloton pace level: Level {goal['pace_level']} when the plan was made; now Level {p['level']}.")
+    elif p.get("level"):
+        out.append(f"Peloton pace level: still Level {p['level']}.")
+    return "\n".join(out)
+
+
+def remaining_plan_text(program, from_week):
+    """CURRENT PLAN for the weeks being rewritten, as the specs they were built from."""
+    info = (program.goal_json or {}).get("weeks_info") or {}
+    out = [f"CURRENT PLAN (weeks {from_week}–{(program.goal_json or {}).get('weeks')}, as scheduled now)"]
+    by_week = defaultdict(list)
+    for s in ProgramSlot.objects.filter(week__program=program, week__number__gte=from_week).select_related("week"):
+        by_week[s.week.number].append(s)
+    for n in sorted(by_week):
+        phase = info.get(str(n), {}).get("phase", "")
+        parts = []
+        for s in sorted(by_week[n], key=lambda s: (s.day or 0, s.order)):
+            sp = s.spec_json
+            if not sp:
+                parts.append(f"{DAY_NAMES.get(s.day, '?')} {s.title}")
+                continue
+            parts.append(f"{DAY_NAMES.get(s.day, '?')} {sp.get('discipline')} {sp.get('class_type')} "
+                         f"{s.duration_min} min {sp.get('intensity', '')}"
+                         + (f" [{sp['pace_zone']}]" if sp.get("pace_zone") else ""))
+        out.append(f"- Week {n}{f' ({phase})' if phase else ''}: " + "; ".join(parts))
+    return "\n".join(out)
+
+
+def kept_plan(program, from_week):
+    """(ride ids, longest run minutes) in the weeks a reassessment keeps."""
+    slots = ProgramSlot.objects.filter(week__program=program, week__number__lt=from_week)
+    ride_ids = {s.peloton_ride_id for s in slots if s.peloton_ride_id}
+    longest = max((s.duration_min or 0 for s in slots if s.spec_json.get("discipline") == "running"), default=0)
+    return ride_ids, longest
+
+
+def start_reassessment(program, today=None):
+    """Create a "reassess" draft from the plan's original inputs (pace re-profiled
+    with today's data) and start generating it. Raises ValueError when unavailable."""
+    from .models import PlanDraft
+    window, reason = reassess_window(program, today)
+    if not window:
+        raise ValueError(reason)
+    inputs = dict(source_draft(program).inputs_json)
+    inputs["pace"] = pace_profile(program.user, inputs, today)
+    draft = PlanDraft.objects.create(user=program.user, kind="reassess", program=program,
+                                     from_week=window[0], inputs_json=inputs)
+    start_generation(draft)
+    return draft
+
+
+def apply_reassessment(draft):
+    """Replace the slots of weeks from_week… with the reviewed picks. Slots that
+    already have a completion, and the race-day slot, are kept."""
+    from django.db import transaction
+    from .models import ProgramWorkout
+    from .programs import backfill_program
+
+    program, spec, picks, inputs = draft.program, draft.spec_json, draft.picks_json, draft.inputs_json
+    classes = classes_by_id({p.get("ride_id") for p in picks.values()})
+    today = timezone.localdate()
+    with transaction.atomic():
+        for wk in spec["weeks"]:
+            pw = program.weeks.get(number=wk["number"])
+            done = set(ProgramWorkout.objects.filter(slot__week=pw).values_list("slot_id", flat=True))
+            for s in pw.slots.all():
+                if s.spec_json and s.pk not in done:
+                    s.delete()
+            for d in week_slot_data(wk, picks, classes):
+                ProgramSlot.objects.create(
+                    week=pw, day=d["day"], order=d["order"], title=d["title"], discipline=d["discipline"],
+                    duration_min=d["duration_min"], peloton_ride_id=d["ride_id"], optional=d["optional"],
+                    notes=d["notes"], spec_json=d["spec"])
+        goal = dict(program.goal_json)
+        weeks_info = dict(goal.get("weeks_info") or {})
+        for wk in spec["weeks"]:
+            weeks_info[str(wk["number"])] = {"phase": wk.get("phase", ""), "focus": wk.get("focus", "")}
+        goal["weeks_info"] = weeks_info
+        goal["pace_summary"] = pace_summary(inputs, spec)
+        goal["pace_level"] = (inputs.get("pace") or {}).get("level") or goal.get("pace_level")
+        goal["reassessments"] = (goal.get("reassessments") or []) + [{
+            "date": today.isoformat(), "from_week": draft.from_week, "draft_id": draft.pk,
+            "summary": spec.get("summary", ""), "changes": spec.get("changes", [])}]
+        program.goal_json = goal
+        program.save(update_fields=["goal_json"])
+        draft.status = "created"
+        draft.save(update_fields=["status", "updated_at"])
+    backfill_program(program)
+    return program
