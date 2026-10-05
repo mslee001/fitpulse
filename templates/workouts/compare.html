@@ -718,6 +718,7 @@ function buildManualLogTable() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  if (!document.getElementById("compareChart")) return;  // empty state: nothing selected
   const defaultMetric = compareMode === "run" ? "pace"
     : compareMode === "strength" ? "heart_rate"
     : "output";

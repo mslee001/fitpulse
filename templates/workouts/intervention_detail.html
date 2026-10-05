@@ -121,7 +121,7 @@
         </label>
         {% if active_dose %}
         <div class="mt-2 md:col-span-2">
-          <label class="label cursor-pointer gap-2 text-sm">
+          <label class="label cursor-pointer gap-2 whitespace-normal text-sm">
             <input type="checkbox" name="auto_end_previous" value="1" checked id="auto-end-cb" class="checkbox checkbox-sm checkbox-primary" onchange="updateDosePreview()">
             Auto-end current dose ({{ active_dose.dose }}) on day before new start
           </label>

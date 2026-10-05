@@ -62,6 +62,13 @@ python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 ```
 
+**Optional: the CSS tools.** The compiled stylesheet (`static/css/app.css`) is committed, so the app runs without this. You only need it to change templates or styles:
+
+```bash
+scripts/css.sh install   # once: downloads the Tailwind standalone binary to bin/ (no Node or npm)
+scripts/css.sh build     # after editing templates or assets/css/app.css
+```
+
 **2. Create a `.env` file**
 
 ```bash
@@ -336,14 +343,14 @@ The next-workout recommendation and day analysis need at least one day's wellnes
 | Database | Neon Postgres (cloud) via dj-database-url; SQLite for local and demo use |
 | Frontend | Vanilla JS + HTMX |
 | Charts | Chart.js (CDN) |
-| Styles | Single hand-written CSS file, no framework |
+| Styles | Tailwind CSS 4 + daisyUI 5, built with the Tailwind standalone binary (`scripts/css.sh`); compiled CSS is committed |
 | AI | Anthropic API (Claude Sonnet + Haiku) |
 | Peloton data | Unofficial internal API via the web app's Auth0 sign-in |
 | Garmin data | `garminconnect` library |
 | Withings data | Withings OAuth 2.0 API + push webhooks |
 | Google Health data | Google Health API (OAuth 2.0 + push webhooks) |
 
-No npm, no build step, no bundler.
+No npm, no Node, no bundler. The only build step is `scripts/css.sh build`, and its output is committed, so deploys don't run it.
 
 ---
 
