@@ -519,7 +519,7 @@ Everything about a program's definition is editable in the app; the old pattern 
 - **Spot-check**: every number in the plan summary should appear in `PlanDraft.context_text`.
 
 ### Detail Page Templates
-Header: at the top of the main column (same width as the cards; the sidebar starts beside it). When the workout has a class image, the header becomes a panel with that image blurred behind it (`scale-110 blur-2xl opacity-25 dark:opacity-20`) under a `bg-base-100/60` scrim. Main stat tiles get a **vs your average** chip (`views._vs_avg(type_stats, {key: (value, avg, dir)})` → `partials/vs_avg_chip.html`): ↑/↓ and the %, green/red only when the metric has a better direction (Compare's `dir` rules: pace lower, output/distance/calories/cadence higher; HR none), hidden under 1% or with fewer than 3 other workouts of the type. HR zones render as one stacked bar (`fpZoneBar()` / `partials/zone_bar.html`).
+Header: when the workout has a class image, the header becomes a panel with that image blurred behind it (`scale-110 blur-2xl opacity-25 dark:opacity-20`) under a `bg-base-100/60` scrim. Main stat tiles get a **vs your average** chip (`views._vs_avg(type_stats, {key: (value, avg, dir)})` → `partials/vs_avg_chip.html`): ↑/↓ and the %, green/red only when the metric has a better direction (Compare's `dir` rules: pace lower, output/distance/calories/cadence higher; HR none), hidden under 1% or with fewer than 3 other workouts of the type. HR zones render as one stacked bar (`fpZoneBar()` / `partials/zone_bar.html`).
 
 All five discipline-specific detail pages extend `detail_base.html`, which owns:
 - Page header, PR banner, class info card
