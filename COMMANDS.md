@@ -16,6 +16,21 @@ venv/bin/python3 manage.py runserver
 
 ---
 
+## CSS
+
+Styles live in `assets/css/app.css` (Tailwind CSS 4 + daisyUI 5) and compile to the committed `static/css/app.css`.
+
+```bash
+scripts/css.sh install   # once: Tailwind standalone binary → bin/ (gitignored), plus the daisyUI plugin files
+scripts/css.sh build     # compile + minify; run after changing templates or app.css, then commit static/css/app.css
+scripts/css.sh watch     # rebuild on every save while you edit templates (unminified — run build before committing)
+scripts/css.sh check     # exit 1 if the committed static/css/app.css is stale
+```
+
+Tip: keep `scripts/css.sh watch` running in a second terminal while editing templates, or new utility classes won't exist until the next build.
+
+---
+
 ## Syncing Data
 
 ### Wellness only (last N days)

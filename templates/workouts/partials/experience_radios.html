@@ -1,0 +1,16 @@
+{% comment %}One discipline's experience choice as radio cards. Context: field, label, current, experience_choices.{% endcomment %}
+<fieldset class="fieldset py-0">
+  <legend class="fieldset-legend">{{ label }}</legend>
+  <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-subtle bg-base-100 px-3 py-2 text-sm has-[:checked]:ring-2 has-[:checked]:ring-primary">
+      <input type="radio" class="radio radio-xs radio-primary" name="{{ field }}" value=""{% if not current %} checked{% endif %}>
+      <span class="text-muted">Not set</span>
+    </label>
+    {% for val, display in experience_choices %}
+    <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-subtle bg-base-100 px-3 py-2 text-sm has-[:checked]:ring-2 has-[:checked]:ring-primary">
+      <input type="radio" class="radio radio-xs radio-primary" name="{{ field }}" value="{{ val }}"{% if current == val %} checked{% endif %}>
+      <span>{% if val == "new" %}New{% else %}{{ display }}{% endif %}</span>
+    </label>
+    {% endfor %}
+  </div>
+</fieldset>

@@ -1,14 +1,14 @@
 {% load workout_filters %}
 {% if error %}
-<div style="color:var(--accent-red);font-size:0.85rem;padding:0.5rem 0">{{ error }}</div>
+<div role="alert" class="ui-enter alert alert-soft alert-error">{{ error }}</div>
 {% elif result and not result.ok %}
-<div style="color:var(--accent-red);font-size:0.85rem;padding:0.5rem 0">
+<div role="alert" class="ui-enter alert alert-soft alert-error">
   Couldn't parse that — try rephrasing or enter macros manually below.
 </div>
 {% elif result and result.items %}
 
 {% with confidence=result.confidence %}
-<form method="post" action="/nutrition/api/log/" id="save-food-form">
+<form method="post" action="/nutrition/api/log/" id="save-food-form" class="ui-enter">
   {% csrf_token %}
   <input type="hidden" name="date" value="{{ page_date }}">
   <input type="hidden" name="raw_text" value="{{ raw_text }}">
@@ -17,48 +17,48 @@
   <input type="hidden" name="ai_confidence" value="{{ confidence }}">
   <input type="hidden" name="edited_by_user" id="edited-flag" value="0">
 
-  <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;flex-wrap:wrap">
-    <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">Parsed Items</span>
+  <div class="mb-3 flex flex-wrap items-center gap-2">
+    <span class="text-sm font-semibold">Parsed items</span>
     {% if result.image_type == "label" %}
-    <span class="confidence-badge confidence-badge--neutral">Read from nutrition label</span>
+    <span class="badge badge-sm badge-info badge-soft">Read from nutrition label</span>
     {% elif result.image_type == "meal" %}
-    <span class="confidence-badge confidence-badge--med">Estimated from photo — check portions</span>
+    <span class="badge badge-sm badge-info badge-soft">Estimated from photo — check portions</span>
     {% endif %}
     {% if confidence == "low" %}
-    <span class="confidence-badge confidence-badge--low">Low confidence — double-check values</span>
+    <span class="badge badge-sm badge-warning badge-soft">Low confidence — double-check values</span>
     {% elif confidence == "medium" %}
-    <span class="confidence-badge confidence-badge--med">Medium confidence</span>
+    <span class="badge badge-sm badge-ghost">Medium confidence</span>
     {% endif %}
     {% if result.note %}
-    <span style="font-size:0.78rem;color:var(--text-dim);font-style:italic">{{ result.note }}</span>
+    <span class="basis-full text-sm italic text-muted">{{ result.note }}</span>
     {% endif %}
   </div>
 
-  <div style="overflow-x:auto">
-    <table class="parse-items-table" id="parse-items-table">
+  <div class="overflow-x-auto">
+    <table class="table table-xs" id="parse-items-table">
       <thead>
         <tr>
-          <th class="th-item">Item</th>
-          <th class="th-qty">Quantity</th>
-          <th class="th-num">Cal</th>
-          <th class="th-num">Protein g</th>
-          <th class="th-num">Carbs g</th>
-          <th class="th-num">Fat g</th>
-          <th class="th-num">Fiber g</th>
-          <th class="th-del"></th>
+          <th class="sticky left-0 z-[1] min-w-36 bg-base-100">Item</th>
+          <th class="min-w-24">Quantity</th>
+          <th class="w-20">Cal</th>
+          <th class="w-20">Protein g</th>
+          <th class="w-20">Carbs g</th>
+          <th class="w-20">Fat g</th>
+          <th class="w-20">Fiber g</th>
+          <th class="w-8"><span class="sr-only">Remove</span></th>
         </tr>
       </thead>
       <tbody>
         {% for item in result.items %}
         <tr data-base-calories="{{ item.calories|default:0 }}" data-base-protein_g="{{ item.protein_g|default:0 }}" data-base-carbs_g="{{ item.carbs_g|default:0 }}" data-base-fat_g="{{ item.fat_g|default:0 }}" data-base-fiber_g="{{ item.fiber_g|default:0 }}">
-          <td><input type="text" name="items-{{ forloop.counter0 }}-name" value="{{ item.name }}" class="parse-cell-input parse-cell-input--name" oninput="markEdited()"></td>
-          <td><input type="text" name="items-{{ forloop.counter0 }}-quantity" data-role="quantity" value="{{ item.quantity }}" class="parse-cell-input parse-cell-input--qty" oninput="markEdited()"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-calories"  data-macro="calories"  value="{{ item.calories }}"  class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-protein_g" data-macro="protein_g" value="{{ item.protein_g }}" class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-carbs_g"   data-macro="carbs_g"   value="{{ item.carbs_g }}"   class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-fat_g"     data-macro="fat_g"     value="{{ item.fat_g }}"     class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
-          <td><input type="number" name="items-{{ forloop.counter0 }}-fiber_g"   data-macro="fiber_g"   value="{{ item.fiber_g }}"   class="parse-cell-input parse-cell-input--num" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
-          <td><button type="button" onclick="removeRow(this)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem;padding:0 0.25rem" title="Remove row">×</button></td>
+          <td class="sticky left-0 z-[1] bg-base-100"><input type="text" name="items-{{ forloop.counter0 }}-name" value="{{ item.name }}" class="input input-xs w-full min-w-32" aria-label="Item" oninput="markEdited()"></td>
+          <td><input type="text" name="items-{{ forloop.counter0 }}-quantity" data-role="quantity" value="{{ item.quantity }}" class="input input-xs w-full min-w-20" aria-label="Quantity" oninput="markEdited()"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-calories"  data-macro="calories" aria-label="Calories"  value="{{ item.calories }}"  class="input input-xs w-full min-w-16 font-mono" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-protein_g" data-macro="protein_g" aria-label="Protein grams" value="{{ item.protein_g }}" class="input input-xs w-full min-w-16 font-mono" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-carbs_g"   data-macro="carbs_g" aria-label="Carbs grams"   value="{{ item.carbs_g }}"   class="input input-xs w-full min-w-16 font-mono" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-fat_g"     data-macro="fat_g" aria-label="Fat grams"     value="{{ item.fat_g }}"     class="input input-xs w-full min-w-16 font-mono" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><input type="number" name="items-{{ forloop.counter0 }}-fiber_g"   data-macro="fiber_g" aria-label="Fiber grams"   value="{{ item.fiber_g }}"   class="input input-xs w-full min-w-16 font-mono" min="0" step="0.1" oninput="markEdited()" onchange="scaleRow(this)" title="Editing this scales the row's other macros proportionally"></td>
+          <td><button type="button" onclick="removeRow(this)" class="btn btn-ghost btn-xs btn-square hover:text-error" aria-label="Remove item" title="Remove row">×</button></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -66,8 +66,8 @@
   </div>
 
   {# Totals row #}
-  <div id="parse-totals" style="display:flex;gap:1.25rem;padding:0.5rem 0;font-size:0.82rem;color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;border-top:1px solid var(--border);margin-top:0.5rem;flex-wrap:wrap">
-    <span>TOTAL</span>
+  <div id="parse-totals" class="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-subtle pt-2 font-mono text-sm text-muted">
+    <span class="font-sans font-semibold text-base-content">Total</span>
     <span id="tot-cal">— kcal</span>
     <span id="tot-prot">— g P</span>
     <span id="tot-carbs">— g C</span>
@@ -75,17 +75,16 @@
     <span id="tot-fiber">— g Fiber</span>
   </div>
 
-  <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap;align-items:center">
-    <div style="display:flex;align-items:center;gap:0.4rem">
-      <label style="font-size:0.78rem;color:var(--text-muted)">Meal:</label>
-      <select id="meal-select" onchange="document.getElementById('meal-field').value=this.value" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r);padding:0.3rem 0.6rem;font-size:0.82rem">
+  <div class="mt-4 flex flex-wrap items-center gap-3">
+    <label class="flex items-center gap-2 text-sm text-muted">Meal
+      <select id="meal-select" class="select select-sm" onchange="document.getElementById('meal-field').value=this.value">
         <option value="">—</option>
         {% for val,label in meal_choices %}
         <option value="{{ val }}" {% if meal == val %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
-    </div>
-    <button type="submit" class="btn btn-accent btn-sm">Save Entry</button>
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm max-sm:flex-1">Save entry</button>
     <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('parse-result').innerHTML=''">Cancel</button>
   </div>
 </form>
@@ -176,8 +175,8 @@
 
 {% else %}
 {# Empty items from AI — offer manual entry #}
-<div style="padding:0.5rem 0">
-  <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:0.75rem">
+<div class="py-2">
+  <p class="text-sm text-muted">
     {% if result.note %}{{ result.note }}{% else %}Couldn't identify specific food items — try being more specific.{% endif %}
   </p>
 </div>

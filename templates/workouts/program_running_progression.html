@@ -3,35 +3,32 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <p class="stat-sub">{{ program.name }}</p>
-      <h1 class="page-title">Running progression</h1>
-      <p class="page-sub">{{ run.display_name }}</p>
+<div class="ui-page-header">
+  <div>
+    <div class="text-sm text-muted">{{ program.name }} · {{ run.display_name }}</div>
+    <h1 class="ui-page-title mt-1">Running progression</h1>
+  </div>
+  <div class="ui-page-actions">
+    <div class="join" role="group" aria-label="Metric">
+      <a class="btn btn-sm join-item{% if metric == 'pace' %} btn-active{% endif %}" href="?metric=pace">Pace</a>
+      <a class="btn btn-sm join-item{% if metric == 'distance' %} btn-active{% endif %}" href="?metric=distance">Distance</a>
+      <a class="btn btn-sm join-item{% if metric == 'hr' %} btn-active{% endif %}" href="?metric=hr">Avg HR</a>
     </div>
-    <div class="page-header-actions">
-      <a class="range-btn{% if metric == 'pace' %} active{% endif %}" href="?metric=pace">Pace</a>
-      <a class="range-btn{% if metric == 'distance' %} active{% endif %}" href="?metric=distance">Distance</a>
-      <a class="range-btn{% if metric == 'hr' %} active{% endif %}" href="?metric=hr">Avg HR</a>
-      <a class="btn btn-ghost btn-sm" href="{% url 'program_run' run.pk %}">&larr; Grid</a>
-    </div>
+    <a class="btn btn-ghost btn-sm" href="{% url 'program_run' run.pk %}">&larr; Grid</a>
   </div>
 </div>
 
 {{ data|json_script:"run-prog-data" }}
 {% if data.series %}
-<div class="chart-card">
-  <div style="position:relative; height:340px">
-    <canvas id="runProgChart"></canvas>
-  </div>
+<div class="ui-panel">
+  <div class="relative h-[340px]"><canvas id="runProgChart" role="img" aria-label="Running metric by run type across passes"></canvas></div>
 </div>
-<p class="stat-sub" style="margin-top:0.75rem">
+<p class="mt-3 text-sm text-muted">
   Only running/walking classes with tracked pace, distance, or heart rate data contribute. X-axis is each pass through a week.
   Grouped by run type (intervals vs. tempo vs. steady/race-prep) rather than by exact class, since a well-formed plan's classes are rarely repeated week to week.
 </p>
 {% else %}
-<p class="stat-sub">No tracked running data in this cycle yet.</p>
+<div class="ui-empty">No tracked running data in this cycle yet.</div>
 {% endif %}
 
 <script>
@@ -39,8 +36,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const data = JSON.parse(document.getElementById("run-prog-data").textContent);
   if (!data.series.length) { return; }
   const ctx = document.getElementById("runProgChart").getContext("2d");
-  // Fixed categorical palette (dark surface), assigned in order — never a generated hue.
-  const PALETTE = ["#3987e5", "#199e70", "#c98500"];
+  // Series slots in order; a 7th+ line folds into a muted "other" color (never cycled).
+  const colorFor = i => i < 6 ? fpChart.series[i] : fpChart.muted;
 
   function fmtPace(secs) {
     if (secs == null) return "—";
@@ -54,12 +51,12 @@ document.addEventListener("DOMContentLoaded", function () {
   };
   const meta = METRIC_META[data.metric] || METRIC_META.pace;
 
-  new Chart(ctx, {
+  const chart = fpChart.track(new Chart(ctx, {
     type: "line",
     data: {
       labels: data.labels,
       datasets: data.series.map(function (s, i) {
-        const color = PALETTE[i % PALETTE.length];
+        const color = colorFor(i);
         return {
           label: s.label,
           data: s.points,
@@ -73,12 +70,16 @@ document.addEventListener("DOMContentLoaded", function () {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "nearest", intersect: false },
-      scales: { y: { title: { display: true, text: meta.title }, ticks: { callback: v => meta.tick(v) } } },
+      scales: { x: { grid: { color: fpChart.grid }, ticks: { color: fpChart.muted } }, y: { grid: { color: fpChart.grid }, title: { display: true, text: meta.title, color: fpChart.muted }, ticks: { color: fpChart.muted, callback: v => meta.tick(v) } } },
       plugins: {
-        legend: { position: "bottom" },
+        legend: { position: "bottom", labels: { color: fpChart.muted } },
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${meta.tooltip(ctx.parsed.y)}` } },
       },
     },
+  }));
+  document.addEventListener("cadence:themechange", function () {
+    chart.data.datasets.forEach(function (ds, i) { ds.borderColor = ds.backgroundColor = colorFor(i); });
+    chart.update("none");
   });
 });
 </script>

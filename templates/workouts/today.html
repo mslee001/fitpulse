@@ -5,227 +5,231 @@
 
 {% block content %}
 
-<div class="page-header today-header">
+<div class="ui-page-header">
   <div>
-    <div class="today-date-label">{{ today_date|date:"l" }}</div>
-    <h1 class="page-title">{{ today_date|date:"F j, Y" }}</h1>
+    <div class="ui-page-sub">{{ today_date|date:"l" }}</div>
+    <h1 class="ui-page-title">{{ today_date|date:"F j, Y" }}</h1>
   </div>
-  <div class="today-quick-links">
-    <a href="{% url 'calendar' %}" class="btn btn-ghost btn-sm">Calendar</a>
-    <a href="{% url 'history' %}" class="btn btn-ghost btn-sm">All Workouts</a>
+  <div class="ui-page-actions">
+    <a href="{% url 'calendar' %}" class="btn btn-sm">Calendar</a>
+    {% if can.nutrition %}
+    <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="btn btn-sm">Day view</a>
+    <a href="{% url 'nutrition' %}" class="btn btn-sm btn-primary">Log food</a>
+    {% else %}
+    <a href="{% url 'history' %}" class="btn btn-sm">All workouts</a>
+    <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="btn btn-sm btn-primary">Day view</a>
+    {% endif %}
   </div>
 </div>
 
-<!-- HERO: Readiness + Next workout rec -->
-<section class="today-hero">
-  <div class="today-hero-readiness">
+<!-- Hero: readiness + next workout -->
+<section class="ui-panel grid items-center gap-6 {% if can.ai_next_workout %}md:grid-cols-2{% endif %}">
+  <div>
     {% if daily.readiness_score is not None %}
-      <div class="readiness-circle readiness-{{ daily.readiness_label|lower|default:'unknown' }}">
-        <div class="readiness-score">{{ daily.readiness_score }}</div>
-        <div class="readiness-label">{{ daily.readiness_label|default:"—" }}</div>
+    <div class="flex items-center gap-5">
+      <div class="relative size-28 shrink-0">
+        <svg class="size-28 -rotate-90" viewBox="0 0 112 112" aria-hidden="true">
+          <circle cx="56" cy="56" r="48" fill="none" stroke-width="10" class="stroke-base-300"/>
+          <circle cx="56" cy="56" r="48" fill="none" stroke-width="10" stroke-linecap="round"
+                  class="ui-ring-arc {{ daily.readiness_color|tone:'stroke' }}"
+                  stroke-dasharray="301.6" style="--fp-ring-to: {{ daily.readiness_score|ring_offset }}"/>
+        </svg>
+        <div class="absolute inset-0 flex items-center justify-center font-mono text-3xl font-medium tabular-nums"><span class="ui-count" style="--fp-to: {{ daily.readiness_score|floatformat:0 }}" aria-hidden="true"></span><span class="sr-only">{{ daily.readiness_score|floatformat:0 }}</span></div>
       </div>
-      <div class="readiness-meta">
-        <div class="readiness-meta-title">TRAINING READINESS</div>
+      <div class="flex flex-col gap-1">
+        <div class="font-semibold">Training <span class="whitespace-nowrap">readiness {% if daily.readiness_is_computed %}{% metric_help "readiness_estimated" %}{% else %}{% metric_help "training_readiness" %}{% endif %}</span></div>
+        <div class="text-sm font-semibold {{ daily.readiness_color|tone }}">{{ daily.readiness_label|default:"—"|title }}</div>
         {% if wellness_is_yesterday %}
-        <div class="readiness-meta-sub">From yesterday — today's data not synced yet</div>
+        <div class="text-sm text-muted">From yesterday — today's data not synced yet</div>
         {% elif daily.readiness_is_computed %}
-        <div class="readiness-meta-sub">Estimated from HRV + sleep (Google Health)</div>
+        <div class="text-sm text-muted">Estimated from HRV + sleep (Google Health)</div>
         {% else %}
-        <div class="readiness-meta-sub">Updated this morning</div>
+        <div class="text-sm text-muted">Updated this morning</div>
         {% endif %}
       </div>
+    </div>
     {% else %}
-      <div class="readiness-empty">
-        <div class="readiness-meta-title">TRAINING READINESS</div>
-        <p class="muted">No readiness data yet today. Try syncing Garmin or Google Health wellness.</p>
-      </div>
+    <div class="font-semibold">Training readiness</div>
+    <p class="mt-1 text-sm text-muted">No readiness data yet today. Try syncing Garmin or Google Health wellness.</p>
     {% endif %}
   </div>
 
   {% if can.ai_next_workout %}
-  <div class="today-hero-recommendation">
-    <div class="card-label">NEXT WORKOUT</div>
+  <div class="rounded-xl bg-primary/10 p-5">
+    <div class="mb-2 text-sm font-medium text-muted">Next workout</div>
     {% if next_workout_text %}
       {{ next_workout_text|format_next_workout|safe }}
     {% else %}
-      <p class="muted">No recommendation yet. Once today's readiness score is available, refresh from the Calendar page.</p>
+      <p class="text-sm text-muted">No recommendation yet. Once today's readiness score is available, refresh from the Calendar page.</p>
     {% endif %}
   </div>
   {% endif %}
 </section>
 
-<!-- WELLNESS row -->
+<!-- Wellness -->
 {% if daily %}
-<section class="today-section">
-  <div class="today-section-header">
-    <h2 class="section-title">WELLNESS</h2>
-    {% if wellness_is_yesterday %}
-    <span class="badge badge-muted">From yesterday</span>
-    {% endif %}
-    <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="section-link">Full day view →</a>
+<section class="ui-section">
+  <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+    <h2 class="ui-section-title mb-0">Wellness</h2>
+    {% if wellness_is_yesterday %}<span class="badge badge-sm badge-ghost">From yesterday</span>{% endif %}
+    <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="ml-auto text-sm">Full day view →</a>
   </div>
-  <div class="stat-grid">
+  <div class="ui-stat-grid ui-stat-swipe ui-stagger" role="region" aria-label="Wellness" tabindex="0">
     {% if daily.hrv_last_night %}
-    <div class="stat-card">
-      <div class="stat-label">HRV Last Night</div>
-      <div class="stat-value">{{ daily.hrv_last_night }}<span class="stat-unit">ms</span></div>
-      {% if daily.hrv_status %}<div class="stat-sub stat-sub-{{ daily.hrv_status|lower }}">{{ daily.hrv_status }}</div>{% endif %}
+    <div class="ui-stat" style="--i: 0">
+      <div class="ui-stat-label">HRV last night {% metric_help "hrv" %}</div>
+      <div class="ui-stat-value">{{ daily.hrv_last_night }}<span class="ui-stat-unit">ms</span></div>
+      {% if daily.hrv_status %}<div class="ui-stat-sub font-medium {{ daily.hrv_status|tone }}">{{ daily.hrv_status_display }}</div>{% endif %}
     </div>
     {% endif %}
     {% if daily.sleep_score %}
-    <div class="stat-card">
-      <div class="stat-label">Sleep Score</div>
-      <div class="stat-value">{{ daily.sleep_score }}</div>
-      {% if daily.sleep_seconds %}
-      <div class="stat-sub">{{ daily.sleep_seconds|format_duration_hm }}</div>
-      {% endif %}
+    <div class="ui-stat" style="--i: 1">
+      <div class="ui-stat-label">Sleep score {% metric_help "sleep_score" %}</div>
+      <div class="ui-stat-value">{{ daily.sleep_score }}</div>
+      {% if daily.sleep_seconds %}<div class="ui-stat-sub">{{ daily.sleep_seconds|format_duration_hm }}</div>{% endif %}
     </div>
     {% endif %}
     {% if daily.body_battery_start %}
-    <div class="stat-card">
-      <div class="stat-label">Body Battery</div>
-      <div class="stat-value">{{ daily.body_battery_start }}<span class="stat-unit"> at wakeup</span></div>
-      {% if daily.body_battery_charge %}<div class="stat-sub">+{{ daily.body_battery_charge }} charged overnight</div>{% endif %}
+    <div class="ui-stat" style="--i: 2">
+      <div class="ui-stat-label">Body battery {% metric_help "body_battery" %}</div>
+      <div class="ui-stat-value">{{ daily.body_battery_start }}<span class="ui-stat-unit">at wakeup</span></div>
+      {% if daily.body_battery_charge %}<div class="ui-stat-sub">+{{ daily.body_battery_charge }} charged overnight</div>{% endif %}
     </div>
     {% endif %}
     {% if daily.resting_hr %}
-    <div class="stat-card">
-      <div class="stat-label">Resting HR</div>
-      <div class="stat-value">{{ daily.resting_hr }}<span class="stat-unit">bpm</span></div>
+    <div class="ui-stat" style="--i: 3">
+      <div class="ui-stat-label">Resting HR {% metric_help "resting_hr" %}</div>
+      <div class="ui-stat-value">{{ daily.resting_hr }}<span class="ui-stat-unit">bpm</span></div>
     </div>
     {% endif %}
     {% if daily.stress_avg %}
-    <div class="stat-card">
-      <div class="stat-label">Stress Avg</div>
-      <div class="stat-value">{{ daily.stress_avg }}</div>
+    <div class="ui-stat" style="--i: 4">
+      <div class="ui-stat-label">Stress avg {% metric_help "stress" %}</div>
+      <div class="ui-stat-value">{{ daily.stress_avg }}</div>
     </div>
     {% endif %}
     {% if daily.steps %}
-    <div class="stat-card">
-      <div class="stat-label">Steps</div>
-      <div class="stat-value">{{ daily.steps }}</div>
+    <div class="ui-stat" style="--i: 5">
+      <div class="ui-stat-label">Steps</div>
+      <div class="ui-stat-value">{{ daily.steps }}</div>
     </div>
     {% endif %}
   </div>
 </section>
 {% endif %}
 
-<!-- ACTIVITY row -->
+<!-- Activity -->
 {% if daily.floors_climbed or daily.active_calories or daily.active_zone_minutes or daily.moderate_intensity_minutes or daily.vigorous_intensity_minutes %}
-<section class="today-section">
-  <div class="today-section-header">
-    <h2 class="section-title">ACTIVITY</h2>
-    <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="section-link">Full day view →</a>
+<section class="ui-section">
+  <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+    <h2 class="ui-section-title mb-0">Activity</h2>
+    <a href="{% url 'day_view' today_date|date:'Y-m-d' %}" class="ml-auto text-sm">Full day view →</a>
   </div>
-  <div class="stat-grid">
+  <div class="ui-stat-grid ui-stat-swipe" role="region" aria-label="Activity" tabindex="0">
     {% if daily.floors_climbed %}
-    <div class="stat-card">
-      <div class="stat-label">Floors Climbed</div>
-      <div class="stat-value">{{ daily.floors_climbed }}</div>
+    <div class="ui-stat">
+      <div class="ui-stat-label">Floors climbed</div>
+      <div class="ui-stat-value">{{ daily.floors_climbed }}</div>
     </div>
     {% endif %}
     {% if daily.active_calories %}
-    <div class="stat-card">
-      <div class="stat-label">Active Calories</div>
-      <div class="stat-value">{{ daily.active_calories }}<span class="stat-unit">kcal</span></div>
+    <div class="ui-stat">
+      <div class="ui-stat-label">Active calories</div>
+      <div class="ui-stat-value">{{ daily.active_calories }}<span class="ui-stat-unit">kcal</span></div>
     </div>
     {% endif %}
     {% if daily.active_zone_minutes %}
-    <div class="stat-card">
-      <div class="stat-label">Active Zone Minutes</div>
-      <div class="stat-value">{{ daily.active_zone_minutes }}</div>
+    <div class="ui-stat">
+      <div class="ui-stat-label">Active zone minutes {% metric_help "azm" %}</div>
+      <div class="ui-stat-value">{{ daily.active_zone_minutes }}</div>
     </div>
     {% endif %}
     {% if daily.moderate_intensity_minutes or daily.vigorous_intensity_minutes %}
-    <div class="stat-card">
-      <div class="stat-label">Intensity Minutes</div>
-      <div class="stat-value">{{ daily.moderate_intensity_minutes|default:0 }}<span class="stat-unit">mod</span></div>
-      <div class="stat-sub">{{ daily.vigorous_intensity_minutes|default:0 }} vigorous</div>
+    <div class="ui-stat">
+      <div class="ui-stat-label">Intensity minutes</div>
+      <div class="ui-stat-value">{{ daily.moderate_intensity_minutes|default:0 }}<span class="ui-stat-unit">mod</span></div>
+      <div class="ui-stat-sub">{{ daily.vigorous_intensity_minutes|default:0 }} vigorous</div>
     </div>
     {% endif %}
   </div>
 </section>
 {% endif %}
 
-<!-- NUTRITION row -->
-{% if nutrition_progress %}
-<section class="today-section">
-  <div class="today-section-header">
-    <h2 class="section-title">NUTRITION TODAY</h2>
-    <a href="{% url 'nutrition' %}" class="section-link">Log food →</a>
-  </div>
-  <div class="nutrition-bars">
-    {% for label, key, color in nutrition_progress|nutrition_rows %}
-    {% with row=nutrition_progress|dict_get:key %}
-    <div class="nut-bar-row">
-      <div class="nut-bar-label">{{ label }}</div>
-      <div class="nut-bar-track">
-        <div class="nut-bar-fill" style="width:{{ row.pct }}%; background:{{ color }}"></div>
-      </div>
-      <div class="nut-bar-value">
-        <span class="mono">{{ row.now|floatformat:0 }}</span>
-        <span class="muted">/ {{ row.target|floatformat:0 }}</span>
-      </div>
+<!-- Nutrition + today's workouts -->
+<section class="ui-section grid gap-5 {% if nutrition_progress and can.nutrition %}lg:grid-cols-2{% endif %}">
+  {% if nutrition_progress and can.nutrition %}
+  <div class="ui-panel">
+    <div class="ui-panel-header">
+      <h2 class="ui-panel-title">Nutrition today</h2>
+      <a href="{% url 'nutrition' %}" class="text-sm">Log food →</a>
     </div>
-    {% endwith %}
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
-<!-- TODAY'S WORKOUTS -->
-<section class="today-section">
-  <div class="today-section-header">
-    <h2 class="section-title">TODAY'S WORKOUTS</h2>
-  </div>
-  {% if todays_workouts %}
-  <div class="today-workouts-list">
-    {% for w in todays_workouts %}
-    <a href="{% url 'workout_detail' w.workout_id %}" class="today-workout-card">
-      <div class="today-workout-type">{{ w.fitness_discipline_display|default:w.discipline|upper }}</div>
-      <div class="today-workout-title">{{ w.title|default:"Workout" }}</div>
-      <div class="today-workout-meta">
-        {{ w.created_at|date:"g:i A" }}
-        {% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}
-        {% if w.heart_rate_avg_best %} · {{ w.heart_rate_avg_best|floatformat:0 }} bpm avg{% endif %}
-        {% if w.effort_points %} · Effort {{ w.effort_points|floatformat:1 }}{% endif %}
+    <div class="flex flex-col gap-3">
+      {% for label, key, color in nutrition_progress|nutrition_rows %}
+      {% with row=nutrition_progress|dict_get:key %}
+      <div>
+        <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+          <span>{{ label }}</span>
+          <span><span class="font-mono tabular-nums">{{ row.now|floatformat:0 }}</span> <span class="text-muted">/ {{ row.target|floatformat:0 }}</span></span>
+        </div>
+        <div class="ui-bar ui-bar-grow"><span style="--fp-w: {{ row.pct }}%; background: {{ color }}"></span></div>
       </div>
-    </a>
-    {% endfor %}
+      {% endwith %}
+      {% endfor %}
+    </div>
   </div>
-  {% else %}
-  <div class="today-empty">No workouts logged yet today.</div>
   {% endif %}
+
+  <div class="ui-panel">
+    <div class="ui-panel-header">
+      <h2 class="ui-panel-title">Today's workouts</h2>
+    </div>
+    {% if todays_workouts %}
+    <div class="flex flex-col gap-2">
+      {% for w in todays_workouts %}
+      {% with color=discipline_colors|get_item:w.discipline|default:"#888888" %}
+      <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="ui-lift flex items-center gap-3 rounded-xl bg-inset p-3 text-base-content hover:no-underline hover:bg-base-300">
+        <span class="flex size-11 shrink-0 items-center justify-center rounded-xl text-xs font-semibold" style="color: {{ color }}; background: color-mix(in oklab, {{ color }} 15%, transparent)" aria-hidden="true">{{ w.discipline|slice:":3"|upper }}</span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate font-semibold">{{ w.title|default:"Workout" }}</span>
+          <span class="block text-sm text-muted">
+            {{ w.fitness_discipline_display|default:w.discipline|title }}{% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}{% if w.heart_rate_avg_best %} · {{ w.heart_rate_avg_best|floatformat:0 }} bpm avg{% endif %}{% if w.effort_points %} · Effort {{ w.effort_points|floatformat:1 }}{% endif %}
+          </span>
+        </span>
+        <span class="shrink-0 font-mono text-sm text-muted">{{ w.created_at|date:"g:i A" }}</span>
+      </a>
+      {% endwith %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="ui-empty py-6">No workouts logged yet today.</div>
+    {% endif %}
+  </div>
 </section>
 
-<!-- ACTIVE INTERVENTIONS -->
-{% if active_interventions %}
-<section class="today-section">
-  <div class="today-section-header">
-    <h2 class="section-title">ACTIVE INTERVENTIONS</h2>
-    <a href="{% url 'interventions' %}" class="section-link">Manage →</a>
+<!-- Active interventions -->
+{% if active_interventions and can.interventions %}
+<section class="ui-section">
+  <div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+    <h2 class="ui-section-title mb-0">Active interventions</h2>
+    <a href="{% url 'interventions' %}" class="ml-auto text-sm">Manage →</a>
   </div>
-  <div class="today-interventions">
+  <div class="flex flex-wrap gap-2">
     {% for i in active_interventions %}
-    <a href="{% url 'intervention_detail' i.pk %}" class="intervention-pill">
-      <span class="intervention-pill-name">{{ i.name }}</span>
-      {% if i.current_dose %}<span class="intervention-pill-dose">{{ i.current_dose.dose }}</span>{% endif %}
-      <span class="intervention-pill-duration">{{ i.duration_days }}d</span>
+    <a href="{% url 'intervention_detail' i.pk %}" class="ui-press badge badge-lg gap-1.5 border-0 bg-base-100 px-3 text-sm text-base-content shadow-sm hover:no-underline hover:bg-base-300">
+      <span class="font-medium">{{ i.name }}</span>
+      {% if i.current_dose %}<span class="text-muted">· {{ i.current_dose.dose }}</span>{% endif %}
+      <span class="font-mono text-muted">· {{ i.duration_days }}d</span>
     </a>
     {% endfor %}
   </div>
 </section>
 {% endif %}
 
-<!-- AI DAY ANALYSIS -->
+<!-- AI day analysis -->
 {% if day_analysis_text %}
-<section class="today-section">
-  <div class="today-section-header">
-    <h2 class="section-title">DAY ANALYSIS</h2>
-  </div>
-  <div class="today-analysis-card">
-    {{ day_analysis_text|format_day_analysis|safe }}
-  </div>
+<section class="ui-section ui-panel">
+  <h2 class="ui-panel-title mb-4">Day analysis</h2>
+  {{ day_analysis_text|format_day_analysis|safe }}
 </section>
 {% endif %}
 

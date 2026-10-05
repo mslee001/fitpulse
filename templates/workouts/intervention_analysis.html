@@ -9,35 +9,34 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <h1 class="page-title">Intervention Analysis</h1>
-      <p class="page-sub">Before/after comparison across wellness, body composition, and nutrition</p>
-    </div>
+<div class="ui-page-header">
+  <div>
+    <h1 class="ui-page-title">Intervention analysis</h1>
+    <p class="ui-page-sub">Before/after comparison across wellness, body composition, and nutrition</p>
   </div>
 </div>
 
-<!-- Analysis Controls -->
-<!-- <div class="trends-controls"> -->
-  <div class="chart-card">
-  <h3 class="chart-title">RUN ANALYSIS</h3>
-  <div style="font-size:0.875rem;color:var(--text-muted);line-height:1.6;margin:0.75rem 0 1.25rem;border-bottom:1px solid var(--border);padding-bottom:1.25rem">
-    <p style="margin-bottom:0.75rem">This tool compares two time periods — a baseline (<strong style="color:var(--text)">before</strong>) and an intervention period (<strong style="color:var(--text)">after</strong>) — to detect changes in your metrics. For example, compare the 4 weeks before a dose increase to the 4 weeks after, to see whether HRV, sleep, weight, or other markers shifted.</p>
-    <p style="margin-bottom:0.4rem;font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim)">Picking dates</p>
-    <ul style="margin:0 0 0.75rem 1.1rem; list-style:disc">
-      <li>The <strong style="color:var(--text)">before</strong> window should end the day before your intervention started</li>
-      <li>The <strong style="color:var(--text)">after</strong> window should begin on the start date of the intervention</li>
-      <li>Matching window lengths (28 vs. 28 days, etc.) gives the cleanest statistical comparison</li>
-    </ul>
-    <p><strong style="color:var(--text)">Washout days</strong> <span style="color:var(--text-dim)">(advanced)</span> — skips the first N days of the after window. Useful when an intervention takes time to take effect, like a medication dose increase where the first week is a transition rather than steady-state.</p>
-  </div>
-  <div class="trends-controls-grid" style="margin-top:1rem">
+<div class="flex flex-col gap-5">
 
-    <!-- Intervention selector -->
-    <div class="form-group" style="grid-column:span 2">
-      <label class="form-label">Intervention (optional)</label>
-      <select id="iv-select" class="form-select" onchange="onInterventionChange()">
+<div class="ui-panel">
+  <h2 class="ui-panel-title">Run analysis</h2>
+  <details class="mt-2 border-b border-subtle pb-4 text-sm text-muted">
+    <summary class="cursor-pointer font-medium text-base-content">How this works</summary>
+    <div class="mt-2 flex flex-col gap-2 leading-relaxed">
+      <p>This tool compares two time periods — a baseline (<strong class="text-base-content">before</strong>) and an intervention period (<strong class="text-base-content">after</strong>) — to detect changes in your metrics. For example, compare the 4 weeks before a dose increase to the 4 weeks after, to see whether HRV, sleep, weight, or other markers shifted.</p>
+      <p class="font-medium text-base-content">Picking dates</p>
+      <ul class="ml-5 list-disc">
+        <li>The <strong class="text-base-content">before</strong> window should end the day before your intervention started</li>
+        <li>The <strong class="text-base-content">after</strong> window should begin on the start date of the intervention</li>
+        <li>Matching window lengths (28 vs. 28 days, etc.) gives the cleanest statistical comparison</li>
+      </ul>
+      <p><strong class="text-base-content">Washout days</strong> (advanced) — skips the first N days of the after window. Useful when an intervention takes time to take effect, like a medication dose increase where the first week is a transition rather than steady-state.</p>
+    </div>
+  </details>
+
+  <div class="mt-4 grid grid-cols-1 gap-x-4 gap-y-1 md:grid-cols-2 lg:grid-cols-4">
+    <label class="fieldset py-0 md:col-span-2"><span class="fieldset-legend">Intervention <span class="font-normal text-muted">(optional)</span></span>
+      <select id="iv-select" class="select w-full" onchange="onInterventionChange()">
         <option value="">— Custom dates —</option>
         {% for iv in interventions %}
         <option value="{{ iv.pk }}"
@@ -48,82 +47,63 @@
         </option>
         {% endfor %}
       </select>
-    </div>
+    </label>
 
     <!-- Dose timeline (shown when intervention selected) -->
-    <div id="dose-timeline" class="form-group" style="grid-column:span 2;display:none">
-      <label class="form-label">Dose Timeline</label>
-      <div id="dose-timeline-pills" style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.5rem"></div>
-      <div>
-        <label class="form-label" style="font-size:0.75rem">Analyze from dose change</label>
-        <select id="dose-pivot-select" class="form-select" onchange="onDosePivotChange()" style="margin-top:0.25rem">
+    <div id="dose-timeline" class="md:col-span-2" style="display:none">
+      <div class="fieldset-legend fieldset py-0">Dose timeline</div>
+      <div id="dose-timeline-pills" class="mb-2 flex flex-wrap gap-1.5"></div>
+      <label class="fieldset py-0"><span class="fieldset-legend text-xs">Analyze from dose change</span>
+        <select id="dose-pivot-select" class="select select-sm w-full" onchange="onDosePivotChange()">
           <option value="">— Use intervention start —</option>
         </select>
-      </div>
+      </label>
     </div>
 
-    <!-- Before window -->
-    <div class="window-label">BEFORE WINDOW</div>
-    <div class="form-group">
-      <label class="form-label">Start</label>
-      <input id="before-start" type="date" class="form-input">
-    </div>
-    <div class="form-group">
-      <label class="form-label">End</label>
-      <input id="before-end" type="date" class="form-input">
-    </div>
+    <div class="col-span-full mt-3"><span class="badge badge-ghost">Before window</span></div>
+    <label class="fieldset py-0"><span class="fieldset-legend">Start</span><input id="before-start" type="date" class="input w-full"></label>
+    <label class="fieldset py-0"><span class="fieldset-legend">End</span><input id="before-end" type="date" class="input w-full"></label>
 
-    <!-- After window -->
-    <div class="window-label">AFTER WINDOW</div>
-    <div class="form-group">
-      <label class="form-label">Start</label>
-      <input id="after-start" type="date" class="form-input">
-    </div>
-    <div class="form-group">
-      <label class="form-label">End</label>
-      <input id="after-end" type="date" class="form-input">
-    </div>
+    <div class="col-span-full mt-3"><span class="badge badge-ghost">After window</span></div>
+    <label class="fieldset py-0"><span class="fieldset-legend">Start</span><input id="after-start" type="date" class="input w-full"></label>
+    <label class="fieldset py-0"><span class="fieldset-legend">End</span><input id="after-end" type="date" class="input w-full"></label>
 
-    <!-- Options -->
-    <div class="window-label">OPTIONS</div>
-    <div class="form-group">
-      <label class="form-label">Weight Goal</label>
-      <select id="weight-goal" class="form-select">
+    <div class="col-span-full mt-3"><span class="badge badge-ghost">Options</span></div>
+    <label class="fieldset py-0"><span class="fieldset-legend">Weight goal</span>
+      <select id="weight-goal" class="select w-full">
         <option value="loss">Loss (lower = better)</option>
         <option value="gain">Gain (higher = better)</option>
         <option value="maintain">Maintain (neutral)</option>
       </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Washout Days <span style="color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0">(advanced)</span></label>
-      <input id="washout-days" type="number" class="form-input" value="0" min="0" max="90">
-    </div>
+    </label>
+    <label class="fieldset py-0"><span class="fieldset-legend">Washout days <span class="font-normal text-muted">(advanced)</span></span>
+      <input id="washout-days" type="number" class="input w-full" value="0" min="0" max="90">
+    </label>
   </div>
 
-  <div style="margin-top:1.25rem;display:flex;align-items:center;gap:1rem">
-    <button class="btn btn-accent" onclick="runAnalysis()">Run Analysis</button>
-    <span id="analysis-status" style="font-size:0.85rem;color:var(--text-muted)"></span>
+  <div class="mt-5 flex flex-wrap items-center gap-3">
+    <button type="button" class="btn btn-primary" onclick="runAnalysis()">Run analysis</button>
+    <span id="analysis-status" class="text-sm text-muted" role="status"></span>
   </div>
 </div>
 
 <!-- Results section -->
-<div id="results-section" style="display:none">
+<div id="results-section" class="flex flex-col gap-5" style="display:none">
 
-  <!-- Metrics Table -->
-  <div class="chart-card">
-    <div class="chart-header">
-      <h3 class="chart-title">METRICS</h3>
-      <span id="metrics-window" style="font-size:0.8rem;color:var(--text-muted)"></span>
+  <div class="ui-panel">
+    <div class="ui-panel-header">
+      <h2 class="ui-panel-title">Metrics</h2>
+      <span id="metrics-window" class="font-mono text-xs text-muted"></span>
     </div>
-    <div style="overflow-x:auto">
-      <table class="analysis-table" id="metrics-table">
+    <div class="overflow-x-auto">
+      <table class="table table-sm" id="metrics-table">
         <thead>
           <tr>
             <th>Metric</th>
-            <th style="text-align:right">Before</th>
-            <th style="text-align:right">After</th>
-            <th style="text-align:right">Change</th>
-            <th style="text-align:center">N</th>
+            <th class="text-right">Before</th>
+            <th class="text-right">After</th>
+            <th class="text-right">Change</th>
+            <th class="text-center">N</th>
           </tr>
         </thead>
         <tbody id="metrics-tbody"></tbody>
@@ -131,39 +111,32 @@
     </div>
   </div>
 
-  <!-- AI Interpretation -->
   {% if can.ai_intervention_interpretation %}
-  <div class="chart-card" id="ai-interp-card" style="margin-top:1.5rem">
-    <div class="chart-header">
-      <h3 class="chart-title">AI INTERPRETATION</h3>
-      <span id="ai-loading" style="display:none;font-size:0.8rem;color:var(--text-muted)">Generating…</span>
+  <div class="ui-panel" id="ai-interp-card">
+    <div class="ui-panel-header">
+      <h2 class="ui-panel-title">AI interpretation</h2>
+      <span id="ai-loading" class="flex items-center gap-2 text-sm text-muted" style="display:none"><span class="loading loading-dots loading-sm" aria-hidden="true"></span>Generating…</span>
     </div>
-    <div id="ai-interp-body" class="ai-interpretation"></div>
+    <div id="ai-interp-body"></div>
   </div>
   {% endif %}
 
-  <!-- Save Analysis -->
-  <div class="chart-card" style="margin-top:1.5rem">
-    <div class="chart-header">
-      <h3 class="chart-title">SAVE ANALYSIS</h3>
-    </div>
-    <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-      <input id="save-label" type="text" class="form-input" placeholder="Analysis label…" style="flex:1;min-width:200px">
-      <button class="btn btn-accent" onclick="saveAnalysis()">{% if can.ai_intervention_interpretation %}Save with AI Interpretation{% else %}Save{% endif %}</button>
-      <span id="save-status" style="font-size:0.85rem;color:var(--text-muted)"></span>
+  <div class="ui-panel">
+    <h2 class="ui-panel-title mb-3">Save analysis</h2>
+    <div class="flex flex-wrap items-center gap-3">
+      <input id="save-label" type="text" class="input min-w-52 flex-1" placeholder="Analysis label…" aria-label="Analysis label">
+      <button type="button" class="btn btn-primary" onclick="saveAnalysis()">{% if can.ai_intervention_interpretation %}Save with AI interpretation{% else %}Save{% endif %}</button>
+      <span id="save-status" class="text-sm text-muted" role="status"></span>
     </div>
   </div>
 
 </div>
 
-<!-- Saved Analyses -->
 {% if saved_analyses %}
-<div class="chart-card" style="margin-top:1.5rem">
-  <div class="chart-header">
-    <h3 class="chart-title">SAVED ANALYSES</h3>
-  </div>
-  <div style="overflow-x:auto">
-    <table class="saved-analyses-table">
+<div class="ui-panel">
+  <h2 class="ui-panel-title mb-3">Saved analyses</h2>
+  <div class="overflow-x-auto">
+    <table class="table table-sm">
       <thead>
         <tr>
           <th>Label</th>
@@ -177,12 +150,12 @@
       <tbody>
         {% for sa in saved_analyses %}
         <tr>
-          <td style="color:var(--text)">{{ sa.label }}</td>
+          <td class="font-medium">{{ sa.label }}</td>
           <td>{% if sa.intervention %}{{ sa.intervention.name }}{% else %}—{% endif %}</td>
-          <td>{{ sa.before_start }} → {{ sa.before_end }}</td>
-          <td>{{ sa.after_start }} → {{ sa.after_end }}</td>
-          <td>{{ sa.created_at|date:"M j, Y" }}</td>
-          <td><a href="{% url 'saved_analysis_detail' sa.pk %}" class="btn btn-ghost btn-sm">View</a></td>
+          <td class="whitespace-nowrap font-mono text-xs">{{ sa.before_start }} → {{ sa.before_end }}</td>
+          <td class="whitespace-nowrap font-mono text-xs">{{ sa.after_start }} → {{ sa.after_end }}</td>
+          <td class="whitespace-nowrap">{{ sa.created_at|date:"M j, Y" }}</td>
+          <td><a href="{% url 'saved_analysis_detail' sa.pk %}" class="btn btn-ghost btn-xs">View</a></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -190,6 +163,8 @@
   </div>
 </div>
 {% endif %}
+
+</div>
 
 <script>
 let _lastResult = null;
@@ -228,7 +203,7 @@ function onInterventionChange() {
     ivData.doses.forEach(d => {
       const end = d.end_date || 'ongoing';
       const pill = document.createElement('span');
-      pill.style.cssText = 'padding:0.2rem 0.5rem;border-radius:4px;background:rgba(255,255,255,0.07);font-size:0.75rem;color:var(--text-muted)';
+      pill.className = 'badge badge-sm badge-ghost font-mono';
       pill.textContent = `${d.dose} (${d.start_date} → ${end})`;
       pillsEl.appendChild(pill);
 
@@ -327,33 +302,31 @@ function renderResults(data) {
 
     // Group header
     const hdr = document.createElement('tr');
-    hdr.className = 'analysis-group-header';
-    hdr.innerHTML = `<td colspan="5">${group.name}</td>`;
+    hdr.className = 'bg-inset';
+    hdr.innerHTML = `<th colspan="5" class="font-semibold">${group.name}</th>`;
     tbody.appendChild(hdr);
 
     for (const m of group.metrics) {
       if (m.before_n === 0 && m.after_n === 0) continue;
-      const rowClass = m.improved === true ? 'analysis-improved' :
-                       m.improved === false ? 'analysis-worsened' : 'analysis-neutral';
       const unit = m.unit ? ' ' + m.unit : '';
       const bStr = m.before_mean != null ? m.before_mean.toFixed(1) + unit : '—';
       const aStr = m.after_mean  != null ? m.after_mean.toFixed(1)  + unit : '—';
+      // Glyph + screen-reader word so the result never relies on color alone.
+      const verdict = m.improved === true  ? { cls: 'text-success', glyph: '✓', word: 'improved' }
+                    : m.improved === false ? { cls: 'text-error',   glyph: '✗', word: 'worse' }
+                    :                        { cls: 'text-muted',   glyph: '→', word: 'no clear change' };
       let changeStr = '—';
-      let changeColor = 'inherit';
       if (m.pct_change != null) {
         const sign = m.pct_change > 0 ? '+' : '';
-        changeStr = sign + m.pct_change.toFixed(1) + '%';
-        if (m.improved === true)  changeColor = 'var(--accent-green)';
-        if (m.improved === false) changeColor = 'var(--accent-red)';
+        changeStr = `${sign}${m.pct_change.toFixed(1)}% <span aria-hidden="true">${verdict.glyph}</span><span class="sr-only">${verdict.word}</span>`;
       }
       const tr = document.createElement('tr');
-      tr.className = rowClass;
       tr.innerHTML = `
         <td>${m.display_name}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem">${bStr}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem">${aStr}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:${changeColor};font-weight:700">${changeStr}</td>
-        <td style="text-align:center;color:var(--text-dim);font-size:0.78rem">${m.before_n}/${m.after_n}</td>
+        <td class="whitespace-nowrap text-right font-mono tabular-nums">${bStr}</td>
+        <td class="whitespace-nowrap text-right font-mono tabular-nums">${aStr}</td>
+        <td class="whitespace-nowrap text-right font-mono font-semibold tabular-nums ${m.pct_change != null ? verdict.cls : ''}">${changeStr}</td>
+        <td class="whitespace-nowrap text-center font-mono text-xs text-muted">${m.before_n}/${m.after_n}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -404,10 +377,13 @@ async function saveAnalysis() {
   }
 }
 
+// Status colors map to whole theme classes (Tailwind only builds names it sees).
+const STATUS_CLASS = { 'var(--accent-red)': 'text-error', 'var(--accent-green)': 'text-success' };
 function setStatus(id, msg, color) {
   const el = document.getElementById(id);
   el.textContent = msg;
-  el.style.color = color || 'var(--text-muted)';
+  el.classList.remove('text-error', 'text-success', 'text-muted');
+  el.classList.add(STATUS_CLASS[color] || 'text-muted');
 }
 </script>
 {% endblock %}

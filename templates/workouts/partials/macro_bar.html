@@ -1,0 +1,9 @@
+{# One macro progress row. label, consumed, target, pct (0-100+), slot (chart series slot), note (optional HTML-safe text), note_tone (whole class) #}
+<div>
+  <div class="mb-1 flex flex-wrap items-baseline gap-x-2 text-sm">
+    <span class="flex items-center gap-1.5 font-medium"><span class="size-2 rounded-full" style="background: var(--chart-{{ slot }})" aria-hidden="true"></span>{{ label }}</span>
+    <span class="ml-auto font-mono tabular-nums">{{ consumed }}<span class="text-muted"> / {{ target }}</span></span>
+    {% if note %}<span class="basis-full text-right text-xs {{ note_tone|default:'text-muted' }}">{{ note }}</span>{% endif %}
+  </div>
+  {% if target %}<div class="ui-bar ui-bar-grow"><span style="--fp-w: {{ pct }}%; max-width: 100%; background: var(--chart-{{ slot }})"></span></div>{% endif %}
+</div>

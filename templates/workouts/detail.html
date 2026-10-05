@@ -13,23 +13,23 @@
 
 {% block detail_main %}
     <!-- Key metrics -->
-    <div class="metrics-grid">
+    <div class="ui-stat-grid">
       {% if effort_zones.total_effort_points %}
-      <div class="metric-card metric-card--hero effort-pts-card">
-        <div class="metric-label">Effort Points</div>
-        <div class="metric-value effort-pts-value">{{ effort_zones.total_effort_points|floatformat:1 }}</div>
+      <div class="ui-stat ui-stat-hero">
+        <div class="ui-stat-label">Effort points</div>
+        <div class="ui-stat-value text-success">{{ effort_zones.total_effort_points|floatformat:1 }}</div>
       </div>
       {% elif workout_detail.average_effort_score %}
-      <div class="metric-card metric-card--hero effort-pts-card">
-        <div class="metric-label">Effort Score</div>
-        <div class="metric-value effort-pts-value">{{ workout_detail.average_effort_score|floatformat:1 }}</div>
+      <div class="ui-stat ui-stat-hero">
+        <div class="ui-stat-label">Effort score</div>
+        <div class="ui-stat-value text-success">{{ workout_detail.average_effort_score|floatformat:1 }}</div>
       </div>
       {% endif %}
       {% with cal=perf_summaries.calories %}
       {% if cal or workout.calories %}
-      <div class="metric-card">
-        <div class="metric-label">Calories</div>
-        <div class="metric-value">
+      <div class="ui-stat">
+        <div class="ui-stat-label">Calories</div>
+        <div class="ui-stat-value">
           {% if cal %}{{ cal.value|floatformat:0 }}{% else %}{{ workout.calories|floatformat:0 }}{% endif %}
         </div>
       </div>
@@ -37,59 +37,59 @@
       {% endwith %}
       {% with elev=perf_summaries.elevation %}
       {% if elev or workout.elevation_gain %}
-      <div class="metric-card">
-        <div class="metric-label">Elevation</div>
-        <div class="metric-value">
-          {% if elev %}{{ elev.value|floatformat:0 }}{% else %}{{ workout.elevation_gain|floatformat:0 }}{% endif %}<span class="metric-unit">ft</span>
+      <div class="ui-stat">
+        <div class="ui-stat-label">Elevation</div>
+        <div class="ui-stat-value">
+          {% if elev %}{{ elev.value|floatformat:0 }}{% else %}{{ workout.elevation_gain|floatformat:0 }}{% endif %}<span class="ui-stat-unit">ft</span>
         </div>
       </div>
       {% endif %}
       {% endwith %}
       {% if workout.heart_rate_avg %}
-      <div class="metric-card">
-        <div class="metric-label">Avg HR</div>
-        <div class="metric-value">{{ workout.heart_rate_avg|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      <div class="ui-stat">
+        <div class="ui-stat-label">Avg HR</div>
+        <div class="ui-stat-value">{{ workout.heart_rate_avg|floatformat:0 }}<span class="ui-stat-unit">bpm</span></div>
       </div>
       {% endif %}
       {% if workout.heart_rate_max %}
-      <div class="metric-card">
-        <div class="metric-label">Max HR</div>
-        <div class="metric-value">{{ workout.heart_rate_max|floatformat:0 }}<span class="metric-unit">bpm</span></div>
+      <div class="ui-stat">
+        <div class="ui-stat-label">Max HR</div>
+        <div class="ui-stat-value">{{ workout.heart_rate_max|floatformat:0 }}<span class="ui-stat-unit">bpm</span></div>
       </div>
       {% endif %}
     </div>
 
     <!-- Performance chart -->
-    <div class="chart-card" id="perfChartCard">
-      <div class="chart-header">
-        <h3 class="chart-title">PERFORMANCE OVER TIME</h3>
-        <div class="chart-toggles" id="chartToggles"></div>
+    <div class="ui-panel" id="perfChartCard">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title">Performance over time</h2>
+        <div class="flex flex-wrap items-center gap-1" id="chartToggles"></div>
       </div>
       <canvas id="perfChart" height="110"></canvas>
     </div>
 
     <!-- HR zone breakdown -->
-    <div class="chart-card" id="hrZoneCard" style="display:none">
-      <div class="chart-header">
-        <h3 class="chart-title">HEART RATE ZONES</h3>
+    <div class="ui-panel" id="hrZoneCard" style="display:none">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title">Heart rate zones</h2>
       </div>
-      <div class="hr-zones" id="hrZoneBreakdown"></div>
+      <div class="flex flex-col gap-2" id="hrZoneBreakdown"></div>
     </div>
 
     <!-- Google Health's own 4-zone HR-time breakdown — server-rendered,
          fills the PERFORMANCE OVER TIME slot when there's no time series. -->
     {% if gh_hr_zones %}
-    <div class="chart-card">
-      <div class="chart-header">
-        <h3 class="chart-title">HEART RATE ZONES</h3>
-        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">from Google Health &middot; session totals, not a time series</span>
+    <div class="ui-panel">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title">Heart rate zones</h2>
+        <span class="text-sm text-muted">from Google Health &middot; session totals, not a time series</span>
       </div>
-      <div class="hr-zones">
+      <div class="flex flex-col gap-2">
         {% for zone in gh_hr_zones %}
-        <div class="hr-zone-row">
-          <div class="hr-zone-label" style="color:{{ zone.color }}">{{ zone.label }}</div>
-          <div class="hr-zone-bar-wrap"><div class="hr-zone-bar" style="width:{{ zone.pct }}%;background:{{ zone.color }}"></div></div>
-          <div class="hr-zone-time">{{ zone.time_str }}</div>
+        <div class="grid grid-cols-[7.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm">
+          <div class="flex items-center gap-2 font-medium"><span class="size-2 shrink-0 rounded-full" style="background:{{ zone.color }}" aria-hidden="true"></span>{{ zone.label }}</div>
+          <div class="ui-bar"><div class="h-full rounded-full" style="width:{{ zone.pct }}%;background:{{ zone.color }}"></div></div>
+          <div class="text-right font-mono tabular-nums">{{ zone.time_str }}</div>
         </div>
         {% endfor %}
       </div>
@@ -100,23 +100,23 @@
 
     <!-- Muscle groups -->
     {% if muscle_groups %}
-    <div class="chart-card">
-      <div class="chart-header">
-        <h3 class="chart-title">MUSCLES WORKED</h3>
-        <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">
+    <div class="ui-panel">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title">Muscles worked</h2>
+        <span class="text-sm text-muted">
           ● light &nbsp; ●● moderate &nbsp; ●●● high
         </span>
       </div>
-      <div class="muscle-group-list">
+      <div class="flex flex-col gap-2">
         {% for mg in muscle_groups %}
-        <div class="muscle-group-row">
-          <div class="muscle-group-name">{{ mg.display_name }}</div>
-          <div class="muscle-group-bar-wrap">
-            <div class="muscle-group-bar mg-{{ mg.bucket }}" style="width:{{ mg.percentage }}%"></div>
+        <div class="grid grid-cols-[minmax(0,8rem)_minmax(0,1fr)_3rem_3rem] items-center gap-3 text-sm">
+          <div class="truncate">{{ mg.display_name }}</div>
+          <div class="ui-bar">
+            <div class="h-full rounded-full {% if mg.bucket == 3 %}bg-success{% elif mg.bucket == 2 %}bg-secondary{% else %}bg-faint{% endif %}" style="width:{{ mg.percentage }}%"></div>
           </div>
-          <div class="muscle-group-pct">{{ mg.percentage }}%</div>
-          <div class="muscle-group-bucket">
-            {% for i in "123" %}{% if forloop.counter <= mg.bucket %}●{% else %}<span style="opacity:0.2">●</span>{% endif %}{% endfor %}
+          <div class="text-right font-mono tabular-nums">{{ mg.percentage }}%</div>
+          <div class="text-right text-xs text-primary">
+            {% for i in "123" %}{% if forloop.counter <= mg.bucket %}●{% else %}<span class="opacity-20">●</span>{% endif %}{% endfor %}
           </div>
         </div>
         {% endfor %}
@@ -126,19 +126,19 @@
 
     <!-- Achievements -->
     {% if workout_detail.achievements %}
-    <div class="chart-card">
-      <div class="chart-header">
-        <h3 class="chart-title">ACHIEVEMENTS EARNED</h3>
-        <span class="chart-sub">{{ workout_detail.achievements|length }}</span>
+    <div class="ui-panel">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title">Achievements earned</h2>
+        <span class="text-sm text-muted">{{ workout_detail.achievements|length }}</span>
       </div>
-      <div class="achievements-row">
+      <div class="grid gap-3 sm:grid-cols-2">
         {% for a in workout_detail.achievements %}
-        <div class="achievement-badge">
+        <div class="flex items-center gap-3 rounded-xl bg-inset p-3 [&>img]:size-12 [&>img]:shrink-0">
           {% if a.image_url %}<img src="{{ a.image_url }}" alt="{{ a.name }}">{% endif %}
-          <div class="achievement-badge-text">
-            <div class="achievement-badge-name">{{ a.name }}</div>
-            {% if a.description %}<div class="achievement-badge-desc">{{ a.description }}</div>{% endif %}
-            {% if a.count %}<div class="achievement-badge-count">x{{ a.count }} total</div>{% endif %}
+          <div class="min-w-0">
+            <div class="text-sm font-semibold">{{ a.name }}</div>
+            {% if a.description %}<div class="text-xs text-muted">{{ a.description }}</div>{% endif %}
+            {% if a.count %}<div class="text-xs text-muted">x{{ a.count }} total</div>{% endif %}
           </div>
         </div>
         {% endfor %}
@@ -165,16 +165,23 @@ const ZONE_NAMES  = ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"];
 
 // Garmin's directElevation feeds the "incline" slug as real elevation (ft), not treadmill grade %.
 const isGarminElevation = perf.source === "garmin";
+// Fixed series slot per metric, shared by every detail page (index into fpChart.series):
+// HR 6, Pace/Speed 2, Output 3, Cadence 5, Incline/Elevation 4, Resistance 1. Secondary
+// metrics reuse slots; read through getters so a theme toggle picks up the new palette.
+const METRIC_SLOT = { heart_rate: 5, pace: 1, speed: 1, target_pace: 1, output: 2, power: 2, cadence: 4,
+                      incline: 3, elevation: 3, resistance: 0, stride_length: 0,
+                      vertical_oscillation: 2, vertical_ratio: 3, ground_contact_time: 4 };
+const metricColor = slug => fpChart.series[METRIC_SLOT[slug] ?? 0];
 const metricConfigs = [
-  { slug: "heart_rate", label: "HR",       color: "#FF3B5C", fmt: v => v != null ? Math.round(v) + " bpm" : "—" },
-  { slug: "output",     label: "OUTPUT",   color: "#CE93D8", fmt: v => v != null ? Math.round(v) + " W" : "—" },
-  { slug: "cadence",    label: "CADENCE",  color: "#FFD54F", fmt: v => v != null ? Math.round(v) + " rpm" : "—" },
-  { slug: "speed",      label: "SPEED",    color: "#80CBC4", fmt: v => v != null ? v.toFixed(1) + " mph" : "—" },
-  { slug: "pace",       label: "PACE",     color: "#A5D6A7", fmt: v => { if (v == null) return "—"; const m = Math.floor(v/60); return m + ":" + String(Math.round(v%60)).padStart(2,"0") + "/mi"; } },
-  { slug: "resistance", label: "RESIST",   color: "#A5B4FC", fmt: v => v != null ? Math.round(v) + "%" : "—" },
+  { slug: "heart_rate", label: "HR",       get color() { return metricColor("heart_rate"); }, fmt: v => v != null ? Math.round(v) + " bpm" : "—" },
+  { slug: "output",     label: "Output",   get color() { return metricColor("output"); }, fmt: v => v != null ? Math.round(v) + " W" : "—" },
+  { slug: "cadence",    label: "Cadence",  get color() { return metricColor("cadence"); }, fmt: v => v != null ? Math.round(v) + " rpm" : "—" },
+  { slug: "speed",      label: "Speed",    get color() { return metricColor("speed"); }, fmt: v => v != null ? v.toFixed(1) + " mph" : "—" },
+  { slug: "pace",       label: "Pace",     get color() { return metricColor("pace"); }, fmt: v => { if (v == null) return "—"; const m = Math.floor(v/60); return m + ":" + String(Math.round(v%60)).padStart(2,"0") + "/mi"; } },
+  { slug: "resistance", label: "Resistance",   get color() { return metricColor("resistance"); }, fmt: v => v != null ? Math.round(v) + "%" : "—" },
   isGarminElevation
-    ? { slug: "incline", label: "ELEVATION", color: "#B0BEC5", fmt: v => v != null ? Math.round(v) + " ft" : "—" }
-    : { slug: "incline", label: "INCLINE",   color: "#B0BEC5", fmt: v => v != null ? v.toFixed(1) + "%" : "—" },
+    ? { slug: "incline", label: "Elevation", get color() { return metricColor("incline"); }, fmt: v => v != null ? Math.round(v) + " ft" : "—" }
+    : { slug: "incline", label: "Incline",   get color() { return metricColor("incline"); }, fmt: v => v != null ? v.toFixed(1) + "%" : "—" },
 ];
 
 const available = metricConfigs.filter(c => {
@@ -207,7 +214,7 @@ const hrThresholds = (hrMeta?.zones || []).map((z, i) => {
 });
 
 function getHrZoneColor(bpm) {
-  if (!bpm || !hrThresholds.length) return "#FF3B5C";
+  if (!bpm || !hrThresholds.length) return metricColor("heart_rate");
   for (const t of hrThresholds) { if (bpm >= t.min && bpm <= t.max) return t.color; }
   return ZONE_COLORS[ZONE_COLORS.length - 1];
 }
@@ -226,17 +233,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
   available.forEach(cfg => {
     const btn = document.createElement("button");
-    btn.className = "chart-toggle" + (activeSet.has(cfg.slug) ? " active" : "");
-    btn.style.setProperty("--toggle-color", cfg.color);
-    btn.textContent = cfg.label;
+    btn.type = "button";
+    btn.className = "btn btn-xs rounded-full gap-1.5" + (activeSet.has(cfg.slug) ? " btn-active" : "");
+    btn.setAttribute("aria-pressed", activeSet.has(cfg.slug) ? "true" : "false");
+    btn.innerHTML = `<span class="size-2 rounded-full" style="background:${cfg.color}" aria-hidden="true"></span>${cfg.label}`;
     btn.addEventListener("click", () => {
       if (activeSet.has(cfg.slug)) {
         if (activeSet.size === 1) return;
         activeSet.delete(cfg.slug);
-        btn.classList.remove("active");
+        btn.classList.remove("btn-active");
+        btn.setAttribute("aria-pressed", "false");
       } else {
         activeSet.add(cfg.slug);
-        btn.classList.add("active");
+        btn.classList.add("btn-active");
+        btn.setAttribute("aria-pressed", "true");
       }
       buildChart();
     });
@@ -244,6 +254,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   function buildChart() {
+    const { gridColor, tickColor, legendColor, zoneLabelColor, refLineColor, mainLineWidth, refLineWidth } = window.chartTheme;
     const activeCfgs = available.filter(c => activeSet.has(c.slug));
     if (!activeCfgs.length) return;
 
@@ -290,8 +301,8 @@ document.addEventListener("DOMContentLoaded", () => {
           },
         },
         scales: {
-          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
-          y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: "JetBrains Mono", size: 10 } } },
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, maxTicksLimit: 10, font: { family: fpChart.fontMono, size: 10 } } },
+          y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { family: fpChart.fontMono, size: 10 } } },
         },
       },
     });
@@ -322,14 +333,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const pct = total > 0 ? ((secs / total) * 100).toFixed(1) : 0;
       const m = Math.floor(secs / 60), s = secs % 60;
       const row = document.createElement("div");
-      row.className = "hr-zone-row hr-zone-row--pct";
+      row.className = "grid grid-cols-[7.5rem_minmax(0,1fr)_3.5rem_3.5rem] items-center gap-3 text-sm";
       row.innerHTML = `
-        <div class="hr-zone-label" style="color:${ZONE_COLORS[i]}">${ZONE_NAMES[i]}</div>
-        <div class="hr-zone-bar-wrap">
-          <div class="hr-zone-bar" style="width:${pct}%;background:${ZONE_COLORS[i]}"></div>
+        <div class="flex items-center gap-2 font-medium"><span class="size-2 shrink-0 rounded-full" style="background:${ZONE_COLORS[i]}" aria-hidden="true"></span>${ZONE_NAMES[i]}</div>
+        <div class="ui-bar">
+          <div class="h-full rounded-full" style="width:${pct}%;background:${ZONE_COLORS[i]}"></div>
         </div>
-        <div class="hr-zone-time">${m}:${String(s).padStart(2,"0")}</div>
-        <div class="hr-zone-pct">${pct}%</div>`;
+        <div class="text-right font-mono tabular-nums">${m}:${String(s).padStart(2,"0")}</div>
+        <div class="text-right font-mono tabular-nums text-muted">${pct}%</div>`;
       container.appendChild(row);
     });
   }

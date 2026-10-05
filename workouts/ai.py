@@ -1545,15 +1545,18 @@ Rules:
 
 def _render_compare_analysis_html(text, ids_param=""):
     from django.http import HttpResponse
+    from django.template.loader import render_to_string
     regen = (
-        f'<button class="btn btn-ghost" style="font-size:0.75rem;padding:0.25rem 0.6rem;margin-top:1rem"'
+        f'<button class="btn btn-ghost btn-xs mt-4"'
         f' hx-get="/api/compare/analysis/?ids={ids_param}"'
         f' hx-target="#compare-ai-body" hx-swap="innerHTML"'
         f' hx-indicator="#compare-ai-spinner">Regenerate</button>'
-        f'<span id="compare-ai-spinner" class="cai-spinner htmx-indicator" style="margin-left:0.75rem;vertical-align:middle"></span>'
+        f'<div id="compare-ai-spinner" class="mt-4 hidden [&.htmx-request]:block">'
+        + render_to_string("workouts/partials/ai_skeleton.html", {"what": "the comparison"})
+        + '</div>'
     )
     if not text:
-        return HttpResponse(f'<p style="color:var(--text-dim);font-size:0.85rem">Analysis unavailable.</p>{regen}')
+        return HttpResponse(f'<p class="text-sm text-muted">Analysis unavailable.</p>{regen}')
 
     headline = ""
     bullets = []
@@ -1567,7 +1570,7 @@ def _render_compare_analysis_html(text, ids_param=""):
     headline_html = f'<div class="cai-headline">{headline}</div>' if headline else ""
     bullets_html = "".join(f'<li class="insights-item">{b}</li>' for b in bullets)
     list_html = f'<ul class="insights-list">{bullets_html}</ul>' if bullets_html else ""
-    return HttpResponse(f'{headline_html}{list_html}{regen}')
+    return HttpResponse(f'<div class="ui-enter">{headline_html}{list_html}</div>{regen}')
 
 
 # ---------------------------------------------------------------------------

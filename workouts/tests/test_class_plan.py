@@ -133,7 +133,7 @@ class ManualMovementsTests(TestCase):
             resp = workout_detail(req, self.w.workout_id)
         self.assertEqual(resp.status_code, 200)
         html = resp.content.decode()
-        self.assertIn("CLASS EXERCISES", html)
+        self.assertIn("Class exercises", html)
         self.assertIn("Single Leg Hip Bridge", html)
 
     def test_form_rows_carry_volume_and_total(self):

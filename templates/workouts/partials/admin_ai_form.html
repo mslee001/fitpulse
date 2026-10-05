@@ -1,22 +1,21 @@
 <div id="admin-ai-form">
   {% if target.is_superuser %}
-  <p style="margin:0 0 0.75rem">No cap (owner). This month: <strong>${{ spent|floatformat:2 }}</strong></p>
+  <p class="mb-3 text-sm">No cap (owner). This month: <strong class="font-mono">${{ spent|floatformat:2 }}</strong></p>
   {% else %}
   <form hx-post="{% url 'admin_user_ai' target.pk %}" hx-target="#admin-ai-form" hx-swap="outerHTML"
-        style="display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:0.75rem">
+        class="mb-3 flex flex-wrap items-end gap-4">
     {% csrf_token %}
-    <label style="display:flex;align-items:center;gap:0.5rem">
-      <input type="checkbox" name="ai_enabled" {% if access.ai_enabled %}checked{% endif %}> AI features on
+    <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+      <input type="checkbox" class="toggle toggle-primary" name="ai_enabled" {% if access.ai_enabled %}checked{% endif %}> AI features on
     </label>
-    <div class="form-group" style="margin:0">
-      <label class="form-label" for="id_budget">Monthly budget (USD, blank = no cap)</label>
-      <input class="form-input" id="id_budget" name="monthly_ai_budget_usd" style="width:9rem"
+    <label class="fieldset py-0" for="id_budget"><span class="fieldset-legend">Monthly budget (USD, blank = no cap)</span>
+      <input class="input w-36 font-mono" id="id_budget" name="monthly_ai_budget_usd"
              value="{% if access.monthly_ai_budget_usd is not None %}{{ access.monthly_ai_budget_usd }}{% endif %}" inputmode="decimal">
-    </div>
-    <button type="submit" class="btn btn-sm btn-accent">Save</button>
-    {% if saved %}<span class="muted" style="font-size:0.8rem">Saved</span>{% endif %}
+    </label>
+    <button type="submit" class="btn btn-sm btn-primary">Save</button>
+    {% if saved %}<span role="status" class="text-sm text-success">Saved</span>{% endif %}
   </form>
-  {% if error %}<div class="peloton-msg peloton-msg--error">{{ error }}</div>{% endif %}
-  <p style="margin:0 0 0.75rem">This month: <strong>{{ ai_label }}</strong></p>
+  {% if error %}<div role="alert" class="alert alert-soft alert-error mb-3">{{ error }}</div>{% endif %}
+  <p class="mb-3 text-sm">This month: <strong class="font-mono">{{ ai_label }}</strong></p>
   {% endif %}
 </div>

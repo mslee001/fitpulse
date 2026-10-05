@@ -1,12 +1,7 @@
 /* FitPulse styles: Tailwind CSS 4 + daisyUI 5.
    Build: scripts/css.sh build. Never edit static/css/app.css by hand. */
 
-/* Layer order. "legacy" sits above Tailwind's reset but below every utility and
-   daisyUI class, so old pages keep working and converted markup wins. */
-@layer theme, base, legacy, components, utilities;
-
 @import "tailwindcss" source(none);
-@import "../../static/css/main.css" layer(legacy);
 
 /* Where Tailwind looks for class names. source(none) above turns off automatic
    detection, which would scan the whole repo (including untracked files) and make
@@ -14,11 +9,296 @@
 @source "../../templates";
 @source "../../workouts";
 
+/* Only the daisyUI components FitPulse uses (names = daisyUI 5 component files; the
+   first four are base pieces). Add a name here before using a new component. */
 @plugin "./vendor/daisyui.mjs" {
   themes: false;
   logs: false;
-  /* TEMPORARY (removed in 02): these daisyUI components share class names with
-     today's markup (btn, card, badge, stat-value) and would restyle every page
-     before the themes and renames exist. */
-  exclude: button, card, badge, stat;
+  include: properties, rootcolor, rootscrollgutter, svg, button, badge, alert, dropdown,
+           menu, join, table, input, select, textarea, fieldset, label, checkbox, radio,
+           toggle, fileinput, collapse, loading, chat, link, skeleton;
+}
+
+/* FitPulse "Soft modern" themes. Names match the existing data-theme values, so the
+   toggle and localStorage['theme'] keep working. Colors must stay HEX: Chart.js reads
+   these variables and can't parse oklch(). */
+@plugin "./vendor/daisyui-theme.mjs" {
+  name: "dark";
+  default: true;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #1C2028;
+  --color-base-200: #14171D;
+  --color-base-300: #0F1116;
+  --color-base-content: #E9EDF3;
+  --color-primary: #2BC4B0;
+  --color-primary-content: #0B1A18;
+  --color-secondary: #7AA7FF;
+  --color-secondary-content: #0B1530;
+  --color-accent: #B79CFF;
+  --color-accent-content: #1A1033;
+  --color-neutral: #232833;
+  --color-neutral-content: #E9EDF3;
+  --color-info: #7AA7FF;
+  --color-info-content: #0B1530;
+  --color-success: #57D68D;
+  --color-success-content: #0A2416;
+  --color-warning: #F2B45A;
+  --color-warning-content: #2B1A00;
+  --color-error: #F87171;
+  --color-error-content: #2B0A0A;
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "./vendor/daisyui-theme.mjs" {
+  name: "light";
+  default: false;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #FFFFFF;
+  --color-base-200: #F4F6F9;
+  --color-base-300: #E6E9EF;
+  --color-base-content: #151A22;
+  --color-primary: #0E8C7E;
+  --color-primary-content: #FFFFFF;
+  --color-secondary: #2F62D6;
+  --color-secondary-content: #FFFFFF;
+  --color-accent: #6B4ED8;
+  --color-accent-content: #FFFFFF;
+  --color-neutral: #2A303C;
+  --color-neutral-content: #F4F6F9;
+  --color-info: #2F62D6;
+  --color-info-content: #FFFFFF;
+  --color-success: #1B7A43;
+  --color-success-content: #FFFFFF;
+  --color-warning: #A86300;
+  --color-warning-content: #FFFFFF;
+  --color-error: #C2283B;
+  --color-error-content: #FFFFFF;
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* dark: utilities follow the existing toggle. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Theme-aware helpers: text-muted, text-faint, border-subtle, bg-inset.
+   faint (45%) is decorative/disabled only: it doesn't meet 4.5:1. */
+@theme inline {
+  --color-muted: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+  --color-faint: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  --color-subtle: color-mix(in oklab, var(--color-base-content) 12%, var(--color-base-100));
+  --color-inset: color-mix(in oklab, var(--color-base-content) 5%, var(--color-base-100));
+}
+
+/* Count-up number (.ui-count): a registered integer so it can transition. */
+@property --fp-n { syntax: '<integer>'; inherits: false; initial-value: 0; }
+
+/* Chart series palette, validated for both themes. Read via window.fpChart. */
+@layer base {
+  /* Motion: one easing, three durations (CLAUDE.md → Styling → Motion). */
+  :root {
+    --fp-ease: cubic-bezier(.2, .7, .2, 1);
+    --fp-fast: 200ms;   /* hover, press, popovers, inserted rows */
+    --fp-fade: 300ms;   /* crossfades: theme, page */
+    --fp-show: 900ms;   /* signature moments only */
+  }
+  :root, [data-theme="dark"] {
+    --chart-1: #14A394; --chart-2: #3987E5; --chart-3: #D95926;
+    --chart-4: #9085E9; --chart-5: #C98500; --chart-6: #D55181;
+  }
+  [data-theme="light"] {
+    --chart-1: #0E8C7E; --chart-2: #2A78D6; --chart-3: #E2602B;
+    --chart-4: #4A3AA7; --chart-5: #A87400; --chart-6: #C94F7C;
+  }
+  /* Intervention category colors (domain colors, shown as dots next to the name). */
+  :root {
+    --cat-medication: #ff35da; --cat-supplement: #B4FF39; --cat-hormone: #A78BFA;
+    --cat-lifestyle: #00D1FF; --cat-surgery: #FF8A65; --cat-other: #888899;
+  }
+  body { @apply bg-base-200 text-base-content font-sans antialiased; font-size: 0.95rem; line-height: 1.6; }
+  /* Body text uses line-height 1.6; form controls keep the browser's "normal". */
+  button, input, select, textarea { line-height: normal; }
+  /* Plain links are primary-colored; components (btn, menu, link) set their own. */
+  a { color: var(--color-primary); }
+  a:hover { text-decoration: underline; }
+
+  /* Invisible polish */
+  :where(.font-mono, code, kbd, td, .ui-stat-value) { font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+  /* Smooth <details> where supported (Chrome/Edge); elsewhere they open instantly.
+     daisyUI collapses animate themselves; nav dropdowns should appear at once. */
+  :root { interpolate-size: allow-keywords; }
+  details:not(.collapse, .dropdown)::details-content {
+    block-size: 0; overflow-y: clip;
+    transition: block-size var(--fp-fast) var(--fp-ease), content-visibility var(--fp-fast) allow-discrete;
+  }
+  details:not(.collapse, .dropdown)[open]::details-content { block-size: auto; }
+}
+
+/* FitPulse components: patterns daisyUI doesn't have. Keep this list short; anything
+   used once is utilities in the template. Documented in CLAUDE.md → Styling. */
+@layer components {
+  /* Page frame */
+  .ui-page-header   { @apply mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3; }
+  .ui-page-title    { @apply text-2xl sm:text-3xl font-bold tracking-tight text-base-content; }
+  .ui-page-sub      { @apply text-muted; }
+  .ui-page-actions  { @apply flex flex-wrap items-center gap-2; }
+  .ui-section       { @apply mt-8 first:mt-0; }
+  .ui-section-title { @apply mb-3 text-lg font-semibold; }
+
+  /* Panels (replace chart-card / fp-card / add-form-card) */
+  .ui-panel         { @apply rounded-box bg-base-100 p-5 shadow-sm sm:p-6; }
+  .ui-panel-header  { @apply mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1; }
+  .ui-panel-title   { @apply text-lg font-semibold; }
+
+  /* Stat tiles (replace stat-card / metric-card and their parts) */
+  .ui-stat-grid     { @apply grid gap-3 grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(165px,1fr))]; }
+  .ui-stat          { @apply flex flex-col gap-0.5 rounded-box bg-base-100 p-4 shadow-sm; }
+  .ui-stat-hero     { @apply sm:col-span-2; }
+  .ui-stat-label    { @apply text-sm text-muted; }
+  .ui-stat-value    { @apply font-mono text-2xl font-medium tabular-nums leading-tight; }
+  .ui-stat-hero .ui-stat-value { @apply text-4xl; }
+  .ui-stat-unit     { @apply ml-0.5 font-sans text-sm font-medium text-muted; }
+  .ui-stat-sub      { @apply text-sm text-muted; }
+
+  /* Label/value rows: <dl class="ui-kv"><div><dt>Label</dt><dd>Value</dd></div>…</dl> */
+  .ui-kv            { @apply flex flex-col text-sm; }
+  .ui-kv > div      { @apply flex items-baseline justify-between gap-3 border-t border-subtle py-2 first:border-t-0; }
+  .ui-kv dt         { @apply text-muted; }
+  .ui-kv dd         { @apply text-right font-mono tabular-nums; }
+
+  /* Misc */
+  .ui-empty         { @apply flex flex-col items-center gap-2 rounded-box border border-dashed border-subtle px-6 py-10 text-center text-muted; }
+  .ui-bar           { @apply h-2 w-full overflow-hidden rounded-full bg-inset; }
+  .ui-bar > span    { @apply block h-full rounded-full bg-primary; }  /* width set inline: style="width: {{ pct }}%" */
+
+  /* AI output emitted by Python (workout_filters.py format_* filters, ai.py compare
+     narrative). The class names live in the Python; style them only here. */
+  .insights-list    { @apply m-0 flex list-none flex-col gap-2 p-0; }
+  .insights-item    { @apply rounded-xl bg-inset px-4 py-3 text-sm leading-relaxed; }
+  .ai-text          { @apply text-sm leading-relaxed; }
+  .ai-headline,
+  .cai-headline     { @apply mb-3 text-lg font-semibold leading-snug; }
+  .ni-section       { @apply mt-6 first:mt-0; }
+  .ni-header        { @apply mb-2 text-base font-semibold; }
+  .ni-para          { @apply mb-3 text-sm leading-relaxed text-muted last:mb-0; }
+  .nw-intensity     { @apply mb-1 text-sm font-semibold; }  /* + a tone class: text-error/-warning/-success/-info/-primary */
+  .nw-activity      { @apply mb-2 text-xl font-bold leading-snug; }
+  .nw-reason        { @apply m-0 text-sm leading-relaxed text-muted; }
+
+  /* Placeholder art for Garmin workouts without a class image (workout cards, detail
+     header). Picked by discipline: garmin-default-img--{{ discipline }}. */
+  .garmin-default-img              { background: linear-gradient(135deg, #0f1923 0%, #1a2a3a 100%); }
+  .garmin-default-img--running     { background: linear-gradient(135deg, #0d1b2a 0%, #1b3a5c 100%); }
+  .garmin-default-img--walking     { background: linear-gradient(135deg, #0d2a1a 0%, #1b5c3a 100%); }
+  .garmin-default-img--strength    { background: linear-gradient(135deg, #2a0d0d 0%, #5c1b1b 100%); }
+  .garmin-default-img--cycling     { background: linear-gradient(135deg, #1a0d2a 0%, #3a1b5c 100%); }
+  .garmin-default-img--yoga,
+  .garmin-default-img--stretching  { background: linear-gradient(135deg, #0d2a2a 0%, #1b5c5c 100%); }
+  .garmin-default-img--hiking      { background: linear-gradient(135deg, #1a1a0d 0%, #3a3a1b 100%); }
+  .garmin-default-img--swimming    { background: linear-gradient(135deg, #0d1a2a 0%, #1b3a5c 100%); }
+
+  /* A program's pages carry its kind color as primary: plan = success, split = secondary,
+     collection = accent. Templates write kind-scope--{{ program.kind }}. These are plain
+     CSS classes (not utilities), so the built-up name is fine. */
+  .kind-scope--plan       { --color-primary: var(--color-success);   --color-primary-content: var(--color-success-content); }
+  .kind-scope--split      { --color-primary: var(--color-secondary); --color-primary-content: var(--color-secondary-content); }
+  .kind-scope--collection { --color-primary: var(--color-accent);    --color-primary-content: var(--color-accent-content); }
+
+  /* The theme's 1rem selector radius makes checkboxes round, so they read as radios.
+     Keep them square-ish (radios and toggles stay round). */
+  .checkbox { --radius-selector: 0.375rem; }
+
+  /* daisyUI menus leave link color alone, so the base link rule would color every
+     menu item primary. */
+  .menu a { color: inherit; text-decoration: none; }
+
+  /* Stats chat answers: <ul class="chat-list"> from format_chat_answer. */
+  .chat-list { @apply list-disc pl-5 space-y-1; }
+
+  /* ── Motion (CLAUDE.md → Styling → Motion) ── */
+  /* Hover lift: cards that navigate somewhere. */
+  .ui-lift { transition: translate var(--fp-fast) var(--fp-ease), box-shadow var(--fp-fast) var(--fp-ease); }
+  .ui-lift:hover { translate: 0 -2px; @apply shadow-md; }
+
+  /* Press: tappable things that are NOT .btn (daisyUI buttons have their own). */
+  .ui-press { transition: scale 120ms var(--fp-ease); }
+  .ui-press:active { scale: .97; }
+
+  /* Arrive: inserted rows/cards and first paint fade up 6px. */
+  .ui-enter { transition: opacity var(--fp-fast) var(--fp-ease), translate var(--fp-fast) var(--fp-ease); }
+  @starting-style { .ui-enter { opacity: 0; translate: 0 6px; } }
+
+  /* Today only: staggered tiles. Each child sets style="--i: N". */
+  @keyframes fp-up { from { opacity: 0; translate: 0 8px; } }
+  .ui-stagger > * { animation: fp-up 320ms var(--fp-ease) both; animation-delay: calc(var(--i, 0) * 40ms); }
+
+  /* Signature: count-up number. The real value is in a sibling .sr-only for screen readers. */
+  .ui-count { --fp-n: var(--fp-to); counter-reset: fpn var(--fp-n); transition: --fp-n var(--fp-show) var(--fp-ease); }
+  @starting-style { .ui-count { --fp-n: 0; } }
+  .ui-count::after { content: counter(fpn); }
+
+  /* Signature: ring sweep. The final offset comes in as style="--fp-ring-to: N" (a custom
+     property, not an inline stroke-dashoffset, which would outrank @starting-style). */
+  .ui-ring-arc { stroke-dashoffset: var(--fp-ring-to); transition: stroke-dashoffset var(--fp-show) var(--fp-ease); }
+  @starting-style { .ui-ring-arc { stroke-dashoffset: var(--fp-ring-c, 301.6); } }
+
+  /* Signature: bars that grow on first paint (Today nutrition, Nutrition totals ONLY).
+     Width comes in as style="--fp-w: N%" for the same reason as the ring. */
+  .ui-bar-grow > span { width: var(--fp-w); transition: width 700ms var(--fp-ease); }
+  @starting-style { .ui-bar-grow > span { width: 0; } }
+
+  /* Glass: floating surfaces only (nav, dropdowns, chat panel, compare bar). */
+  .ui-glass { @apply bg-base-100/80 backdrop-blur-md; }
+
+  /* Phone: a stat grid becomes a horizontal snap row (Today + Day view only). */
+  .ui-stat-swipe { @apply max-sm:-mx-4 max-sm:flex max-sm:snap-x max-sm:snap-mandatory max-sm:overflow-x-auto max-sm:px-4 max-sm:pb-2 max-sm:scroll-px-4; scrollbar-width: none; }
+  .ui-stat-swipe > * { @apply max-sm:shrink-0 max-sm:basis-[44%] max-sm:snap-start; }
+
+  /* Metric help popovers ({% metric_help %}): under their "i" button where anchor
+     positioning exists; elsewhere the browser's centered top-layer card. */
+  @supports (anchor-name: --a) {
+    [popover][style*="position-anchor"] {
+      inset: auto; top: calc(anchor(bottom) + 6px); left: anchor(left);
+      position-try-fallbacks: flip-block, flip-inline;
+    }
+  }
+
+  /* Invisible polish */
+  .ui-page-title, .ui-section-title, .ui-panel-title { text-wrap: balance; }
+}
+
+/* Page transitions: every same-origin navigation crossfades (Chrome/Edge, Safari 18.2+);
+   one named element (fp-hero) morphs from a clicked card into the page header. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--fp-fade); }
+::view-transition-group(fp-hero) { animation-duration: 350ms; animation-timing-function: var(--fp-ease); }
+
+/* Reduced motion: the one deliberately unlayered rule. It only removes motion, so it
+   must beat every layer (including daisyUI's own transitions). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }

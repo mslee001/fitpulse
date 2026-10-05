@@ -8,26 +8,23 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="ui-page-header">
   <div>
-    <div class="page-title">WEEKLY REVIEW</div>
-    <div class="page-subtitle">AI-generated review of your most recently completed week</div>
+    <h1 class="ui-page-title">Weekly review</h1>
+    <p class="ui-page-sub">AI-generated review of your most recently completed week</p>
   </div>
 </div>
 
-<div class="review-layout" style="display:grid;grid-template-columns:1fr 280px;gap:1.5rem;align-items:start">
+<div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
 
-  {# ── Current week review ── #}
-  <div>
+  <div class="flex min-w-0 flex-col gap-5">
     {% if current_review %}
-    <div class="card" style="margin-bottom:1.5rem">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.5rem">
+    <div class="ui-panel">
+      <div class="ui-panel-header">
         <div>
-          <div class="section-title" style="margin-bottom:0.15rem">
-            WEEK OF {{ current_review.week_start|date:"M j" }} – {{ current_review.week_end|date:"M j, Y" }}
-          </div>
+          <h2 class="ui-panel-title">Week of {{ current_review.week_start|date:"M j" }} – {{ current_review.week_end|date:"M j, Y" }}</h2>
           {% if not current_review.batch_id %}
-          <div style="font-size:0.75rem;color:var(--text-dim)">Generated {{ current_review.generated_at|date:"M j, Y g:i A" }}</div>
+          <div class="text-xs text-muted">Generated {{ current_review.generated_at|date:"M j, Y g:i A" }}</div>
           {% endif %}
         </div>
         {% if not current_review.batch_id %}
@@ -41,60 +38,58 @@
       {% endif %}
     </div>
     {% elif ai_unavailable_reason %}
-    <div class="card" style="margin-bottom:1.5rem">
+    <div class="ui-panel">
       {% include "workouts/partials/ai_unavailable.html" %}
     </div>
     {% else %}
-    <div class="card" style="margin-bottom:1.5rem">
-      <div style="color:var(--text-dim);font-size:0.9rem;padding:1rem 0">
-        No review available yet.
-        <a href="{% url 'weekly_review' %}?refresh=1" class="btn btn-sm btn-accent" style="margin-left:0.75rem">Generate Now</a>
-      </div>
+    <div class="ui-panel flex flex-wrap items-center gap-3">
+      <p class="text-muted">No review available yet.</p>
+      <a href="{% url 'weekly_review' %}?refresh=1" class="btn btn-sm btn-primary">Generate now</a>
     </div>
     {% endif %}
 
-    {# ── Archive ── #}
     {% if archive %}
-    <div class="card">
-      <div class="section-title" style="margin-bottom:1rem">PAST REVIEWS</div>
-      <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <section>
+      <h2 class="ui-section-title">Past reviews</h2>
+      <div class="flex flex-col gap-3">
         {% for review in archive %}
-        <details style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
-          <summary style="padding:0.65rem 1rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:var(--bg-raised);list-style:none;font-size:0.875rem;font-weight:600">
+        <details class="collapse collapse-arrow bg-base-100 shadow-sm">
+          <summary class="collapse-title flex flex-wrap items-baseline justify-between gap-2 font-semibold">
             <span>Week of {{ review.week_start|date:"M j" }} – {{ review.week_end|date:"M j, Y" }}</span>
-            <span style="font-size:0.75rem;color:var(--text-dim);font-weight:400">{{ review.generated_at|date:"M j" }}</span>
+            <span class="text-xs font-normal text-muted">{{ review.generated_at|date:"M j" }}</span>
           </summary>
-          <div style="padding:1rem 1.25rem;background:var(--bg-card);line-height:1.7;font-size:0.875rem">
+          <div class="collapse-content">
             {{ review.content|format_nutrition_insights }}
           </div>
         </details>
         {% endfor %}
       </div>
-    </div>
+    </section>
     {% endif %}
   </div>
 
-  {# ── Sidebar ── #}
-  <div>
-    <div class="card" style="margin-bottom:1rem">
-      <div class="section-title" style="margin-bottom:0.75rem">ABOUT WEEKLY REVIEW</div>
-      <p style="color:var(--text-dim);font-size:0.82rem;line-height:1.6;margin:0 0 0.75rem">
+  <div class="flex flex-col gap-5">
+    <div class="ui-panel">
+      <h2 class="ui-panel-title mb-2">About weekly review</h2>
+      <p class="text-sm leading-relaxed text-muted">
         Reviews are generated every Sunday for the week that just ended (Mon–Sun).
         Covers weight trend, nutrition adherence, workouts, hunger patterns, and symptoms.
       </p>
-      <p style="color:var(--text-dim);font-size:0.82rem;line-height:1.6;margin:0">
-        Use <strong>Regenerate</strong> to get a fresh analysis, for example after syncing new data.
+      <p class="mt-2 text-sm leading-relaxed text-muted">
+        Use <strong class="text-base-content">Regenerate</strong> to get a fresh analysis, for example after syncing new data.
       </p>
     </div>
-    <div class="card">
-      <div class="section-title" style="margin-bottom:0.75rem">QUICK LINKS</div>
-      <div style="display:flex;flex-direction:column;gap:0.4rem">
-        <a href="{% url 'nutrition_analytics' %}" class="btn btn-ghost btn-sm" style="text-align:left">Nutrition Analytics</a>
-        <a href="{% url 'insights' %}" class="btn btn-ghost btn-sm" style="text-align:left">Pattern Insights</a>
-        <a href="{% url 'body' %}" class="btn btn-ghost btn-sm" style="text-align:left">Body Trends</a>
-        <a href="{% url 'symptoms' %}" class="btn btn-ghost btn-sm" style="text-align:left">Symptoms Log</a>
-      </div>
+    {% if can.nutrition or can.ai_pattern_insights or can.body or can.symptoms %}
+    <div class="ui-panel">
+      <h2 class="ui-panel-title mb-2">Quick links</h2>
+      <ul class="menu w-full p-0">
+        {% if can.nutrition %}<li><a href="{% url 'nutrition_analytics' %}">Nutrition analytics</a></li>{% endif %}
+        {% if can.ai_pattern_insights %}<li><a href="{% url 'insights' %}">Pattern insights</a></li>{% endif %}
+        {% if can.body %}<li><a href="{% url 'body' %}">Body trends</a></li>{% endif %}
+        {% if can.symptoms %}<li><a href="{% url 'symptoms' %}">Symptoms log</a></li>{% endif %}
+      </ul>
     </div>
+    {% endif %}
   </div>
 
 </div>

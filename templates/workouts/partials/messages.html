@@ -1,7 +1,7 @@
 {% if messages %}
-<div style="margin-bottom:1rem">
+<div class="mb-4 flex flex-col gap-2">
   {% for message in messages %}
-  <div class="peloton-msg peloton-msg--{{ message.tags }}">{{ message }}</div>
+  <div role="status" class="alert alert-soft {% if message.level_tag == 'success' %}alert-success{% elif message.level_tag == 'warning' %}alert-warning{% elif message.level_tag == 'error' %}alert-error{% else %}alert-info{% endif %}">{{ message }}</div>
   {% endfor %}
 </div>
 {% endif %}

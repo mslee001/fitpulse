@@ -1,7 +1,7 @@
 {% include "workouts/partials/peloton_token_help.html" %}
-<form method="post" action="{% url 'set_peloton_auth' %}" class="gs-inline-form">
+<form method="post" action="{% url 'set_peloton_auth' %}" class="mt-4 flex flex-col gap-2 sm:flex-row">
   {% csrf_token %}
   <input type="hidden" name="next" value="/get-started/#peloton">
-  <input type="password" name="refresh_token" class="form-input" autocomplete="off" placeholder="Paste your Peloton sign-in token" required style="min-width:16rem">
-  <button type="submit" class="btn btn-accent">Connect</button>
+  <input type="password" name="refresh_token" class="input w-full font-mono sm:flex-1" autocomplete="off" placeholder="Paste your Peloton sign-in token" aria-label="Peloton sign-in token" required>
+  <button type="submit" class="btn btn-primary max-sm:w-full">Connect</button>
 </form>

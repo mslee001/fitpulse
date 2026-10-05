@@ -1,3 +1,7 @@
 {% load workout_filters %}
-<div class="chat-msg chat-msg-user">{{ user_message }}</div>
-<div class="chat-msg chat-msg-assistant">{{ answer|format_chat_answer }}</div>
+<div class="ui-enter chat chat-end">
+  <div class="chat-bubble chat-bubble-primary text-sm">{{ user_message }}</div>
+</div>
+<div class="ui-enter chat chat-start">
+  <div class="chat-bubble bg-inset text-base-content text-sm space-y-2">{{ answer|format_chat_answer }}</div>
+</div>

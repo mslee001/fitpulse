@@ -3,65 +3,60 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <h1 class="page-title">TRAINING ANALYTICS</h1>
-      <p class="page-sub">Trends and insights from your workout history</p>
-    </div>
+<div class="ui-page-header">
+  <div>
+    <h1 class="ui-page-title">Training analytics</h1>
+    <p class="ui-page-sub">Trends and insights from your workout history</p>
   </div>
 </div>
 
-<div class="analytics-layout">
+<div class="flex flex-col gap-5">
 
-  <!-- Weekly Volume -->
-  <div class="chart-card">
-    <div class="chart-header">
-      <h3 class="chart-title">WEEKLY VOLUME</h3>
-      <span class="chart-sub">last 16 weeks</span>
+  <div class="ui-panel">
+    <div class="ui-panel-header">
+      <h2 class="ui-panel-title">Weekly volume</h2>
+      <span class="text-sm text-muted">Last 16 weeks · click a bar to see those workouts</span>
     </div>
-    <canvas id="weeklyChart" height="100"></canvas>
+    <canvas id="weeklyChart" height="100" role="img" aria-label="Workouts per week by discipline, last 16 weeks"></canvas>
   </div>
 
-  <!-- Performance Trend + Discipline Mix -->
-  <div class="analytics-row">
-    <div class="chart-card analytics-trend-card">
-      <div class="chart-header">
-        <h3 class="chart-title">PERFORMANCE TREND</h3>
-        <div class="chart-toggles" id="trendToggles"></div>
+  <div class="grid gap-5 lg:grid-cols-2">
+    <div class="ui-panel min-w-0">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title">Performance trend</h2>
+        <div class="join" id="trendToggles"></div>
       </div>
-      <canvas id="trendChart" height="160"></canvas>
+      <canvas id="trendChart" height="160" role="img" aria-label="Performance trend for the selected discipline"></canvas>
     </div>
 
-    <div class="chart-card analytics-mix-card">
-      <div class="chart-header">
-        <h3 class="chart-title">DISCIPLINE MIX</h3>
-        <span class="chart-sub">last 90 days</span>
+    <div class="ui-panel min-w-0">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title">Discipline mix</h2>
+        <span class="text-sm text-muted">Last 90 days</span>
       </div>
-      <canvas id="mixChart" height="160"></canvas>
-      <div id="mixLegend" class="mix-legend"></div>
+      <div class="grid items-center gap-5 sm:grid-cols-[minmax(0,220px)_1fr]">
+        <div class="mx-auto w-full max-w-[220px]"><canvas id="mixChart" role="img" aria-label="Share of workouts by discipline, last 90 days"></canvas></div>
+        <div id="mixLegend" class="flex flex-col gap-1 text-sm"></div>
+      </div>
     </div>
   </div>
 
-  <!-- AI Insights -->
   {% if can.ai_training_insights %}
-  <div class="chart-card">
-    <div class="chart-header">
-      <h3 class="chart-title">AI INSIGHTS</h3>
-      <div style="display:flex;align-items:center;gap:0.75rem">
+  <div class="ui-panel">
+    <div class="ui-panel-header">
+      <h2 class="ui-panel-title">AI insights</h2>
+      <div class="flex items-center gap-3">
         {% if insights_generated_at %}
-        <span style="font-family:'Barlow',sans-serif;font-size:0.7rem;color:var(--text-dim)">
-          Generated {{ insights_generated_at|timesince }} ago
-        </span>
+        <span class="text-xs text-muted">Generated {{ insights_generated_at|timesince }} ago</span>
         {% endif %}
-        <form method="post" action="{% url 'analytics_generate_insights' %}" style="margin:0"
+        <form method="post" action="{% url 'analytics_generate_insights' %}"
           hx-post="{% url 'analytics_generate_insights' %}"
           hx-target="#insights-content"
           hx-swap="innerHTML"
           hx-disabled-elt="find button">
           {% csrf_token %}
-          <button type="submit" class="btn btn-sm btn-accent" {% if insights_pending %}disabled{% endif %}>
-            {% if insights_pending %}Pending…{% elif last_insights %}Regenerate{% else %}Generate Insights{% endif %}
+          <button type="submit" class="btn btn-sm btn-primary" {% if insights_pending %}disabled{% endif %}>
+            {% if insights_pending %}Pending…{% elif last_insights %}Regenerate{% else %}Generate insights{% endif %}
           </button>
         </form>
       </div>
@@ -73,9 +68,8 @@
       {% elif last_insights %}
         {% include "workouts/partials/insights.html" with insights=last_insights generated_at=insights_generated_at %}
       {% else %}
-        <p class="insights-empty">
-          Click <strong>Generate Insights</strong> to get AI-powered analysis of your workout trends.
-          Requires <code>ANTHROPIC_API_KEY</code> in your <code>.env</code> file.
+        <p class="text-sm text-muted">
+          Click <strong>Generate insights</strong> to get AI-powered analysis of your workout trends.
         </p>
       {% endif %}
     </div>
@@ -106,15 +100,15 @@ const CHART_DEFAULTS = {
   responsive: true,
   plugins: { legend: { display: false } },
   scales: {
-    x: { grid: { color: "#ffffff0d" }, ticks: { color: "#888", font: { family: "JetBrains Mono", size: 10 } } },
-    y: { grid: { color: "#ffffff0d" }, ticks: { color: "#888", font: { family: "JetBrains Mono", size: 10 } } },
+    x: { grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, font: { family: fpChart.fontMono, size: 10 } } },
+    y: { grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, font: { family: fpChart.fontMono, size: 10 } } },
   },
 };
 
 document.addEventListener("DOMContentLoaded", () => {
 
 // ── Weekly Volume (stacked bar) ───────────────────────────────────────────────
-new Chart(document.getElementById("weeklyChart"), {
+fpChart.track(new Chart(document.getElementById("weeklyChart"), {
   type: "bar",
   data: {
     labels: weeklyLabels.map(fmtWeekLabel),
@@ -149,21 +143,21 @@ new Chart(document.getElementById("weeklyChart"), {
       legend: {
         display: true,
         position: "bottom",
-        labels: { color: "#888", font: { family: "Barlow Condensed", size: 11 }, boxWidth: 10, padding: 12 },
+        labels: { color: fpChart.muted, font: { family: fpChart.fontSans, size: 11 }, boxWidth: 10, padding: 12 },
       },
       tooltip: { callbacks: { title: ctx => "Week of " + ctx[0].label } },
     },
     scales: {
-      x: { stacked: true, grid: { color: "#ffffff0d" }, ticks: { color: "#888", maxRotation: 45, font: { family: "JetBrains Mono", size: 9 } } },
-      y: { stacked: true, grid: { color: "#ffffff0d" }, ticks: { color: "#888", font: { family: "JetBrains Mono", size: 10 }, stepSize: 1 } },
+      x: { stacked: true, grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, maxRotation: 45, font: { family: fpChart.fontMono, size: 9 } } },
+      y: { stacked: true, grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, font: { family: fpChart.fontMono, size: 10 }, stepSize: 1 } },
     },
   },
-});
+}));
 
 // ── Discipline Mix (donut) ────────────────────────────────────────────────────
 if (disciplineMix.length) {
   const mixTotal = disciplineMix.reduce((a, b) => a + b.count, 0);
-  new Chart(document.getElementById("mixChart"), {
+  fpChart.track(new Chart(document.getElementById("mixChart"), {
     type: "doughnut",
     data: {
       labels: disciplineMix.map(d => d.label),
@@ -194,28 +188,28 @@ if (disciplineMix.length) {
         },
       },
     },
-  });
+  }));
 
   const legend = document.getElementById("mixLegend");
   disciplineMix.forEach(d => {
     const pct = Math.round(d.count / mixTotal * 100);
     const row = document.createElement("a");
     row.href = "/history/?discipline=" + d.discipline + "&date_from=" + mixDateFrom;
-    row.className = "mix-legend-row mix-legend-link";
+    row.className = "flex items-center gap-2 rounded-lg px-2 py-1.5 text-base-content hover:no-underline hover:bg-inset";
     row.innerHTML = `
-      <div style="width:8px;height:8px;border-radius:50%;background:${d.color};flex-shrink:0"></div>
-      <div class="mix-legend-label">${d.label}</div>
-      <div class="mix-legend-count">${d.count}</div>
-      <div class="mix-legend-pct">${pct}%</div>`;
+      <span class="size-2 shrink-0 rounded-full" style="background:${d.color}"></span>
+      <span class="flex-1">${d.label}</span>
+      <span class="font-mono tabular-nums">${d.count}</span>
+      <span class="w-10 text-right font-mono tabular-nums text-muted">${pct}%</span>`;
     legend.appendChild(row);
   });
 }
 
 // ── Performance Trend (line per discipline) ───────────────────────────────────
 const TREND_META = {
-  cycling:  { dispLabel: "CYCLING",  fmtY: v => Math.round(v) + " W",    tickFmt: v => Math.round(v) + " W"    },
-  running:  { dispLabel: "RUNNING",  fmtY: fmtPace,                        tickFmt: v => fmtPace(v)               },
-  strength: { dispLabel: "STRENGTH", fmtY: v => Math.round(v) + " bpm",   tickFmt: v => Math.round(v) + " bpm"  },
+  cycling:  { dispLabel: "Cycling",  fmtY: v => Math.round(v) + " W",    tickFmt: v => Math.round(v) + " W"    },
+  running:  { dispLabel: "Running",  fmtY: fmtPace,                        tickFmt: v => fmtPace(v)               },
+  strength: { dispLabel: "Strength", fmtY: v => Math.round(v) + " bpm",   tickFmt: v => Math.round(v) + " bpm"  },
 };
 
 const availTrends = Object.entries(perfTrends).filter(([, v]) => v.data.length > 0);
@@ -226,12 +220,14 @@ const togglesEl = document.getElementById("trendToggles");
 availTrends.forEach(([key, trend]) => {
   const meta = TREND_META[key] || {};
   const btn = document.createElement("button");
-  btn.className = "chart-toggle" + (key === activeTrend ? " active" : "");
-  btn.style.setProperty("--toggle-color", trend.color);
-  btn.textContent = meta.dispLabel || key.toUpperCase();
+  btn.type = "button";
+  btn.className = "btn btn-xs join-item" + (key === activeTrend ? " btn-active" : "");
+  btn.setAttribute("aria-pressed", key === activeTrend ? "true" : "false");
+  btn.textContent = meta.dispLabel || key;
   btn.addEventListener("click", () => {
-    togglesEl.querySelectorAll(".chart-toggle").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
+    togglesEl.querySelectorAll(".join-item").forEach(b => { b.classList.remove("btn-active"); b.setAttribute("aria-pressed", "false"); });
+    btn.classList.add("btn-active");
+    btn.setAttribute("aria-pressed", "true");
     activeTrend = key;
     buildTrend();
   });
@@ -244,7 +240,7 @@ function buildTrend() {
   const meta  = TREND_META[activeTrend] || {};
 
   if (trendChart) trendChart.destroy();
-  trendChart = new Chart(document.getElementById("trendChart"), {
+  trendChart = fpChart.track(new Chart(document.getElementById("trendChart"), {
     type: "line",
     data: {
       datasets: [{
@@ -290,11 +286,11 @@ function buildTrend() {
       scales: {
         x: {
           type: "linear",
-          grid: { color: "#ffffff0d" },
+          grid: { color: fpChart.grid },
           ticks: {
-            color: "#888",
+            color: fpChart.muted,
             maxTicksLimit: 10,
-            font: { family: "JetBrains Mono", size: 9 },
+            font: { family: fpChart.fontMono, size: 9 },
             maxRotation: 45,
             callback: v => {
               const d = new Date(v);
@@ -304,20 +300,20 @@ function buildTrend() {
         },
         y: {
           reverse: trend.reverse || false,
-          grid: { color: "#ffffff0d" },
+          grid: { color: fpChart.grid },
           ticks: {
-            color: "#888",
-            font: { family: "JetBrains Mono", size: 10 },
+            color: fpChart.muted,
+            font: { family: fpChart.fontMono, size: 10 },
             callback: meta.tickFmt || (v => v),
           },
         },
       },
     },
-  });
+  }));
 }
 
 if (availTrends.length === 0) {
-  document.getElementById("trendChart").closest(".chart-card").style.display = "none";
+  document.getElementById("trendChart").closest(".ui-panel").style.display = "none";
 }
 buildTrend();
 

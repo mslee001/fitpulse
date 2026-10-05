@@ -5,138 +5,134 @@
 
 {% block content %}
 {% if not workouts %}
-<div class="page-header">
-  <h1 class="page-title">COMPARE</h1>
-  <p class="page-sub">Select 2–4 workouts from <a href="{% url 'history' %}">Workout History</a> to compare</p>
+<div class="ui-page-header">
+  <div>
+    <h1 class="ui-page-title">Compare</h1>
+    <p class="ui-page-sub">Select 2–4 workouts from <a href="{% url 'history' %}">Workout history</a> to compare</p>
+  </div>
 </div>
-<div class="empty-state">
-  <div class="empty-icon">⊕</div>
-  <h2>Nothing selected yet</h2>
-  <p>Go to <a href="{% url 'history' %}">Workout History</a>, check the boxes on 2–4 workouts, then hit <strong>Compare →</strong></p>
+<div class="ui-empty">
+  <h2 class="text-lg font-semibold text-base-content">Nothing selected yet</h2>
+  <p>Go to <a href="{% url 'history' %}">Workout history</a>, check 2–4 workouts, then hit <strong>Compare →</strong></p>
 </div>
 
 {% else %}
 
-{% with COLORS="#FF6B35,#00D1FF,#B4FF39,#FF3B5C" %}
+{% with COLORS="var(--chart-1),var(--chart-2),var(--chart-3),var(--chart-4)" %}
 
-<!-- compare-top: left col (header + cards) + right col (AI) for 2 workouts; stacked for 3-4 -->
-<div class="compare-top" data-count="{{ workouts|length }}">
-
-  <div class="compare-left-col">
-    <div class="page-header" style="margin-bottom:1.5rem">
-      <h1 class="page-title">COMPARE</h1>
-      <p class="page-sub">{{ workouts|length }} workout{{ workouts|length|pluralize }} · {{ compare_mode|title }} mode</p>
-    </div>
-
-    <div class="compare-header-grid">
-      {% for w in workouts %}
-      {% with color=COLORS|split:","|index:forloop.counter0 %}
-      <a class="compare-header-card" href="{% url 'workout_detail' w.workout_id %}" style="border-top-color:{{ color }};text-decoration:none;display:block">
-        <div class="compare-card-date">{{ w.created_at|date:"M j, Y" }}</div>
-        <div class="compare-card-title">
-          {{ w.title|default:"Workout" }}
-          {% if w.is_pr %}<span style="font-size:0.7rem;color:#FFD700;margin-left:0.4rem">🏆 PR</span>{% endif %}
-        </div>
-        <div class="compare-card-instructor">{{ w.instructor_name }}{% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}</div>
-        <div class="compare-metrics">
-          {% if w.is_run %}
-            {% if w.avg_pace_display %}<div class="cm"><span class="cm-v">{{ w.avg_pace_display }}</span><span class="cm-l">avg pace</span></div>{% endif %}
-            {% if w.distance_miles %}<div class="cm"><span class="cm-v">{{ w.distance_miles|floatformat:2 }}</span><span class="cm-l">miles</span></div>{% endif %}
-            {% if w.elevation_gain %}<div class="cm"><span class="cm-v">{{ w.elevation_gain|floatformat:0 }}</span><span class="cm-l">ft elev</span></div>{% endif %}
-          {% elif w.is_strength %}
-            {% if w.effort_score %}<div class="cm"><span class="cm-v">{{ w.effort_score|floatformat:1 }}</span><span class="cm-l">effort</span></div>{% endif %}
-            {% if w.movement_tracker_tier %}
-              <div class="cm"><span class="cm-v" style="font-size:0.85rem">{{ w.movement_tracker_tier }}</span><span class="cm-l">tier</span></div>
-            {% endif %}
-          {% else %}
-            {% if w.avg_cadence %}<div class="cm"><span class="cm-v">{{ w.avg_cadence|floatformat:0 }}</span><span class="cm-l">rpm</span></div>{% endif %}
-          {% endif %}
-          {% if w.output_watts %}<div class="cm"><span class="cm-v">{{ w.output_watts|format_kj }}</span><span class="cm-l">output kJ</span></div>{% endif %}
-          {% if w.effort_points %}<div class="cm"><span class="cm-v">{{ w.effort_points|floatformat:0 }}</span><span class="cm-l">effort pts</span></div>{% endif %}
-          {% if w.heart_rate_avg_best %}<div class="cm"><span class="cm-v">{{ w.heart_rate_avg_best|floatformat:0 }}</span><span class="cm-l">avg bpm</span></div>{% endif %}
-          {% if w.calories %}<div class="cm"><span class="cm-v">{{ w.calories|floatformat:0 }}</span><span class="cm-l">cal</span></div>{% endif %}
-        </div>
-      </a>
-      {% endwith %}
-      {% endfor %}
-    </div>
+<div class="ui-page-header">
+  <div>
+    <h1 class="ui-page-title">Compare</h1>
+    <p class="ui-page-sub">{{ workouts|length }} workout{{ workouts|length|pluralize }} · {{ compare_mode|title }} mode</p>
   </div>
-
-  {% if can.ai_training_insights %}
-  <div class="chart-card compare-ai-card">
-    <div class="chart-header">
-      <h3 class="chart-title">AI ANALYSIS</h3>
-    </div>
-    <div id="compare-ai-body" style="padding:0.25rem 0">
-      <button class="btn btn-accent"
-              hx-get="{% url 'compare_analysis' %}?ids={{ workout_ids|join:',' }}"
-              hx-target="#compare-ai-body"
-              hx-swap="innerHTML"
-              hx-indicator="#compare-ai-spinner">
-        Generate Analysis
-      </button>
-      <span id="compare-ai-spinner" class="cai-spinner htmx-indicator" style="margin-left:0.75rem;vertical-align:middle"></span>
-    </div>
-  </div>
-  {% endif %}
-
 </div>
 
-<!-- Stats breakdown table (JS-rendered) -->
-<div class="chart-card" style="margin-bottom:1rem">
-  <div class="chart-header">
-    <h3 class="chart-title">STATS BREAKDOWN</h3>
+<div class="flex flex-col gap-5">
+
+<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+  {% for w in workouts %}
+  {% with color=COLORS|split:","|index:forloop.counter0 %}
+  <a class="ui-panel !p-0 overflow-hidden text-base-content hover:no-underline hover:bg-base-300" href="{% url 'workout_detail' w.workout_id %}">
+    <div class="h-1" style="background: {{ color }}"></div>
+    <div class="flex flex-col gap-1 p-4">
+      <div class="flex items-center gap-2 text-sm text-muted">
+        <span class="font-mono font-semibold" style="color: {{ color }}">W{{ forloop.counter }}</span>
+        <span>{{ w.created_at|date:"M j, Y" }}</span>
+      </div>
+      <div class="font-semibold leading-snug">
+        {{ w.title|default:"Workout" }}
+        {% if w.is_pr %}<span class="badge badge-sm badge-warning ml-1">🏆 PR</span>{% endif %}
+      </div>
+      <div class="text-sm text-muted">{{ w.instructor_name }}{% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}</div>
+      <div class="mt-2 grid grid-cols-3 gap-2 [&>div]:flex [&>div]:flex-col [&_.cm-v]:font-mono [&_.cm-v]:font-medium [&_.cm-v]:tabular-nums [&_.cm-l]:text-xs [&_.cm-l]:text-muted">
+        {% if w.is_run %}
+          {% if w.avg_pace_display %}<div><span class="cm-v">{{ w.avg_pace_display }}</span><span class="cm-l">avg pace</span></div>{% endif %}
+          {% if w.distance_miles %}<div><span class="cm-v">{{ w.distance_miles|floatformat:2 }}</span><span class="cm-l">miles</span></div>{% endif %}
+          {% if w.elevation_gain %}<div><span class="cm-v">{{ w.elevation_gain|floatformat:0 }}</span><span class="cm-l">ft elev</span></div>{% endif %}
+        {% elif w.is_strength %}
+          {% if w.effort_score %}<div><span class="cm-v">{{ w.effort_score|floatformat:1 }}</span><span class="cm-l">effort</span></div>{% endif %}
+          {% if w.movement_tracker_tier %}<div><span class="cm-v text-sm">{{ w.movement_tracker_tier }}</span><span class="cm-l">tier</span></div>{% endif %}
+        {% else %}
+          {% if w.avg_cadence %}<div><span class="cm-v">{{ w.avg_cadence|floatformat:0 }}</span><span class="cm-l">rpm</span></div>{% endif %}
+        {% endif %}
+        {% if w.output_watts %}<div><span class="cm-v">{{ w.output_watts|format_kj }}</span><span class="cm-l">output kJ</span></div>{% endif %}
+        {% if w.effort_points %}<div><span class="cm-v">{{ w.effort_points|floatformat:0 }}</span><span class="cm-l">effort pts</span></div>{% endif %}
+        {% if w.heart_rate_avg_best %}<div><span class="cm-v">{{ w.heart_rate_avg_best|floatformat:0 }}</span><span class="cm-l">avg bpm</span></div>{% endif %}
+        {% if w.calories %}<div><span class="cm-v">{{ w.calories|floatformat:0 }}</span><span class="cm-l">cal</span></div>{% endif %}
+      </div>
+    </div>
+  </a>
+  {% endwith %}
+  {% endfor %}
+</div>
+
+{% if can.ai_training_insights %}
+<div class="ui-panel">
+  <h2 class="ui-panel-title mb-3">AI analysis</h2>
+  <div id="compare-ai-body">
+    <button type="button" class="btn btn-primary btn-sm"
+            hx-get="{% url 'compare_analysis' %}?ids={{ workout_ids|join:',' }}"
+            hx-target="#compare-ai-body"
+            hx-swap="innerHTML"
+            hx-indicator="#compare-ai-spinner">
+      Generate analysis
+    </button>
+    <div id="compare-ai-spinner" class="mt-4 hidden [&.htmx-request]:block">{% include "workouts/partials/ai_skeleton.html" with what="the comparison" %}</div>
   </div>
+</div>
+{% endif %}
+
+<!-- Stats breakdown table (JS-rendered) -->
+<div class="ui-panel">
+  <h2 class="ui-panel-title mb-3">Stats breakdown</h2>
   <div id="statsTableContainer"></div>
 </div>
 
 <!-- Overlay chart -->
-<div class="chart-card" id="overlayChartCard">
-  <div class="chart-header">
-    <h3 class="chart-title">OVERLAY COMPARISON</h3>
-    <div class="chart-toggles">
+<div class="ui-panel" id="overlayChartCard">
+  <div class="ui-panel-header">
+    <h2 class="ui-panel-title">Overlay comparison</h2>
+    <div class="join" role="group" aria-label="Metric">
       {% if compare_mode == "run" %}
-        <button class="chart-toggle active" data-metric="pace">Pace</button>
-        <button class="chart-toggle" data-metric="speed">Speed</button>
-        <button class="chart-toggle" data-metric="incline">Incline</button>
-        <button class="chart-toggle" data-metric="heart_rate">Heart Rate</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item btn-active" data-metric="pace">Pace</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item" data-metric="speed">Speed</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item" data-metric="incline">Incline</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item" data-metric="heart_rate">Heart rate</button>
       {% elif compare_mode == "strength" %}
-        <button class="chart-toggle active" data-metric="heart_rate">Heart Rate</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item btn-active" data-metric="heart_rate">Heart rate</button>
       {% else %}
-        <button class="chart-toggle active" data-metric="output">Output</button>
-        <button class="chart-toggle" data-metric="cadence">Cadence</button>
-        <button class="chart-toggle" data-metric="resistance">Resistance</button>
-        <button class="chart-toggle" data-metric="heart_rate">Heart Rate</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item btn-active" data-metric="output">Output</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item" data-metric="cadence">Cadence</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item" data-metric="resistance">Resistance</button>
+        <button type="button" class="metric-toggle btn btn-xs join-item" data-metric="heart_rate">Heart rate</button>
       {% endif %}
     </div>
   </div>
-  <canvas id="compareChart" height="110"></canvas>
-  <div id="compareChartNoData" style="display:none;text-align:center;padding:2rem 0;color:var(--text-dim);font-size:0.85rem;">
+  <canvas id="compareChart" height="110" role="img" aria-label="Selected metric over time for each workout"></canvas>
+  <div id="compareChartNoData" class="py-8 text-center text-sm text-muted" style="display:none">
     No data for this metric in the selected workouts.
   </div>
 </div>
 
 <!-- Run split-by-split comparison table -->
 {% if compare_mode == "run" %}
-<div class="chart-card" style="margin-top:1rem">
-  <div class="chart-header">
-    <h3 class="chart-title">SPLIT-BY-SPLIT BREAKDOWN</h3>
-  </div>
-  <div class="table-wrap">
-    <table class="data-table">
+<div class="ui-panel">
+  <h2 class="ui-panel-title mb-3">Split-by-split breakdown</h2>
+  <div class="overflow-x-auto">
+    <table class="table table-sm">
       <thead>
         <tr>
-          <th>Mile</th>
+          <th class="sticky left-0 z-[1] bg-base-100">Mile</th>
           {% for w in workouts %}
           {% with color=COLORS|split:","|index:forloop.counter0 %}
-          <th colspan="2" style="border-left:2px solid {{ color }}">
-            {{ w.created_at|date:"M j" }}
+          <th colspan="2" class="border-l-2" style="border-left-color: {{ color }}">
+            W{{ forloop.counter }} · {{ w.created_at|date:"M j" }}
           </th>
           {% endwith %}
           {% endfor %}
         </tr>
         <tr>
-          <th></th>
+          <th class="sticky left-0 z-[1] bg-base-100"></th>
           {% for w in workouts %}
           <th>Pace</th>
           <th>HR</th>
@@ -151,9 +147,10 @@
 
 <!-- Strength movements comparison (JS-driven) -->
 {% if compare_mode == "strength" %}
-<div id="movementsCompare"></div>
+<div id="movementsCompare" class="flex flex-col gap-5"></div>
 {% endif %}
 
+</div>
 {% endwith %}
 {% endif %}
 
@@ -166,7 +163,26 @@ const workoutDetailData = {{ workout_detail_data|safe }};
 const workoutStats = {{ workout_stats|safe }};
 const workoutDates = [{% for w in workouts %}"{{ w.created_at|date:'M j, Y' }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
 
-const COLORS = ["#FF6B35", "#00D1FF", "#B4FF39", "#FF3B5C"];
+// Workout i uses chart series slot i+1: CSS vars in HTML, fpChart.series in the chart.
+const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)"];
+
+// Whole class names (Tailwind only generates classes it finds written out).
+const CLS = {
+  table: "table table-sm",
+  sticky: "sticky left-0 z-[1] bg-base-100",
+  label: "sticky left-0 z-[1] bg-base-100 whitespace-nowrap text-muted",
+  num: "font-mono tabular-nums whitespace-nowrap",
+  best: "font-mono tabular-nums whitespace-nowrap font-semibold text-primary",
+  empty: "text-muted",
+  note: "block text-xs text-muted",
+};
+const BEST_MARK = (arrow) => ` <span aria-hidden="true" class="text-xs">${arrow}</span><span class="sr-only"> (best)</span>`;
+const colHead = (i, html) => `<th class="border-t-2 whitespace-nowrap" style="border-top-color:${COLORS[i]}"><span class="font-mono" style="color:${COLORS[i]}">W${i + 1}</span> ${html}</th>`;
+const panel = (title, tableHtml) => `
+    <div class="ui-panel">
+      <h2 class="ui-panel-title mb-3">${title}</h2>
+      <div class="overflow-x-auto">${tableHtml}</div>
+    </div>`;
 
 function formatPace(sec) {
   if (!sec && sec !== 0) return "—";
@@ -248,7 +264,7 @@ function buildStatsTable() {
       { label: "Leaderboard", dir: "lower", vals: workoutIds.map(id => {
         const s = workoutStats[id];
         if (s?.leaderboard_rank && s?.total_leaderboard_users) {
-          return { d: `#${s.leaderboard_rank} <span style="color:var(--text-dim);font-size:0.75rem">(beat ${s.leaderboard_pct}%)</span>`, r: s.leaderboard_rank };
+          return { d: `#${s.leaderboard_rank} <span class="text-xs text-muted">(beat ${s.leaderboard_pct}%)</span>`, r: s.leaderboard_rank };
         }
         return { d: "—", r: null };
       })},
@@ -405,16 +421,14 @@ function buildStatsTable() {
       { label: "Leaderboard", dir: "lower", vals: workoutIds.map(id => {
         const s = workoutStats[id];
         if (s?.leaderboard_rank && s?.total_leaderboard_users) {
-          return { d: `#${s.leaderboard_rank} <span style="color:var(--text-dim);font-size:0.75rem">(beat ${s.leaderboard_pct}%)</span>`, r: s.leaderboard_rank };
+          return { d: `#${s.leaderboard_rank} <span class="text-xs text-muted">(beat ${s.leaderboard_pct}%)</span>`, r: s.leaderboard_rank };
         }
         return { d: "—", r: null };
       })},
     ];
   }
 
-  const headerCells = workoutIds.map((id, i) => {
-    return `<th style="border-top:2px solid ${COLORS[i]}">${workoutDates[i] || `W${i+1}`}</th>`;
-  }).join("");
+  const headerCells = workoutIds.map((id, i) => colHead(i, workoutDates[i] || "")).join("");
 
   const bodyRows = rows.map(row => {
     const raws = row.vals.map(v => v.r);
@@ -425,21 +439,18 @@ function buildStatsTable() {
     }
     const cells = row.vals.map((v, i) => {
       const isBest = bestRaw !== null && v.r !== null && v.r === bestRaw;
-      const arrow = isBest ? `<span style="font-size:0.7em;opacity:0.7"> ${row.dir === "lower" ? "↓" : "↑"}</span>` : "";
-      return `<td class="mono${isBest ? " cell-best" : ""}">${v.d}${arrow}</td>`;
+      const mark = isBest ? BEST_MARK(row.dir === "lower" ? "↓" : "↑") : "";
+      return `<td class="${isBest ? CLS.best : CLS.num}">${v.d}${mark}</td>`;
     }).join("");
-    return `<tr>
-      <td style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-muted);white-space:nowrap">${row.label}</td>
-      ${cells}
-    </tr>`;
+    return `<tr><th scope="row" class="${CLS.label} font-normal">${row.label}</th>${cells}</tr>`;
   }).join("");
 
   container.innerHTML = `
-    <div class="table-wrap">
-      <table class="data-table">
+    <div class="overflow-x-auto">
+      <table class="${CLS.table}">
         <thead>
           <tr>
-            <th style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;font-weight:700;letter-spacing:0.12em;color:var(--text-muted);text-transform:uppercase">Stat</th>
+            <th class="${CLS.sticky}">Stat</th>
             ${headerCells}
           </tr>
         </thead>
@@ -459,7 +470,9 @@ function makeLabels(numPoints, everyN) {
 
 
 let compareChart;
+let currentMetric = null;
 function buildCompare(metricKey) {
+  currentMetric = metricKey;
   const isPace = metricKey === "pace";
   const canvas = document.getElementById("compareChart");
   const noData = document.getElementById("compareChartNoData");
@@ -470,7 +483,7 @@ function buildCompare(metricKey) {
     return {
       label: `W${i + 1} · ${(perfData[id] || {}).duration ? Math.round((perfData[id].duration) / 60) + "min" : "—"}`,
       data: m ? m.values : [],
-      borderColor: COLORS[i],
+      borderColor: fpChart.series[i],
       backgroundColor: "transparent",
       borderWidth: 2,
       pointRadius: 0,
@@ -502,7 +515,7 @@ function buildCompare(metricKey) {
       plugins: {
         legend: {
           display: true,
-          labels: { color: "#aaa", font: { family: "Barlow Condensed", size: 12 }, padding: 16 }
+          labels: { color: fpChart.muted, font: { family: fpChart.fontSans, size: 12 }, padding: 16 }
         },
         tooltip: {
           callbacks: {
@@ -516,13 +529,13 @@ function buildCompare(metricKey) {
         }
       },
       scales: {
-        x: { grid: { color: "#ffffff0d" }, ticks: { color: "#888", maxTicksLimit: 10, font: { family: "JetBrains Mono", size: 10 } } },
+        x: { grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, maxTicksLimit: 10, font: { family: fpChart.fontMono, size: 10 } } },
         y: {
           grace: "5%",
-          grid: { color: "#ffffff0d" },
+          grid: { color: fpChart.grid },
           ticks: {
-            color: "#888",
-            font: { family: "JetBrains Mono", size: 10 },
+            color: fpChart.muted,
+            font: { family: fpChart.fontMono, size: 10 },
             callback: v => isPace ? formatPace(v) : v,
           },
           reverse: isPace,
@@ -539,11 +552,11 @@ function buildSplitsTable() {
   tbody.innerHTML = splitsComparison.map(row => {
     const cells = workoutIds.map(id => {
       const s = row[id];
-      if (!s) return "<td class='mono muted'>—</td><td class='mono muted'>—</td>";
+      if (!s) return `<td class="${CLS.empty}">—</td><td class="${CLS.empty}">—</td>`;
       const isBest = s.is_best;
-      return `<td class="mono${isBest ? " cell-best" : ""}">${formatPace(s.pace)}</td><td class="mono">${s.heart_rate ? Math.round(s.heart_rate) + " bpm" : "—"}</td>`;
+      return `<td class="${isBest ? CLS.best : CLS.num}">${formatPace(s.pace)}${isBest ? BEST_MARK("↓") : ""}</td><td class="${CLS.num}">${s.heart_rate ? Math.round(s.heart_rate) + " bpm" : "—"}</td>`;
     }).join("");
-    return `<tr><td><strong>Mile ${row.mile}</strong></td>${cells}</tr>`;
+    return `<tr><th scope="row" class="${CLS.sticky}">Mile ${row.mile}</th>${cells}</tr>`;
   }).join("");
 }
 
@@ -565,17 +578,16 @@ function buildMovementsTable() {
   if (!allMovements.size) return;
 
   const headers = workoutIds.map((id, i) => {
-    const perf = perfData[id] || {};
     const detail = workoutDetailData[id] || {};
     const tier = detail.movement_tracker_tier || "";
-    return `<th style="border-top:2px solid ${COLORS[i]}">W${i + 1}${tier ? `<br><span style="font-size:0.7rem;color:${COLORS[i]}">${tier}</span>` : ""}</th>`;
+    return colHead(i, `${workoutDates[i]}${tier ? `<span class="${CLS.note}">${tier}</span>` : ""}`);
   }).join("");
 
   let rows = "";
   allMovements.forEach((byWorkout, name) => {
     const cells = workoutIds.map(id => {
       const m = byWorkout[id];
-      if (!m) return `<td class="muted">—</td>`;
+      if (!m) return `<td class="${CLS.empty}">—</td>`;
       const reps = m.reps_done != null
         ? `${m.reps_done}${m.reps_target ? "/" + m.reps_target : ""} reps`
         : null;
@@ -584,28 +596,21 @@ function buildMovementsTable() {
         ? `${m.sets_done}/${m.sets_target} sets`
         : null;
       const reached = m.is_target_reached
-        ? `<span style="color:var(--accent-green);font-size:0.7rem">✓</span>`
+        ? `<span class="text-success" aria-hidden="true">✓</span><span class="sr-only">target reached</span>`
         : "";
       const parts = [reps, weight, sets].filter(Boolean);
-      return `<td class="mono" style="font-size:0.8rem">${reached} ${parts.join(" · ") || "—"}</td>`;
+      return `<td class="${CLS.num}">${reached} ${parts.join(" · ") || "—"}</td>`;
     }).join("");
-    rows += `<tr><td style="font-size:0.82rem;white-space:nowrap">${name}</td>${cells}</tr>`;
+    rows += `<tr><th scope="row" class="${CLS.label} font-normal">${name}</th>${cells}</tr>`;
   });
 
-  container.innerHTML = `
-    <div class="chart-card" style="margin-top:1rem">
-      <div class="chart-header">
-        <h3 class="chart-title">MOVEMENT BREAKDOWN</h3>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table">
+  container.innerHTML = panel("Movement breakdown", `
+        <table class="${CLS.table}">
           <thead>
-            <tr><th>Movement</th>${headers}</tr>
+            <tr><th class="${CLS.sticky}">Movement</th>${headers}</tr>
           </thead>
           <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
+        </table>`);
 }
 
 // Garmin exercise sets comparison table
@@ -631,14 +636,14 @@ function buildExerciseSetsTable() {
 
   const headers = workoutIds.map((id, i) => {
     const totalSets = workoutStats[id]?.total_sets || 0;
-    return `<th style="border-top:2px solid ${COLORS[i]}">${workoutDates[i]}<br><span style="font-size:0.7rem;color:var(--text-dim)">${totalSets} sets</span></th>`;
+    return colHead(i, `${workoutDates[i]}<span class="${CLS.note}">${totalSets} sets</span>`);
   }).join("");
 
   let rows = "";
   exercises.forEach((byWorkout, name) => {
     const cells = workoutIds.map(id => {
       const sets = byWorkout[id] || [];
-      if (!sets.length) return `<td class="muted">—</td>`;
+      if (!sets.length) return `<td class="${CLS.empty}">—</td>`;
       const repSets = sets.filter(s => s.reps != null);
       const timedSets = sets.filter(s => s.reps == null && s.duration_seconds);
       const parts = [];
@@ -651,23 +656,16 @@ function buildExerciseSetsTable() {
         const avgSecs = Math.round(timedSets.reduce((a, s) => a + s.duration_seconds, 0) / timedSets.length);
         parts.push(`${timedSets.length}×${avgSecs}s`);
       }
-      return `<td class="mono" style="font-size:0.8rem">${parts.join(" + ")}</td>`;
+      return `<td class="${CLS.num}">${parts.join(" + ")}</td>`;
     }).join("");
-    rows += `<tr><td style="font-size:0.82rem;white-space:nowrap">${name}</td>${cells}</tr>`;
+    rows += `<tr><th scope="row" class="${CLS.label} font-normal">${name}</th>${cells}</tr>`;
   });
 
-  container.insertAdjacentHTML("beforeend", `
-    <div class="chart-card" style="margin-top:1rem">
-      <div class="chart-header">
-        <h3 class="chart-title">EXERCISE BREAKDOWN</h3>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>Exercise</th>${headers}</tr></thead>
+  container.insertAdjacentHTML("beforeend", panel("Exercise breakdown", `
+        <table class="${CLS.table}">
+          <thead><tr><th class="${CLS.sticky}">Exercise</th>${headers}</tr></thead>
           <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`);
+        </table>`));
 }
 
 function esc(s) {
@@ -691,8 +689,7 @@ function buildManualLogTable() {
   });
   if (!exercises.size) return;
 
-  const headers = workoutIds.map((id, i) =>
-    `<th style="border-top:2px solid ${COLORS[i]}">${workoutDates[i]}</th>`).join("");
+  const headers = workoutIds.map((id, i) => colHead(i, workoutDates[i])).join("");
 
   let rows = "";
   exercises.forEach(({ name, byId }) => {
@@ -701,33 +698,27 @@ function buildManualLogTable() {
     const best = logged.length >= 2 && Math.max(...logged) > Math.min(...logged) ? Math.max(...logged) : null;
     const cells = workoutIds.map(id => {
       const r = byId[id];
-      if (!r) return `<td class="muted">—</td>`;
+      if (!r) return `<td class="${CLS.empty}">—</td>`;
       const unit = r.timed ? "s" : "";
       const side = r.per_side ? "/side" : "";
       const volume = `${r.sets ?? "?"}×${r.reps ?? "?"}${unit}${side}`;
       const wt = r.weight_lb ? ` · ${r.dumbbells === 2 ? "2×" : ""}${r.weight_lb} lb` : "";
       const isBest = best !== null && (r.weight_lb || 0) === best;
-      const notes = r.notes && !r.timed && !r.per_side ? `<br><span style="font-size:0.7rem;color:var(--text-dim)">${esc(r.notes)}</span>` : "";
-      return `<td class="mono${isBest ? " cell-best" : ""}" style="font-size:0.8rem">${volume}${wt}${notes}</td>`;
+      const notes = r.notes && !r.timed && !r.per_side ? `<span class="${CLS.note} font-sans whitespace-normal">${esc(r.notes)}</span>` : "";
+      return `<td class="${isBest ? CLS.best : CLS.num}">${volume}${wt}${isBest ? BEST_MARK("↑") : ""}${notes}</td>`;
     }).join("");
-    rows += `<tr><td style="font-size:0.82rem;white-space:nowrap">${esc(name)}</td>${cells}</tr>`;
+    rows += `<tr><th scope="row" class="${CLS.label} font-normal">${esc(name)}</th>${cells}</tr>`;
   });
 
-  container.insertAdjacentHTML("beforeend", `
-    <div class="chart-card" style="margin-top:1rem">
-      <div class="chart-header">
-        <h3 class="chart-title">LOGGED EXERCISES</h3>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>Exercise</th>${headers}</tr></thead>
+  container.insertAdjacentHTML("beforeend", panel("Logged exercises", `
+        <table class="${CLS.table}">
+          <thead><tr><th class="${CLS.sticky}">Exercise</th>${headers}</tr></thead>
           <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`);
+        </table>`));
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  if (!document.getElementById("compareChart")) return;  // empty state: nothing selected
   const defaultMetric = compareMode === "run" ? "pace"
     : compareMode === "strength" ? "heart_rate"
     : "output";
@@ -738,13 +729,18 @@ document.addEventListener("DOMContentLoaded", () => {
   buildManualLogTable();
   buildStatsTable();
 
-  document.querySelectorAll(".chart-toggle").forEach(btn => {
+  document.querySelectorAll(".metric-toggle").forEach(btn => {
+    btn.setAttribute("aria-pressed", btn.classList.contains("btn-active") ? "true" : "false");
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".chart-toggle").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
+      document.querySelectorAll(".metric-toggle").forEach(b => { b.classList.remove("btn-active"); b.setAttribute("aria-pressed", "false"); });
+      btn.classList.add("btn-active");
+      btn.setAttribute("aria-pressed", "true");
       buildCompare(btn.dataset.metric);
     });
   });
 });
+
+// Series colors come from the theme: rebuild the overlay chart after a toggle.
+document.addEventListener("cadence:themechange", () => { if (currentMetric) buildCompare(currentMetric); });
 </script>
 {% endblock %}

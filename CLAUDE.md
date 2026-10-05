@@ -27,6 +27,7 @@ workouts/                # Main app
   sync.py                # All sync logic + sync API endpoints (returns JsonResponse)
   ai.py                  # Anthropic API calls, insights generation, day analysis, next-workout rec, body commentary, intervention interpretation, nutrition parsing/suggestions, compare analysis, pattern insights, weekly review
   analysis.py            # run_intervention_analysis() — shared logic for analyze_intervention command + Trends page
+  glossary.py            # METRIC_HELP: plain-language metric definitions for the {% metric_help %} popovers
   strength.py            # exercise_history() + recommend() — per-exercise weight trends and next-dumbbell recommendations from the manual exercise log
   nutrition.py           # compute_macro_targets() (Mifflin-St Jeor BMR/TDEE) + recompute_daily_nutrition() rollup + evaluate_target_fit() + get_satisfying_meals()
   services/
@@ -57,7 +58,7 @@ workouts/                # Main app
     associate_programs.py         # Backfill CachedWorkout → Program associations
     backfill_class_plans.py       # Fetch class exercise plans (class_plan_json) for existing Peloton strength/circuit workouts
 templates/workouts/
-  base.html              # Shared layout — nav brand is "FITPULSE"
+  base.html              # Shared layout: sticky pill nav (desktop dropdowns + phone panel, both from partials/nav_items.html), banners, chat drawer, theme toggle, window.fpChart
   dashboard.html         # Overview: total workouts, discipline breakdown
   history.html           # Filterable/sortable workout list
   detail_base.html       # Shared detail page layout — sidebar, PR banner, class info; all detail pages extend this
@@ -113,12 +114,26 @@ templates/workouts/
     training_plan_status.html        # "Building your plan…" — polls every 3s only while generating
     training_plan_slot_row.html      # One session on the training-plan review page (Swap / Choose…)
     program_plan_cell.html           # A not-yet-done run-grid cell; AI-plan slots get a Swap button
-    messages.html                    # Django messages block
+    messages.html                    # Django messages block (daisyUI alerts by message level)
+    nav_items.html, nav_caret.html   # One nav group's menu items, shared by the desktop dropdowns and the phone panel
+    icon_x.html, icon_external.html, icon_flame.html  # Inline SVG icons
+    cat_badge.html                   # Intervention category badge (dot in var(--cat-<category>) + name)
+    macro_chip.html, macro_bar.html  # Macro chip / progress row colored by chart series slot
+    week_cell.html, week_summary_cells.html  # Nutrition THIS WEEK table cells
+    conn_dot.html                    # Admin connection dot (color + title + sr-only text)
+    metric_help.html                 # "i" button + native popover, rendered by {% metric_help "slug" %}
+    ai_skeleton.html                 # Skeleton placeholder shaped like an AI result (pending states)
+    experience_radios.html           # One discipline's experience radio cards (athlete profile form)
   get_started.html       # Get Started onboarding / setup guide (one card per step)
   admin_users.html, admin_user_new.html, admin_user_detail.html, admin_user_password.html  # Owner's Users pages; the password page is the one-time temp-password display
   access_denied.html     # 403 page for routes not turned on for the user
-templates/registration/password_change.html, password_change_done.html  # Forced/voluntary password change
-static/css/main.css      # All styles — single flat file, CSS variables
+templates/registration/
+  login.html, welcome_set_password.html, password_change.html, password_change_done.html  # Centered single-panel account pages
+  password_fields.html   # Password inputs + errors + Django's validator help (shared by the two set-password pages)
+assets/css/app.css       # Styling source: Tailwind 4 + daisyUI 5 config, the two themes, ui-* components
+assets/css/vendor/       # daisyui.mjs + daisyui-theme.mjs (pinned 5.7.47, committed)
+static/css/app.css       # Compiled output (committed; never edit by hand)
+scripts/css.sh           # install | build | watch | check (Tailwind standalone binary 4.3.3 → bin/, gitignored)
 ```
 
 ---
@@ -507,7 +522,7 @@ Child templates override these blocks: `discipline_tag`, `page_title`, `pr_sub`,
 - **Today** (`/`, `today_page`): landing page — today's wellness grid (incl. Steps) + compact Activity section + today's workouts.
 
 ### Integrations Page
-- **Settings** (`/settings/integrations/`, `integrations_settings_page`): one row per `Integration` (Peloton/Garmin/Withings/Google Health) — enable/disable toggle (HTMX, swaps `partials/integration_row.html`), auth status, last-synced timestamp, "Sync All" button (via `Integration.sync_all_url_name`), and for Google Health specifically a "Reconnect" link + freshness badge (`GoogleHealthAuth.days_since_connected` vs. the 7-day refresh-token expiry). Also shows a PELOTON CONNECTION card (account, Connected / Reconnect needed + `auth_error`, access-token renewal, last renewed, connected since, and a Connect/Reconnect form with the token instructions posting to `set_peloton_auth`; the owner also sees the class catalog total + **Refresh catalog**), a Withings "Connect Withings"/"Reconnect" button, and a "Setup guide" link to Get Started. Garmin's row is owner-only stacked above a Webhook Errors card with an error-count badge, in a right column laid out side-by-side with the Data Sources card on wide viewports (`.integrations-row` CSS grid, `repeat(auto-fit, minmax(420px,1fr))`, centered up to `max-width:1400px`).
+- **Settings** (`/settings/integrations/`, `integrations_settings_page`): one row per `Integration` (Peloton/Garmin/Withings/Google Health) — enable/disable toggle (HTMX, swaps `partials/integration_row.html`), auth status, last-synced timestamp, "Sync All" button (via `Integration.sync_all_url_name`), and for Google Health specifically a "Reconnect" link + freshness badge (`GoogleHealthAuth.days_since_connected` vs. the 7-day refresh-token expiry). Also shows a PELOTON CONNECTION card (account, Connected / Reconnect needed + `auth_error`, access-token renewal, last renewed, connected since, and a Connect/Reconnect form with the token instructions posting to `set_peloton_auth`; the owner also sees the class catalog total + **Refresh catalog**), a Withings "Connect Withings"/"Reconnect" button, and a "Setup guide" link to Get Started. Garmin's row is owner-only. Layout: Data Sources on the left, Peloton Connection + Webhook Errors stacked on the right (`grid grid-cols-1 xl:grid-cols-2`; one column below `xl`).
 - **Webhook Errors** (`/settings/integrations/errors/`, `webhook_errors_page`): newest-first list of `WebhookError` rows with collapsible `<details>` tracebacks; prunes rows past `WebhookError.RETENTION_DAYS` on every load.
 - **Google Health OAuth Reconnect** (`google_health_oauth_connect` / `google_health_oauth_callback`, `/auth/google-health/connect/` → Google consent screen → `/auth/google-health/callback/`): plain full-page redirects (not HTMX — OAuth needs a genuine browser navigation). The connect view builds the redirect URI dynamically from the current request (works on both `localhost` and the deployed domain without env-specific config), stashes a random `state` value in the session with an explicit `request.session.save()` (don't rely solely on `SESSION_SAVE_EVERY_REQUEST` before an external-domain redirect), and the callback validates the returned `state` matches (CSRF protection) before exchanging the code via `GoogleHealthClient`/`exchange_google_health_code()`. Always redirects back to `/settings/integrations/` with a Django `messages` success/error, even on failure — never renders an error page directly, since the browser lands on this exact URL straight from Google.
 
@@ -619,11 +634,41 @@ Compares DailyStats metrics before vs. after an intervention date. Prints before
 - **Intervention detail** (`/interventions/<pk>/`): Full dose timeline table with per-row edit/end/delete. Add Dose form auto-ends previous active dose.
 - **Intervention edit** (`/interventions/<pk>/edit/`): Edit intervention name, category, dates, expected_effects, notes.
 
+### Styling
+Source is `assets/css/app.css`; `scripts/css.sh build` compiles it (Tailwind 4.3.3 standalone binary + vendored daisyUI 5.7.47) to `static/css/app.css`, which is committed and served by WhiteNoise. Tailwind scans only `templates/` and `workouts/` (`source(none)` + two `@source` lines), so every class must appear there as a whole word.
+- **Themes**: daisyUI themes `dark` (default) and `light`, the same names as `data-theme` and `localStorage['theme']` (set before paint by the script in base.html's `<head>`). Colors are hex on purpose: Chart.js reads the CSS variables and can't parse `oklch()`. Tokens (dark / light): base-100 `#1C2028`/`#FFFFFF` (panels), base-200 `#14171D`/`#F4F6F9` (page), base-300 `#0F1116`/`#E6E9EF` (code blocks, deepest inset), base-content `#E9EDF3`/`#151A22`, primary teal `#2BC4B0`/`#0E8C7E`, secondary blue, accent violet, success/warning/error/info. Fonts: DM Sans (`font-sans`) and DM Mono (`font-mono`, all numbers). Radii: box 1.25rem, field 0.75rem, selector 1rem (checkboxes overridden to 0.375rem so they don't read as radios).
+- **Helpers** (theme-aware, from `@theme inline`): `text-muted` (secondary text, meets 4.5:1), `text-faint` (decorative/disabled only), `border-subtle`, `bg-inset` (wells inside a panel).
+- **daisyUI components**: only those in the plugin's `include:` list are built (button, badge, alert, dropdown, menu, join, table, input, select, textarea, fieldset, label, checkbox, radio, toggle, fileinput, collapse, loading, chat, link, skeleton). Using a new component means adding its name there first, or its classes silently do nothing.
+- **`ui-*` components** (`@layer components`):
+  - `ui-page-header` / `ui-page-title` / `ui-page-sub` / `ui-page-actions`: page heading row (title left, actions right, wraps on phones).
+  - `ui-section` / `ui-section-title`: a titled block of a page.
+  - `ui-panel` / `ui-panel-header` / `ui-panel-title`: the standard card (base-100, rounded-box, shadow-sm).
+  - `ui-stat-grid` / `ui-stat` / `ui-stat-hero` / `ui-stat-label` / `ui-stat-value` / `ui-stat-unit` / `ui-stat-sub`: stat tiles (2 columns on phones, auto-fit above).
+  - `ui-kv`: label/value rows, `<dl class="ui-kv"><div><dt>…</dt><dd>…</dd></div></dl>`.
+  - `ui-empty`: dashed empty-state box. `ui-bar`: thin progress bar (`<div class="ui-bar"><span style="width: N%">`).
+  - `kind-scope--<kind>`: on a program page's wrapper, makes `primary` the program kind's color (plan = success, split = secondary, collection = accent). Plain CSS, so the built-up name is fine.
+  - `garmin-default-img` (+ `--<discipline>`): placeholder gradients for Garmin workouts without a class image.
+- **Python-emitted classes** styled only in `app.css`: `insights-list`, `insights-item`, `ai-text`, `ai-headline`, `cai-headline`, `ni-section`, `ni-header`, `ni-para`, `nw-intensity`/`nw-activity`/`nw-reason` (format_* filters and ai.py) and `chat-list` (stats chat).
+- **Domain colors**: `--cat-<category>` (intervention categories, `cat_badge.html`), HR zone colors and `DISCIPLINE_COLORS` (views.py, via the `discipline_color` filter) are domain palettes, not theme tokens.
+- **Rules**: whole class names only, never `"bg-" + x` in Python, templates or JS; map values to classes with a lookup (like the `tone` filter). Only dynamic values go inline (`style="width: {{ pct }}%"`). Status colors always come with text or a glyph. Lay out phone-first (375 px, 16 px gutters, no sideways page scroll, 44 px touch targets); wrap wide tables in `overflow-x-auto`, and use `grid-cols-1` (not a bare `grid`) when a column holds wide content. A new `ui-*` class gets a line here.
+- **Motion** (approved "B + motion" level; match it, don't add more):
+  - Rules: (1) motion has three jobs only: something *changed* (HTMX swap, theme toggle, page navigation), something *arrived* (first paint, inserted rows/cards), or the user *touched* something (hover, press). Nothing loops or animates for decoration; AI-wait skeletons are the only exception. (2) One signature moment per page: Today (readiness ring sweep + count-up + staggered Wellness tiles + nutrition bars growing) and Nutrition (macro bars growing); everything else uses the quiet shared set. (3) One timing: `--fp-fast` 200 ms for UI feedback, `--fp-fade` 300 ms for crossfades, `--fp-show` 900 ms (700 ms for bars) only for signature moments, all with `--fp-ease`. (4) Reduced motion is respected everywhere: CSS via the global `prefers-reduced-motion` rule, JS via `matchMedia('(prefers-reduced-motion: reduce)')`. (5) Don't add: noise texture, gradient text, scroll-driven animations, parallax, staggered entrances outside Today, bouncy/spring easings, animated backgrounds, confetti.
+  - Classes: `ui-lift` (hover lift; only on cards that navigate), `ui-press` (press scale for tappable non-`.btn` things; daisyUI buttons already press), `ui-enter` (fade up 6px on first paint/insert via `@starting-style`), `ui-stagger` (Today only; children set `style="--i: N"`), `ui-count` (count-up: `style="--fp-to: 72"` + a sibling `.sr-only` with the real value), `ui-ring-arc` (ring sweep: `stroke-dasharray="301.6" style="--fp-ring-to: {{ score|ring_offset }}"`), `ui-bar-grow` (on a `ui-bar`; the span gets `style="--fp-w: N%"`), `ui-glass` (floating surfaces only: nav, dropdown menus, chat panel, Workouts compare bar), `ui-stat-swipe` (phone: a stat grid becomes a snap row; Today's grids, with `role="region" aria-label tabindex="0"`). Signature values must come in as custom properties: an inline `stroke-dashoffset`/`width` outranks `@starting-style` and nothing animates.
+  - Page transitions: `@view-transition { navigation: auto }` crossfades every same-origin navigation (Chrome/Edge, Safari 18.2+). One morph, `fp-hero`: the destination header carries `data-vt-target style="view-transition-name: fp-hero"` (detail_base.html, program detail and run pages); list links carry `data-vt-hero` (their `[data-vt-card]` wrapper morphs if there is one), and base.html's click handler moves the name onto the clicked element just before navigating, then resets on `pagereveal`. Don't name other elements.
+  - HTMX: user-triggered replacements append ` transition:true` to `hx-swap` (food row edit/cancel, integration toggle, admin feature toggle, run-week rating, plan Swap/Choose, run-grid Swap); inserted content gets `ui-enter` (chat messages, parse result, infinite-scroll cards, AI results). Never on polling targets (`gs_sync_status`, `training_plan_status`, insights/review pending), and don't set `htmx.config.globalViewTransitions`.
+  - AI waits: pending partials show `partials/ai_skeleton.html` (`aria-busy`) with their polling `hx-trigger` unchanged; Compare's narrative uses it as the `hx-indicator` (`hidden [&.htmx-request]:block`).
+  - Theme toggle: `switchTheme()` in base.html wraps `applyTheme()` in `document.startViewTransition` (unless reduced motion), so charts crossfade with the page.
+  - Metric help: `{% metric_help "hrv" %}` (a `simple_tag`, not an inclusion tag: inclusion tags copy the Context, which Django 4.2 can't do on Python 3.14) renders `partials/metric_help.html`, an "i" button + native `popover` anchored under it (CSS anchor positioning; a centered card where unsupported). Text lives in `workouts/glossary.py` `METRIC_HELP` (what the metric is, no health advice); unknown slugs raise in DEBUG. Used only next to jargon: Today/Day view wellness labels, readiness, running form, TDEE, body fat.
+  - Also: `<details>` (not `.collapse`/`.dropdown`) open smoothly in Chrome via `::details-content`; `:focus-visible` gets a 2px primary outline; numbers are tabular.
+  - The global `@media (prefers-reduced-motion: reduce)` rule at the end of `app.css` is the one deliberately unlayered rule: it only removes animation/transition (and view-transition animations) and must beat every layer.
+- **`tone` filter**: `"green"`/`"High"`/`"BALANCED"` → `text-success` (yellow/moderate/unbalanced → `text-warning`, red/low/poor → `text-error`, else `text-muted`); `|tone:"stroke"` gives `stroke-*` for SVG rings.
+- **Charts**: `window.fpChart` (base.html) holds the active theme's `text`, `muted`, `grid`, `surface`, `primary`, `success`, `warning`, `error`, `series[0..5]` (`--chart-1..6`, validated in both themes), `fontSans`/`fontMono`, and `alpha(hex, a)`. `fpChart.track(chart)` re-applies axis/legend colors after a theme toggle; pages re-apply their own series colors on `cadence:themechange`. Fixed slots (1-based `--chart-N`): macros Calories 1, Protein 2, Fat 3, Fiber 4, Carbs 5; detail metrics HR 6, Pace/Speed 2, Output 3, Cadence 5, Incline/Elevation 4, Resistance 1 (`METRIC_SLOT`); Compare workouts 1–4; class history per metric (`METRIC_SLOT` in class_history.html); body composition fat 3 / lean 1, weight 1, recovery 2. The detail pages still read the older `window.chartTheme` shape too.
+
 ### Other Key Patterns
 - **FTP**: `workout.ftp` per-workout (stamped at sync); `backfill_ftp.py [--user USERNAME]` for history. Use `workout.ftp` in templates, not `UserSettings.for_user(user).ftp`.
 - **Pace**: stored as seconds/mile; `pace` slug in perf graph is decimal min/mile — multiply by 60 before passing to JS `fmtPace`.
 - **Chart init**: always wrap `new Chart(...)` in `DOMContentLoaded` (Chart.js loaded `defer`).
-- **Frontend**: vanilla JS + HTMX only. No npm/webpack/Tailwind. Single `main.css`.
+- **Frontend**: vanilla JS + HTMX + Tailwind CSS 4 / daisyUI 5 (standalone binary, no npm/Node). Compiled CSS is committed; run `scripts/css.sh build` after template changes and `scripts/css.sh check` before committing. See **Styling**.
 - **Effort display**: always use `workout.effort_points` (from perf graph) not `effort_score` or `average_effort_score`. Falls back gracefully if perf graph not cached.
 - **HR display**: always use `workout.heart_rate_avg_best` — model field if set, perf graph otherwise. Many Peloton workouts have null `heart_rate_avg` from the list API.
 

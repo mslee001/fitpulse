@@ -3,105 +3,90 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">New Plan</h1>
-  <p class="page-sub">Multi-week programs — paste the schedule (with class links if you have them), or upload a screenshot</p>
+<div class="ui-page-header">
+  <div class="max-w-3xl">
+    <h1 class="ui-page-title">New plan</h1>
+    <p class="ui-page-sub">Multi-week programs — paste the schedule (with class links if you have them), or upload a screenshot</p>
+  </div>
 </div>
 
-{% if messages %}
-<div style="margin-bottom:1.5rem">
-  {% for message in messages %}
-  <div class="peloton-msg peloton-msg--{% if message.tags == 'error' %}error{% else %}success{% endif %}">{{ message }}</div>
-  {% endfor %}
-</div>
-{% endif %}
+{% include "workouts/partials/messages.html" %}
 
 {% if not rows %}
-<form method="post" action="{% url 'program_new_plan' %}" enctype="multipart/form-data">
+<form method="post" action="{% url 'program_new_plan' %}" enctype="multipart/form-data" class="ui-panel">
   {% csrf_token %}
   <input type="hidden" name="stage" value="review">
-  <div class="add-form-card" style="margin-bottom:1.5rem">
-    <div class="form-group">
-      <label class="form-label">Plan name</label>
-      <input name="name" class="form-input" placeholder="e.g. Glutes and Legs Strength Program" value="{{ name|default:'' }}">
-      <p class="stat-sub" style="margin-top:0.35rem">Leave blank to use the AI's best guess from the pasted content.</p>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Instructor</label>
-      <input name="instructor" class="form-input" placeholder="e.g. Adrian Williams" value="{{ instructor|default:'' }}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Schedule text</label>
-      <textarea name="raw_text" class="form-textarea" rows="10"
+  <div class="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+    <label class="fieldset py-0"><span class="fieldset-legend">Plan name</span>
+      <input name="name" class="input w-full" placeholder="e.g. Glutes and Legs Strength Program" value="{{ name|default:'' }}">
+      <span class="label whitespace-normal">Leave blank to use the AI's best guess from the pasted content.</span>
+    </label>
+    <label class="fieldset py-0"><span class="fieldset-legend">Instructor</span>
+      <input name="instructor" class="input w-full" placeholder="e.g. Adrian Williams" value="{{ instructor|default:'' }}">
+    </label>
+    <label class="fieldset py-0 md:col-span-2"><span class="fieldset-legend">Schedule text</span>
+      <textarea name="raw_text" class="textarea w-full" rows="10"
         placeholder="Paste the plan's class list here. If you have the class links (e.g. copy-link on each title), paste those too — a pasted link resolves that slot's exact class automatically. Otherwise a class you've already taken will still match from your own history.">{{ raw_text|default:'' }}</textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Or upload a screenshot</label>
-      <input type="file" name="screenshot" class="form-input" accept="image/jpeg,image/png,image/gif,image/webp">
-      <p class="stat-sub" style="margin-top:0.35rem">You can provide text, a screenshot, or both — extra text is used as additional context alongside the image.</p>
-    </div>
+    </label>
+    <label class="fieldset py-0 md:col-span-2"><span class="fieldset-legend">Or upload a screenshot</span>
+      <input type="file" name="screenshot" class="file-input w-full" accept="image/jpeg,image/png,image/gif,image/webp">
+      <span class="label whitespace-normal">You can provide text, a screenshot, or both — extra text is used as additional context alongside the image.</span>
+    </label>
   </div>
-  <div class="page-header-actions">
-    <button class="btn btn-accent" type="submit">Extract schedule</button>
+  <div class="mt-4 flex flex-wrap gap-2">
+    <button class="btn btn-primary" type="submit">Extract schedule</button>
     <a class="btn btn-ghost" href="{% url 'program_list' %}">Cancel</a>
   </div>
 </form>
 
-<div class="add-form-card" style="margin-top:2rem">
-  <h3 class="chart-title" style="margin-bottom:0.4rem">OR START BLANK</h3>
-  <p class="stat-sub" style="margin-bottom:0.9rem">Build a custom plan or split from scratch — you'll add each class (or "any class" day) in the editor.</p>
-  <form method="post" action="{% url 'program_new_blank' %}" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end">
+<div class="ui-panel mt-5">
+  <h2 class="ui-panel-title">Or start blank</h2>
+  <p class="mb-3 text-sm text-muted">Build a custom plan or split from scratch — you'll add each class (or "any class" day) in the editor.</p>
+  <form method="post" action="{% url 'program_new_blank' %}" class="flex flex-wrap items-end gap-3">
     {% csrf_token %}
-    <div class="form-group" style="margin:0">
-      <label class="form-label">Name</label>
-      <input name="name" class="form-input" placeholder="e.g. Summer Strength + Run" required style="min-width:18rem">
-    </div>
-    <div class="form-group" style="margin:0">
-      <label class="form-label">Type</label>
-      <select name="kind" class="form-select">
+    <label class="fieldset min-w-64 flex-1 py-0"><span class="fieldset-legend">Name</span><input name="name" class="input w-full" placeholder="e.g. Summer Strength + Run" required></label>
+    <label class="fieldset py-0"><span class="fieldset-legend">Type</span>
+      <select name="kind" class="select w-full">
         <option value="split">Split — one week you repeat</option>
         <option value="plan">Plan — several distinct weeks</option>
       </select>
-    </div>
-    <button class="btn btn-ghost" type="submit">Create blank program</button>
+    </label>
+    <button class="btn" type="submit">Create blank program</button>
   </form>
 </div>
 
 {% else %}
-<form method="post" action="{% url 'program_new_plan' %}">
+<form method="post" action="{% url 'program_new_plan' %}" class="flex flex-col gap-5">
   {% csrf_token %}
   <input type="hidden" name="stage" value="create">
-  <div class="add-form-card" style="margin-bottom:1.5rem">
-    <div class="form-group">
-      <label class="form-label">Plan name *</label>
-      <input name="name" class="form-input" value="{{ name|default:'' }}" required>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Instructor</label>
-      <input name="instructor" class="form-input" value="{{ instructor|default:'' }}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Type</label>
-      <select name="kind" class="form-select">
+  <div class="ui-panel grid grid-cols-1 gap-x-4 md:grid-cols-3">
+    <label class="fieldset py-0"><span class="fieldset-legend">Plan name *</span>
+      <input name="name" class="input w-full" value="{{ name|default:'' }}" required>
+    </label>
+    <label class="fieldset py-0"><span class="fieldset-legend">Instructor</span>
+      <input name="instructor" class="input w-full" value="{{ instructor|default:'' }}">
+    </label>
+    <label class="fieldset py-0"><span class="fieldset-legend">Type</span>
+      <select name="kind" class="select w-full">
         <option value="">Auto — split if it's a single week, otherwise plan</option>
         <option value="split">Split — one week you repeat</option>
         <option value="plan">Plan — several distinct weeks</option>
       </select>
-    </div>
+    </label>
   </div>
 
-  {% if note %}<p class="stat-sub" style="margin-bottom:1rem">AI note: {{ note }}</p>{% endif %}
+  {% if note %}<div class="alert alert-soft alert-info">AI note: {{ note }}</div>{% endif %}
 
-  <div class="chart-card">
-    <div class="chart-header">
-      <h3 class="chart-title">REVIEW SCHEDULE</h3>
-      <span class="chart-sub">Uncheck a row to drop it. Ride ID resolves via a pasted link first, then your own history — paste a ride id or a class link into any unresolved row.</span>
+  <div class="ui-panel">
+    <div class="ui-panel-header">
+      <h2 class="ui-panel-title">Review schedule</h2>
+      <span class="text-sm text-muted">Uncheck a row to drop it. Ride ID resolves via a pasted link first, then your own history — paste a ride id or a class link into any unresolved row.</span>
     </div>
-    <div class="table-wrap">
-      <table class="data-table">
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
         <thead>
           <tr>
-            <th></th><th>Week</th><th>Day</th><th>Order</th><th>Title</th>
+            <th><span class="sr-only">Include</span></th><th>Week</th><th>Day</th><th>Order</th><th>Title</th>
             <th>Discipline</th><th>Min</th><th>Opt.</th>
             <th>Repeat<br>days</th><th>Repeat<br>weeks</th><th>Match by</th><th>Ride ID / type</th>
           </tr>
@@ -109,44 +94,44 @@
         <tbody>
           {% for r in rows %}
           <tr>
-            <td><input type="checkbox" name="include" value="{{ r.i }}" {% if r.included %}checked{% endif %}></td>
-            <td><input name="week" value="{{ r.week }}" class="form-input" style="width:3.5rem"></td>
-            <td><input name="day" value="{{ r.day|default_if_none:'' }}" class="form-input" style="width:3.5rem"></td>
-            <td><input name="order" value="{{ r.order }}" class="form-input" style="width:3.5rem"></td>
-            <td><input name="title" value="{{ r.title }}" class="form-input" style="min-width:16rem"></td>
-            <td><input name="discipline" value="{{ r.discipline }}" class="form-input" style="width:7rem"></td>
-            <td><input name="duration" value="{{ r.duration_min|default_if_none:'' }}" class="form-input" style="width:3.5rem"></td>
-            <td style="text-align:center"><input type="checkbox" name="optional" value="{{ r.i }}" {% if r.optional %}checked{% endif %}></td>
-            <td style="text-align:center" title="Retakeable any day this week — spreads into an optional slot per day">
-              <input type="checkbox" name="repeat_days" value="{{ r.i }}" {% if r.repeat_all_days %}checked{% endif %}>
+            <td><input type="checkbox" name="include" value="{{ r.i }}" class="checkbox checkbox-sm checkbox-primary" aria-label="Include row" {% if r.included %}checked{% endif %}></td>
+            <td><input name="week" value="{{ r.week }}" class="input input-xs w-14 font-mono" aria-label="Week"></td>
+            <td><input name="day" value="{{ r.day|default_if_none:'' }}" class="input input-xs w-14 font-mono" aria-label="Day"></td>
+            <td><input name="order" value="{{ r.order }}" class="input input-xs w-14 font-mono" aria-label="Order"></td>
+            <td><input name="title" value="{{ r.title }}" class="input input-xs min-w-64" aria-label="Title"></td>
+            <td><input name="discipline" value="{{ r.discipline }}" class="input input-xs w-28" aria-label="Discipline"></td>
+            <td><input name="duration" value="{{ r.duration_min|default_if_none:'' }}" class="input input-xs w-14 font-mono" aria-label="Minutes"></td>
+            <td class="text-center"><input type="checkbox" name="optional" value="{{ r.i }}" class="checkbox checkbox-sm" aria-label="Optional" {% if r.optional %}checked{% endif %}></td>
+            <td class="text-center" title="Retakeable any day this week — spreads into an optional slot per day">
+              <input type="checkbox" name="repeat_days" value="{{ r.i }}" class="checkbox checkbox-sm" aria-label="Repeat any day" {% if r.repeat_all_days %}checked{% endif %}>
             </td>
-            <td style="text-align:center" title="Retakeable in any week of this plan — spreads into an optional slot per week">
-              <input type="checkbox" name="repeat_weeks" value="{{ r.i }}" {% if r.repeat_all_weeks %}checked{% endif %}>
+            <td class="text-center" title="Retakeable in any week of this plan — spreads into an optional slot per week">
+              <input type="checkbox" name="repeat_weeks" value="{{ r.i }}" class="checkbox checkbox-sm" aria-label="Repeat any week" {% if r.repeat_all_weeks %}checked{% endif %}>
             </td>
             <td>
-              <select name="match" class="form-select plan-match">
+              <select name="match" class="select select-xs plan-match" aria-label="Match by">
                 <option value="ride" {% if r.match != "any" %}selected{% endif %}>Specific class</option>
                 <option value="any" {% if r.match == "any" %}selected{% endif %}>Any class of a type</option>
               </select>
             </td>
             <td>
-              <select name="preset" class="form-select plan-preset" style="display:none">
+              <select name="preset" class="select select-xs plan-preset" aria-label="Class type" style="display:none">
                 <option value="">Choose a type…</option>
                 {% for key, label in presets %}<option value="{{ key }}" {% if r.preset == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
                 <option value="custom" {% if r.preset == "custom" %}selected{% endif %}>Custom (uses the Discipline column)</option>
               </select>
-              <input name="ride_id" value="{{ r.ride_id }}" class="form-input plan-ride-input" style="min-width:14rem" placeholder="ride id or class link">
+              <input name="ride_id" value="{{ r.ride_id }}" class="input input-xs min-w-56 plan-ride-input" placeholder="ride id or class link" aria-label="Ride id or class link">
               <div class="plan-ride-status">
-              {% if r.matched_via == "link" %}<div class="stat-sub" style="color:var(--accent)">matched via link</div>
-              {% elif r.matched_via == "history" %}<div class="stat-sub" style="color:var(--accent)">matched from your history</div>
+              {% if r.matched_via == "link" %}<div class="mt-1 text-xs text-success">✓ matched via link</div>
+              {% elif r.matched_via == "history" %}<div class="mt-1 text-xs text-success">✓ matched from your history</div>
               {% elif r.matched_via == "ambiguous" %}
-                <div class="stat-sub">multiple matches in your history — pick one:</div>
+                <div class="mt-1 text-xs text-muted">multiple matches in your history — pick one:</div>
                 {% for c in r.candidates %}
-                <button type="button" class="btn btn-ghost btn-sm plan-pick-candidate" data-ride-id="{{ c.ride_id }}" style="margin:0.15rem 0.25rem 0 0">
+                <button type="button" class="btn btn-ghost btn-xs plan-pick-candidate mr-1 mt-1" data-ride-id="{{ c.ride_id }}">
                   {{ c.taken_on|date:"M j, Y" }}{% if c.instructor %} · {{ c.instructor }}{% endif %}
                 </button>
                 {% endfor %}
-              {% elif not r.ride_id %}<div class="stat-sub">unresolved — paste a ride id or class link</div>
+              {% elif not r.ride_id %}<div class="mt-1 text-xs text-warning">unresolved — paste a ride id or class link</div>
               {% endif %}
               </div>
             </td>
@@ -157,8 +142,8 @@
     </div>
   </div>
 
-  <div class="page-header-actions" style="margin-top:1.25rem">
-    <button class="btn btn-accent" type="submit">Create plan</button>
+  <div class="flex flex-wrap gap-2">
+    <button class="btn btn-primary" type="submit">Create plan</button>
     <a class="btn btn-ghost" href="{% url 'program_list' %}">Cancel</a>
   </div>
 </form>

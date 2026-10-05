@@ -222,25 +222,26 @@ def format_next_workout(text):
         elif line.upper().startswith("REASON:"):
             reason = line[len("REASON:"):].strip()
 
-    intensity_colors = {
-        "GO HARD": "var(--accent-red)",
-        "GO MODERATE": "#FFCC00",
-        "GO EASY": "var(--accent-green)",
-        "REST": "var(--accent-alt)",
+    # Whole class names (Tailwind only generates classes it finds written out).
+    intensity_tones = {
+        "GO HARD": "text-error",
+        "GO MODERATE": "text-warning",
+        "GO EASY": "text-success",
+        "REST": "text-info",
     }
-    color = next((c for k, c in intensity_colors.items() if k in intensity.upper()), "var(--accent)")
+    tone = next((c for k, c in intensity_tones.items() if k in intensity.upper()), "text-primary")
 
     from django.utils.safestring import mark_safe
     if not intensity and not activity:
-        return mark_safe(f'<p style="font-size:0.88rem;line-height:1.6">{escape(text)}</p>')
+        return mark_safe(f'<p class="ai-text">{escape(text)}</p>')
 
     html = ""
     if intensity:
-        html += f'<div style="font-size:1rem;font-weight:800;letter-spacing:0.06em;color:{color};font-family:\'Barlow Condensed\',sans-serif;margin-bottom:0.3rem">{escape(intensity)}</div>'
+        html += f'<div class="nw-intensity {tone}">{escape(intensity)}</div>'
     if activity:
-        html += f'<div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem">{escape(activity)}</div>'
+        html += f'<div class="nw-activity">{escape(activity)}</div>'
     if reason:
-        html += f'<p style="font-size:0.85rem;line-height:1.65;color:var(--text-muted);margin:0">{escape(reason)}</p>'
+        html += f'<p class="nw-reason">{escape(reason)}</p>'
     return mark_safe(html)
 
 
@@ -263,11 +264,11 @@ def format_day_analysis(text):
             bullets.append(stripped.lstrip("•-* ").strip())
 
     if not headline and not bullets:
-        return mark_safe(f'<p style="font-size:0.88rem;line-height:1.6">{escape(text)}</p>')
+        return mark_safe(f'<p class="ai-text">{escape(text)}</p>')
 
     html = ""
     if headline:
-        html += f'<div style="font-weight:700;font-size:0.95rem;margin-bottom:0.6rem">{escape(headline)}</div>'
+        html += f'<div class="ai-headline">{escape(headline)}</div>'
     if bullets:
         items = "".join(f'<li class="insights-item">{escape(b)}</li>' for b in bullets)
         html += f'<ul class="insights-list">{items}</ul>'
@@ -292,10 +293,10 @@ def format_body_commentary(text):
         elif stripped.startswith("•") or stripped.startswith("-") or stripped.startswith("*"):
             bullets.append(stripped.lstrip("•-* ").strip())
     if not headline and not bullets:
-        return mark_safe(f'<p style="font-size:0.88rem;line-height:1.6">{escape(text)}</p>')
+        return mark_safe(f'<p class="ai-text">{escape(text)}</p>')
     html = ""
     if headline:
-        html += f'<div style="font-weight:700;font-size:0.95rem;margin-bottom:0.6rem">{escape(headline)}</div>'
+        html += f'<div class="ai-headline">{escape(headline)}</div>'
     if bullets:
         items = "".join(f'<li class="insights-item">{escape(b)}</li>' for b in bullets)
         html += f'<ul class="insights-list">{items}</ul>'
@@ -387,7 +388,7 @@ def format_nutrition_insights(text):
             if ptype == 'bullet':
                 lines_out.append(f'<li class="insights-item">{rendered}</li>')
             else:
-                lines_out.append(f'<p style="font-size:0.875rem;line-height:1.7;color:var(--text-muted);margin-bottom:0.65rem">{rendered}</p>')
+                lines_out.append(f'<p class="ni-para">{rendered}</p>')
         block = "".join(lines_out)
         # Wrap consecutive <li> in <ul>
         block = re.sub(r'(<li class="insights-item">.*?</li>)+',
@@ -467,15 +468,41 @@ def dict_get(d, key):
 
 
 @register.filter
+def discipline_color(slug):
+    """A discipline's DISCIPLINE_COLORS hex (for inline color/border styles)."""
+    from workouts.views import DISCIPLINE_COLORS
+    return DISCIPLINE_COLORS.get(slug or "", "#888888")
+
+
+@register.filter
 def nutrition_rows(_unused):
     """Returns (label, key, color) tuples for nutrition progress bars."""
+    # Fixed chart slots (assets/css/app.css): Calories 1, Protein 2, Fat 3, Fiber 4, Carbs 5.
     return [
-        ("Calories", "cal",     "#FF6B35"),
-        ("Protein",  "protein", "#00D1FF"),
-        ("Carbs",    "carbs",   "#B4FF39"),
-        ("Fat",      "fat",     "#FF3B5C"),
-        ("Fiber",    "fiber",   "#69f0ae"),
+        ("Calories", "cal",     "var(--chart-1)"),
+        ("Protein",  "protein", "var(--chart-2)"),
+        ("Carbs",    "carbs",   "var(--chart-5)"),
+        ("Fat",      "fat",     "var(--chart-3)"),
+        ("Fiber",    "fiber",   "var(--chart-4)"),
     ]
+
+
+# Status words → whole Tailwind classes (Tailwind can't see class names built up
+# from strings). Status color always comes with its label text, never alone.
+TONE_TEXT = {"green": "text-success", "yellow": "text-warning", "red": "text-error",
+             "high": "text-success", "moderate": "text-warning", "low": "text-error",
+             "balanced": "text-success", "unbalanced": "text-warning", "poor": "text-error"}
+TONE_STROKE = {"green": "stroke-success", "yellow": "stroke-warning", "red": "stroke-error",
+               "high": "stroke-success", "moderate": "stroke-warning", "low": "stroke-error",
+               "balanced": "stroke-success", "unbalanced": "stroke-warning", "poor": "stroke-error"}
+
+
+@register.filter
+def tone(value, kind="text"):
+    """'green'/'High'/'BALANCED' → a whole class: text-success, or with
+    kind="stroke", stroke-success. Unknown → text-muted / stroke-current."""
+    table = TONE_STROKE if kind == "stroke" else TONE_TEXT
+    return table.get(str(value or "").strip().lower(), "text-muted" if kind == "text" else "stroke-current")
 
 
 @register.filter
@@ -513,3 +540,38 @@ def peloton_class_url(ride_id):
     """Peloton class-details link for a ride id (add to Stack, start on the Tread)."""
     from workouts.models import peloton_class_url as url
     return url(ride_id) if ride_id else ""
+
+
+@register.filter
+def ring_offset(score, circumference=301.6):
+    """stroke-dashoffset that leaves `score`% (0–100) of a ring's arc drawn."""
+    try:
+        pct = min(max(float(score), 0.0), 100.0)
+    except (TypeError, ValueError):
+        pct = 0.0
+    return round(float(circumference) * (1 - pct / 100), 1)
+
+
+@register.simple_tag(takes_context=True)
+def metric_help(context, slug):
+    """An "i" button that opens a popover explaining a metric (workouts/glossary.py).
+    Unknown slugs raise in DEBUG and render nothing in production.
+
+    A simple_tag rendering its own template, not an inclusion_tag: inclusion tags copy
+    the Context, which Django 4.2 can't do on Python 3.14 (production's runtime)."""
+    from django.conf import settings
+    from django.template.loader import render_to_string
+    from workouts.glossary import METRIC_HELP
+    if slug not in METRIC_HELP:
+        if settings.DEBUG:
+            raise template.TemplateSyntaxError(f"metric_help: unknown slug {slug!r}")
+        return ""
+    # Popover ids must be unique per page; count per request.
+    request = context.get("request")
+    if request is not None:
+        n = request._metric_help_n = getattr(request, "_metric_help_n", 0) + 1
+    else:
+        n = context.render_context["_metric_help_n"] = context.render_context.get("_metric_help_n", 0) + 1
+    title, text = METRIC_HELP[slug]
+    return render_to_string("workouts/partials/metric_help.html",
+                            {"uid": f"{slug.replace('_', '-')}-{n}", "title": title, "text": text})

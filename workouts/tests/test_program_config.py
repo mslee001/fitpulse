@@ -273,7 +273,7 @@ class EditViewTests(ProgramConfigBase):
         self.assertIn("Yoga (any class)", html)
         self.assertIn(f'name="slot_{self.push.pk}_ride_id"', html)
         self.assertIn(RIDE_A, html)
-        self.assertIn("RECOVERY TRACKING", html)
+        self.assertIn("Recovery tracking", html)
 
 
 class OtherViewTests(ProgramConfigBase):

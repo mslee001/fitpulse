@@ -2,35 +2,36 @@
 {% block title %}Webhook Errors — FitPulse{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="ui-page-header">
   <div>
-    <a href="{% url 'integrations_settings' %}" class="back-link">← Integrations</a>
-    <h1 class="page-title">WEBHOOK ERRORS</h1>
-    <p class="page-sub">Failed background syncs from incoming webhooks — kept for {{ webhook_retention_days }} days, newest first</p>
+    <a href="{% url 'integrations_settings' %}" class="text-sm">← Integrations</a>
+    <h1 class="ui-page-title">Webhook errors</h1>
+    <p class="ui-page-sub">Failed background syncs from incoming webhooks — kept for {{ webhook_retention_days }} days, newest first</p>
   </div>
 </div>
 
-<div class="chart-card" style="max-width:800px">
-  {% if errors %}
-  <div style="display:flex;flex-direction:column;gap:0.5rem">
-    {% for err in errors %}
-    <div style="padding:0.6rem 0;{% if not forloop.first %}border-top:1px solid var(--border);{% endif %}">
-      <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.85rem;">
-        <span style="color:var(--text-dim);font-size:0.73rem;white-space:nowrap;min-width:9rem">{{ err.created_at|date:"M j, Y g:i A" }}</span>
-        <span class="badge badge-muted" style="text-transform:none;letter-spacing:normal;">{{ err.source }}</span>
-        <span style="color:var(--text-muted);flex:1;">{{ err.summary }}</span>
-      </div>
-      {% if err.detail %}
-      <details style="margin-top:0.4rem;">
-        <summary style="cursor:pointer;font-size:0.73rem;color:var(--text-dim);">Traceback</summary>
-        <pre style="font-size:0.72rem;color:var(--text-muted);white-space:pre-wrap;overflow-x:auto;margin:0.5rem 0 0;padding:0.6rem;background:var(--bg-raised);border-radius:4px;">{{ err.detail }}</pre>
-      </details>
-      {% endif %}
+<div class="flex max-w-3xl flex-col gap-2">
+  {% for err in errors %}
+  {% if err.detail %}
+  <details class="collapse collapse-arrow bg-base-100 shadow-sm">
+    <summary class="collapse-title flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+      <span class="badge badge-sm badge-ghost">{{ err.source }}</span>
+      <span class="whitespace-nowrap font-mono text-xs text-muted">{{ err.created_at|date:"M j, Y g:i A" }}</span>
+      <span class="min-w-0 basis-full break-words">{{ err.summary }}</span>
+    </summary>
+    <div class="collapse-content">
+      <pre class="overflow-x-auto whitespace-pre-wrap rounded-xl bg-base-300 p-3 text-xs">{{ err.detail }}</pre>
     </div>
-    {% endfor %}
-  </div>
+  </details>
   {% else %}
-  <p style="color:var(--text-muted);font-size:0.85rem;">No webhook processing failures in the last {{ webhook_retention_days }} days.</p>
+  <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-box bg-base-100 p-4 text-sm shadow-sm">
+    <span class="badge badge-sm badge-ghost">{{ err.source }}</span>
+    <span class="whitespace-nowrap font-mono text-xs text-muted">{{ err.created_at|date:"M j, Y g:i A" }}</span>
+    <span class="min-w-0 basis-full break-words">{{ err.summary }}</span>
+  </div>
   {% endif %}
+  {% empty %}
+  <p class="ui-empty">No webhook processing failures in the last {{ webhook_retention_days }} days.</p>
+  {% endfor %}
 </div>
 {% endblock %}

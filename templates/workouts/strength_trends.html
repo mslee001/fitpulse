@@ -3,88 +3,91 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <h1 class="page-title">Strength trends</h1>
-      <p class="page-sub">From your hand-logged exercises
-        {% if move_up_count %}&middot; <strong>{{ move_up_count }}</strong> exercise{{ move_up_count|pluralize }} ready to move up{% endif %}</p>
-    </div>
+<div class="ui-page-header">
+  <div>
+    <h1 class="ui-page-title">Strength trends</h1>
+    <p class="ui-page-sub">From your hand-logged exercises
+      {% if move_up_count %}&middot; <strong class="text-base-content">{{ move_up_count }}</strong> exercise{{ move_up_count|pluralize }} ready to move up{% endif %}</p>
   </div>
 </div>
 
 {% if not weighted and not unweighted %}
-<div class="chart-card">
-  <p class="stat-sub">No logged exercises yet. Log sets, reps, weight and effort on a strength or circuit workout's
-    <strong>Class Exercises</strong> card and they'll show up here.</p>
+<div class="ui-empty">
+  <p>No logged exercises yet. Log sets, reps, weight and effort on a strength or circuit workout's
+    <strong>Class exercises</strong> card and they'll show up here.</p>
 </div>
 {% else %}
 
-<div class="chart-card">
-  <div class="chart-header">
-    <h3 class="chart-title">VOLUME PER WORKOUT</h3>
-    <span class="chart-sub" style="font-size:0.68rem;color:var(--text-dim)">sets &times; reps &times; weight &times; dumbbells</span>
+<div class="ui-panel">
+  <div class="ui-panel-header">
+    <h2 class="ui-panel-title">Volume per workout</h2>
+    <span class="text-sm text-muted">sets &times; reps &times; weight &times; dumbbells</span>
   </div>
-  <div style="position:relative;height:220px"><canvas id="volumeChart" aria-label="Logged volume per workout"></canvas></div>
+  <div class="relative h-56"><canvas id="volumeChart" role="img" aria-label="Logged volume per workout"></canvas></div>
 </div>
 
-<p class="stat-sub" style="margin:1rem 0 0.5rem">
+<p class="mb-3 mt-5 text-sm text-muted">
   Recommendations step through your dumbbells ({% for d in dumbbells %}{{ d|floatformat:"-1" }}{% if not forloop.last %}, {% endif %}{% endfor %}&nbsp;lb &middot; <a href="{% url 'settings' %}">edit</a>):
-  <strong>Easy</strong> &rarr; next one up &middot; <strong>Just right</strong> twice in a row &rarr; up &middot;
-  <strong>Hard</strong> &rarr; stay &middot; <strong>Couldn't finish</strong> &rarr; one down.
-  Hover a recommendation for the reason.
+  <strong class="text-base-content">Easy</strong> &rarr; next one up &middot; <strong class="text-base-content">Just right</strong> twice in a row &rarr; up &middot;
+  <strong class="text-base-content">Hard</strong> &rarr; stay &middot; <strong class="text-base-content">Couldn't finish</strong> &rarr; one down.
 </p>
 
-<div class="strength-grid">
+<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
   {% for x in weighted %}
-  <div class="chart-card strength-card">
-    <div class="strength-card-head">
-      <div>
-        <div class="strength-card-name">{{ x.name }}</div>
-        <div class="stat-sub">
+  <div class="ui-panel flex flex-col gap-2">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h3 class="font-semibold">{{ x.name }}</h3>
+        <div class="text-sm text-muted">
           {{ x.count }} session{{ x.count|pluralize }}
           {% if x.first_lb != x.current_lb %}&middot; {{ x.first_lb|floatformat:"-1" }} &rarr; {{ x.current_lb|floatformat:"-1" }} lb{% else %}&middot; {{ x.current_lb|floatformat:"-1" }} lb{% endif %}
         </div>
       </div>
       {% if x.rec %}
-      <div class="weight-rec-badge weight-rec-badge--{{ x.rec.action }}" title="{{ x.rec.reason }}">
-        <span class="weight-rec-badge-label">{% if x.rec.action == "up" %}Move up{% elif x.rec.action == "down" %}Drop{% elif x.rec.action == "max" %}Maxed{% else %}Stay{% endif %}</span>
-        <span class="mono">{{ x.rec.weight|floatformat:"-1" }} lb</span>
-      </div>
+      <span class="badge shrink-0 gap-1 {% if x.rec.action == 'up' %}badge-success{% elif x.rec.action == 'down' %}badge-warning{% elif x.rec.action == 'max' %}badge-info{% else %}badge-ghost{% endif %}" title="{{ x.rec.reason }}">
+        {% if x.rec.action == "up" %}Move up{% elif x.rec.action == "down" %}Drop{% elif x.rec.action == "max" %}Maxed{% else %}Stay{% endif %}
+        <span class="font-mono">{{ x.rec.weight|floatformat:"-1" }} lb</span>
+      </span>
       {% endif %}
     </div>
-    {% if x.rec %}<div class="strength-card-reason">{{ x.rec.reason }}</div>{% endif %}
+    {% if x.rec %}<p class="text-sm text-muted">{{ x.rec.reason }}</p>{% endif %}
     {% if x.chart|length > 1 %}
-    <div style="position:relative;height:120px;margin:0.5rem 0"><canvas class="ex-chart" data-key="{{ x.key }}" aria-label="{{ x.name }} weight over time"></canvas></div>
+    <div class="relative my-1 h-28"><canvas class="ex-chart" data-key="{{ x.key }}" role="img" aria-label="{{ x.name }} weight over time"></canvas></div>
     {% endif %}
-    <table class="strength-sessions">
+    <table class="table table-xs mt-auto">
+      <tbody>
       {% for s in x.recent %}
       <tr>
         <td><a href="{% url 'workout_detail' s.workout_id %}">{{ s.date|date:"M j" }}</a></td>
-        <td class="mono">{% if s.timed %}{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}s{% else %}{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}{% if s.per_side %}/side{% endif %}{% endif %}{% if s.weight_lb %} @ {{ s.weight_lb|floatformat:"-1" }}{% endif %}</td>
-        <td class="strength-effort">{{ s.effort_label|default:"—" }}</td>
+        <td class="font-mono tabular-nums">{% if s.timed %}{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}s{% else %}{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}{% if s.per_side %}/side{% endif %}{% endif %}{% if s.weight_lb %} @ {{ s.weight_lb|floatformat:"-1" }}{% endif %}</td>
+        <td class="text-right">{% if s.effort_label %}<span class="badge badge-xs badge-ghost whitespace-nowrap">{{ s.effort_label }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
+      </tbody>
     </table>
   </div>
   {% endfor %}
 </div>
 
 {% if unweighted %}
-<div class="chart-card" style="margin-top:1rem">
-  <div class="chart-header"><h3 class="chart-title">BODYWEIGHT &amp; TIMED</h3></div>
-  <table class="strength-sessions">
-    {% for x in unweighted %}
-    {% with s=x.recent.0 %}
-    <tr>
-      <td>{{ x.name }}</td>
-      <td class="mono">{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}{% if s.timed %}s{% elif s.per_side %}/side{% endif %}</td>
-      <td class="strength-effort">{{ s.effort_label|default:"—" }}</td>
-      <td class="stat-sub"><a href="{% url 'workout_detail' s.workout_id %}">{{ s.date|date:"M j" }}</a> &middot; {{ x.count }} session{{ x.count|pluralize }}</td>
-    </tr>
-    {% endwith %}
-    {% endfor %}
-  </table>
+<div class="ui-section ui-panel">
+  <h2 class="ui-panel-title mb-3">Bodyweight &amp; timed</h2>
+  <div class="overflow-x-auto">
+    <table class="table table-sm">
+      <tbody>
+      {% for x in unweighted %}
+      {% with s=x.recent.0 %}
+      <tr>
+        <td class="font-medium">{{ x.name }}</td>
+        <td class="font-mono tabular-nums">{{ s.sets|default:"?" }}&times;{{ s.reps|default:"?" }}{% if s.timed %}s{% elif s.per_side %}/side{% endif %}</td>
+        <td>{% if s.effort_label %}<span class="badge badge-xs badge-ghost whitespace-nowrap">{{ s.effort_label }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td class="whitespace-nowrap text-sm text-muted"><a href="{% url 'workout_detail' s.workout_id %}">{{ s.date|date:"M j" }}</a> &middot; {{ x.count }} session{{ x.count|pluralize }}</td>
+      </tr>
+      {% endwith %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endif %}
 {% endif %}
@@ -92,19 +95,19 @@
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   if (typeof Chart === "undefined") return;
-  const { gridColor, tickColor, mainLineWidth } = window.chartTheme;
-  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#E8743B";
   const volumes = {{ volume_series|safe }};
   const charts = {{ charts|safe }};
-  const axisFont = { family: "JetBrains Mono", size: 10 };
+  const axisFont = { family: fpChart.fontMono, size: 10 };
+  const series1 = () => fpChart.series[0];  // strength volume / weight: series slot 1
+  const all = [];
 
   const volCanvas = document.getElementById("volumeChart");
   if (volCanvas && volumes.length) {
-    new Chart(volCanvas, {
+    all.push(fpChart.track(new Chart(volCanvas, {
       type: "bar",
       data: {
         labels: volumes.map(v => v.date),
-        datasets: [{ data: volumes.map(v => v.volume), backgroundColor: accent, borderRadius: 4, maxBarThickness: 36 }],
+        datasets: [{ data: volumes.map(v => v.volume), backgroundColor: series1(), borderRadius: 4, maxBarThickness: 36 }],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -116,22 +119,22 @@ document.addEventListener("DOMContentLoaded", () => {
           } },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { color: tickColor, font: axisFont } },
-          y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: tickColor, font: axisFont, callback: v => v.toLocaleString() } },
+          x: { grid: { display: false }, ticks: { color: fpChart.muted, font: axisFont } },
+          y: { beginAtZero: true, grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, font: axisFont, callback: v => v.toLocaleString() } },
         },
       },
-    });
+    })));
   }
 
   document.querySelectorAll(".ex-chart").forEach(canvas => {
     const pts = charts[canvas.dataset.key] || [];
-    new Chart(canvas, {
+    all.push(fpChart.track(new Chart(canvas, {
       type: "line",
       data: {
         labels: pts.map(p => p.date),
         datasets: [{
-          data: pts.map(p => p.weight), borderColor: accent, backgroundColor: accent,
-          borderWidth: mainLineWidth, pointRadius: 4, pointHoverRadius: 6, stepped: false, tension: 0,
+          data: pts.map(p => p.weight), borderColor: series1(), backgroundColor: series1(),
+          borderWidth: 2, pointRadius: 4, pointHoverRadius: 6, stepped: false, tension: 0,
         }],
       },
       options: {
@@ -147,10 +150,21 @@ document.addEventListener("DOMContentLoaded", () => {
           } },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { color: tickColor, font: axisFont, maxTicksLimit: 6 } },
-          y: { grace: "15%", grid: { color: gridColor }, ticks: { color: tickColor, font: axisFont, maxTicksLimit: 4, callback: v => `${v} lb` } },
+          x: { grid: { display: false }, ticks: { color: fpChart.muted, font: axisFont, maxTicksLimit: 6 } },
+          y: { grace: "15%", grid: { color: fpChart.grid }, ticks: { color: fpChart.muted, font: axisFont, maxTicksLimit: 4, callback: v => `${v} lb` } },
         },
       },
+    })));
+  });
+
+  // Series color follows the theme (axes are restyled by fpChart.track).
+  document.addEventListener("cadence:themechange", () => {
+    all.forEach(c => {
+      c.data.datasets.forEach(ds => {
+        ds.backgroundColor = series1();
+        if (ds.borderColor) ds.borderColor = series1();
+      });
+      c.update("none");
     });
   });
 });

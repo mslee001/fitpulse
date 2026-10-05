@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}FitPulse{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   {% load static %}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <script>
@@ -19,190 +20,263 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" defer></script>
-  <script defer>
-    window._applyChartTheme = function() {
+  <script>
+    // Chart colors from the active daisyUI theme (assets/css/app.css). Runs now (app.css is
+    // already loaded), on DOMContentLoaded (Chart.js loads with defer) and after every theme
+    // toggle. window.chartTheme is the legacy shape older chart code still reads.
+    window._applyChartTheme = function () {
+      var cs = getComputedStyle(document.documentElement);
+      var v = function (name) { return cs.getPropertyValue(name).trim(); };
+      var mix = function (hex, pct) {  // hex + alpha → rgba() string Chart.js can parse
+        var h = (hex || '#888888').replace('#', '');
+        if (h.length === 3) h = h.replace(/(.)/g, '$1$1');
+        var n = parseInt(h, 16);
+        return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + pct + ')';
+      };
+      var text = v('--color-base-content') || '#888888';
+      window.fpChart = {
+        text: text,
+        muted: mix(text, 0.65),
+        grid: mix(text, 0.08),
+        primary: v('--color-primary'),
+        success: v('--color-success'), warning: v('--color-warning'), error: v('--color-error'),
+        surface: v('--color-base-100'),
+        series: [1, 2, 3, 4, 5, 6].map(function (i) { return v('--chart-' + i); }),
+        fontSans: "'DM Sans', ui-sans-serif, system-ui, sans-serif",
+        fontMono: "'DM Mono', ui-monospace, monospace",
+        alpha: mix,
+        // fpChart.track(chart): re-apply axis/legend colors to this chart after every
+        // theme toggle. Series colors are the page's job (cadence:themechange).
+        track: function (chart) { window._fpTracked.add(chart); return chart; },
+        restyle: function (chart) {
+          var f = window.fpChart, o = chart.options;
+          Object.values(o.scales || {}).forEach(function (sc) {
+            if (sc.grid) sc.grid.color = f.grid;
+            if (sc.ticks) sc.ticks.color = f.muted;
+            if (sc.title) sc.title.color = f.muted;
+            if (sc.pointLabels) sc.pointLabels.color = f.muted;
+          });
+          if (o.plugins && o.plugins.legend && o.plugins.legend.labels) o.plugins.legend.labels.color = f.muted;
+          chart.update('none');
+        },
+      };
       if (typeof Chart !== 'undefined') {
-        Chart.defaults.color = 'rgba(255,255,255,0.95)';
+        Chart.defaults.color = window.fpChart.muted;
+        Chart.defaults.borderColor = window.fpChart.grid;
+        Chart.defaults.font.family = window.fpChart.fontSans;
       }
       window.chartTheme = {
-        gridColor:      'rgba(255,255,255,0.05)',
-        tickColor:      '#888',
-        legendColor:    '#aaa',
-        zoneLabelColor: 'rgba(255,255,255,0.95)',
-        refLineColor:   'rgba(255,255,255,0.30)',
-        mainLineWidth:  2,
-        refLineWidth:   1.5,
+        gridColor: window.fpChart.grid,
+        tickColor: window.fpChart.muted,
+        legendColor: window.fpChart.muted,
+        zoneLabelColor: text,
+        refLineColor: mix(text, 0.30),
+        mainLineWidth: 2,
+        refLineWidth: 1.5,
       };
     };
+    window._fpTracked = new Set();
     window._applyChartTheme();
+    document.addEventListener('DOMContentLoaded', window._applyChartTheme);
+    document.addEventListener('cadence:themechange', function () {
+      window._fpTracked.forEach(function (c) {
+        if (typeof Chart !== 'undefined' && Chart.getChart(c.canvas) === c) window.fpChart.restyle(c);
+        else window._fpTracked.delete(c);  // destroyed
+      });
+    });
   </script>
 </head>
-<body>
+<body class="min-h-screen">
 
-  <nav class="nav">
-    <a href="{% url 'today' %}" class="nav-logo">
-      <span class="nav-logo-mark">◈</span>
-      <span>FIT<strong>PULSE</strong></span>
-    </a>
+  <nav class="ui-glass sticky top-0 z-40 border-b border-subtle">
+    <div class="mx-auto max-w-[1400px] px-4 lg:px-8 h-16 flex items-center gap-4">
+      <a href="{% url 'today' %}" class="text-xl font-bold tracking-tight text-base-content hover:no-underline">FitPulse</a>
 
-    <button class="nav-burger" id="nav-burger" aria-label="Open menu" aria-expanded="false">☰</button>
+      <div id="nav-pills" class="hidden lg:flex items-center gap-1 rounded-full bg-base-100 p-1 shadow-sm">
+        <a href="{% url 'today' %}" data-nav-group="today" class="rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content hover:no-underline [&.active]:bg-primary [&.active]:text-primary-content {% block nav_today %}{% endblock %}">Today</a>
 
-    <div class="nav-links">
-      <a href="{% url 'today' %}" class="nav-link {% block nav_today %}{% endblock %}">Today</a>
+        {% if can.training %}
+        <details class="dropdown nav-group {% block nav_training %}{% endblock %}" data-nav-group="training">
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Training {% include "workouts/partials/nav_caret.html" %}</summary>
+          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
+            {% include "workouts/partials/nav_items.html" with group="training" %}
+          </ul>
+        </details>
+        {% endif %}
 
-      <!-- TRAINING -->
-      {% if can.training %}
-      <div class="nav-group {% block nav_training %}{% endblock %}">
-        <a href="{% url 'history' %}" class="nav-link nav-group-toggle">Training <span class="caret">▾</span></a>
-        <div class="nav-dropdown">
-          <a class="nav-dropdown-item" href="{% url 'dashboard' %}">Dashboard</a>
-          <a class="nav-dropdown-item" href="{% url 'history' %}">Workouts</a>
-          <a class="nav-dropdown-item" href="{% url 'compare' %}">Compare</a>
-          <a class="nav-dropdown-item" href="{% url 'calendar' %}">Calendar</a>
-          <a class="nav-dropdown-item" href="{% url 'analytics' %}">Analytics</a>
-          {% if can.programs %}<a class="nav-dropdown-item" href="{% url 'program_list' %}">Programs</a>{% endif %}
-          {% if can.strength %}<a class="nav-dropdown-item" href="{% url 'strength_trends' %}">Strength</a>{% endif %}
-          <div class="nav-dropdown-divider"></div>
-          <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'settings' %}">Settings</a>
-          {% if is_owner %}<a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'admin_users' %}">Users</a>{% endif %}
-        </div>
+        {% if can.body or can.interventions or can.symptoms %}
+        <details class="dropdown nav-group {% block nav_body_group %}{% endblock %}" data-nav-group="body">
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Body {% include "workouts/partials/nav_caret.html" %}</summary>
+          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
+            {% include "workouts/partials/nav_items.html" with group="body" %}
+          </ul>
+        </details>
+        {% endif %}
+
+        {% if can.nutrition %}
+        <details class="dropdown nav-group {% block nav_nutrition_group %}{% endblock %}" data-nav-group="nutrition">
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Nutrition {% include "workouts/partials/nav_caret.html" %}</summary>
+          <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
+            {% include "workouts/partials/nav_items.html" with group="nutrition" %}
+          </ul>
+        </details>
+        {% endif %}
+
+        {% if can.ai_pattern_insights or can.ai_weekly_review or can.interventions %}
+        <details class="dropdown nav-group {% block nav_insights_group %}{% endblock %}" data-nav-group="insights">
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Insights {% include "workouts/partials/nav_caret.html" %}</summary>
+          <ul class="dropdown-content menu z-50 mt-2 w-56 rounded-box ui-glass p-2 shadow-lg border border-subtle">
+            {% include "workouts/partials/nav_items.html" with group="insights" %}
+          </ul>
+        </details>
+        {% endif %}
       </div>
-      {% endif %}
 
-      <!-- BODY -->
-      {% if can.body or can.interventions or can.symptoms %}
-      <div class="nav-group {% block nav_body_group %}{% endblock %}">
-        <a href="{% if can.body %}{% url 'body' %}{% elif can.interventions %}{% url 'interventions' %}{% else %}{% url 'symptoms' %}{% endif %}" class="nav-link nav-group-toggle">Body <span class="caret">▾</span></a>
-        <div class="nav-dropdown">
-          {% if can.interventions %}<a class="nav-dropdown-item" href="{% url 'interventions' %}">Interventions</a>{% endif %}
-          {% if can.symptoms %}<a class="nav-dropdown-item" href="{% url 'symptoms' %}">Symptoms</a>{% endif %}
-          {% if can.body %}<a class="nav-dropdown-item" href="{% url 'body' %}">Analytics</a>{% endif %}
-        </div>
+      <div class="ml-auto flex items-center gap-2">
+        <details class="dropdown dropdown-end sync-menu">
+          <summary class="list-none [&::-webkit-details-marker]:hidden btn btn-sm btn-primary rounded-full"><span class="inline-block [.syncing_&]:animate-spin" aria-hidden="true">↻</span> Sync</summary>
+          <ul class="dropdown-content menu z-50 mt-2 w-80 max-sm:fixed max-sm:inset-x-4 max-sm:top-16 max-sm:w-auto max-h-[calc(100vh-5rem)] flex-nowrap overflow-y-auto rounded-box ui-glass p-2 shadow-lg border border-subtle">
+            {% enabled_integrations as enabled %}
+            {% last_synced as ls %}{% if ls %}
+            <li class="menu-title py-1 text-xs font-normal text-muted">Last synced: {{ ls|date:"M j, Y g:i A" }}</li>
+            {% endif %}
+            {% last_daily_sync as lds %}{% if lds %}
+            <li class="menu-title py-1 text-xs font-normal text-muted">Last auto-sync: {{ lds|date:"M j, Y g:i A" }}</li>
+            {% endif %}
+            {% if ls or lds %}<li></li>{% endif %}
+            {% if 'peloton' in enabled %}
+            <li>
+              <a class="sync-option flex flex-col items-start gap-0 [&.is-syncing]:cursor-progress" data-sync href="{% url 'sync_new_workouts' %}" target="_blank">
+                <span class="flex items-center gap-2 font-medium">Peloton Sync New <span class="loading loading-spinner loading-xs hidden [.is-syncing_&]:inline-block"></span></span>
+                <span class="text-xs text-muted">New Peloton workouts</span>
+              </a>
+            </li>
+            {% endif %}
+            {% if 'garmin' in enabled and is_owner %}
+            <li></li>
+            <li>
+              <a class="sync-option flex flex-col items-start gap-0 [&.is-syncing]:cursor-progress" data-sync href="{% url 'sync_garmin_new' %}" target="_blank">
+                <span class="flex items-center gap-2 font-medium">Garmin Sync New <span class="loading loading-spinner loading-xs hidden [.is-syncing_&]:inline-block"></span></span>
+                <span class="text-xs text-muted">New Garmin activities</span>
+              </a>
+            </li>
+            <li>
+              <a class="sync-option flex flex-col items-start gap-0 [&.is-syncing]:cursor-progress" data-sync href="{% url 'sync_garmin_wellness' %}" target="_blank">
+                <span class="flex items-center gap-2 font-medium">Garmin Wellness Today <span class="loading loading-spinner loading-xs hidden [.is-syncing_&]:inline-block"></span></span>
+                <span class="text-xs text-muted">Today's wellness data</span>
+              </a>
+            </li>
+            {% endif %}
+            {% if 'withings' in enabled %}
+            <li></li>
+            <li>
+              <a class="sync-option flex flex-col items-start gap-0 [&.is-syncing]:cursor-progress" data-sync href="{% url 'sync_withings_new' %}" target="_blank">
+                <span class="flex items-center gap-2 font-medium">Withings Sync New <span class="loading loading-spinner loading-xs hidden [.is-syncing_&]:inline-block"></span></span>
+                <span class="text-xs text-muted">Sync new Withings body weight data</span>
+              </a>
+            </li>
+            {% endif %}
+            {% if 'google_health' in enabled %}
+            <li></li>
+            <li>
+              <a class="sync-option flex flex-col items-start gap-0 [&.is-syncing]:cursor-progress" data-sync href="{% url 'sync_google_health_new' %}" target="_blank">
+                <span class="flex items-center gap-2 font-medium">Google Health Sync New <span class="loading loading-spinner loading-xs hidden [.is-syncing_&]:inline-block"></span></span>
+                <span class="text-xs text-muted">Sync new wellness &amp; exercise data</span>
+              </a>
+            </li>
+            {% endif %}
+            <li></li>
+            <li>
+              <a class="sync-option flex flex-col items-start gap-0" href="{% url 'integrations_settings' %}">
+                <span class="font-medium">Integrations</span>
+                <span class="text-xs text-muted">Manage data sources, run full backfills</span>
+              </a>
+            </li>
+            {% if not can.training %}
+            <li>
+              <a class="sync-option flex flex-col items-start gap-0" href="{% url 'settings' %}">
+                <span class="font-medium">Settings</span>
+                <span class="text-xs text-muted">Profile and preferences</span>
+              </a>
+            </li>
+            {% endif %}
+          </ul>
+        </details>
+
+        <button type="button" id="theme-toggle" class="btn btn-sm btn-ghost btn-circle" aria-label="Toggle light or dark theme">
+          <svg class="size-5 [[data-theme=light]_&]:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          <svg class="size-5 [[data-theme=dark]_&]:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+
+        {% if user.is_authenticated %}
+        <form method="post" action="{% url 'logout' %}" class="hidden lg:block">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-ghost">Sign out</button>
+        </form>
+        {% endif %}
+
+        <button type="button" id="nav-burger" class="group btn btn-ghost btn-circle lg:hidden" aria-label="Open menu" aria-expanded="false" aria-controls="nav-mobile">
+          <svg class="size-6 group-aria-expanded:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          <svg class="size-6 hidden group-aria-expanded:block" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
       </div>
-      {% endif %}
+    </div>
 
-      <!-- NUTRITION -->
-      {% if can.nutrition %}
-      <div class="nav-group {% block nav_nutrition_group %}{% endblock %}">
-        <a href="{% url 'nutrition' %}" class="nav-link nav-group-toggle">Nutrition <span class="caret">▾</span></a>
-        <div class="nav-dropdown">
-          <a class="nav-dropdown-item" href="{% url 'nutrition' %}">Today's Log</a>
-          <!-- <a class="nav-dropdown-item" href="{% url 'nutrition_targets' %}">Targets</a> -->
-          <a class="nav-dropdown-item" href="{% url 'nutrition_analytics' %}">Analytics</a>
-          <div class="nav-dropdown-divider"></div>
-          <a class="nav-dropdown-item nav-dropdown-item--muted" href="{% url 'nutrition_targets' %}">Macro Settings</a>
-
-        </div>
-      </div>
-      {% endif %}
-
-      <!-- INSIGHTS -->
-      {% if can.ai_pattern_insights or can.ai_weekly_review or can.interventions %}
-      <div class="nav-group {% block nav_insights_group %}{% endblock %}">
-        <a href="{% if can.ai_pattern_insights %}{% url 'insights' %}{% elif can.ai_weekly_review %}{% url 'weekly_review' %}{% else %}{% url 'intervention_analysis' %}{% endif %}" class="nav-link nav-group-toggle">Insights <span class="caret">▾</span></a>
-        <div class="nav-dropdown">
-          {% if can.ai_pattern_insights %}<a class="nav-dropdown-item" href="{% url 'insights' %}">Pattern Insights</a>{% endif %}
-          {% if can.ai_weekly_review %}<a class="nav-dropdown-item" href="{% url 'weekly_review' %}">Weekly Review</a>{% endif %}
-          {% if can.interventions %}<a class="nav-dropdown-item" href="{% url 'intervention_analysis' %}">Intervention Analysis</a>{% endif %}
-        </div>
-      </div>
-      {% endif %}
+    <div id="nav-mobile" class="hidden [.nav-open_&]:block lg:hidden border-t border-subtle max-h-[calc(100vh-4rem)] overflow-y-auto">
+      <ul class="menu menu-lg w-full [&_a]:min-h-11 [&_summary]:min-h-11">
+        <li><a href="{% url 'today' %}" data-nav-group="today" class="[&.active]:bg-primary [&.active]:text-primary-content">Today</a></li>
+        {% if can.training %}
+        <li><details data-nav-group="training"><summary class="[.active>&]:text-primary">Training</summary><ul>
+          {% include "workouts/partials/nav_items.html" with group="training" %}
+        </ul></details></li>
+        {% endif %}
+        {% if can.body or can.interventions or can.symptoms %}
+        <li><details data-nav-group="body"><summary class="[.active>&]:text-primary">Body</summary><ul>
+          {% include "workouts/partials/nav_items.html" with group="body" %}
+        </ul></details></li>
+        {% endif %}
+        {% if can.nutrition %}
+        <li><details data-nav-group="nutrition"><summary class="[.active>&]:text-primary">Nutrition</summary><ul>
+          {% include "workouts/partials/nav_items.html" with group="nutrition" %}
+        </ul></details></li>
+        {% endif %}
+        {% if can.ai_pattern_insights or can.ai_weekly_review or can.interventions %}
+        <li><details data-nav-group="insights"><summary class="[.active>&]:text-primary">Insights</summary><ul>
+          {% include "workouts/partials/nav_items.html" with group="insights" %}
+        </ul></details></li>
+        {% endif %}
+      </ul>
       {% if user.is_authenticated %}
-      <form method="post" action="{% url 'logout' %}" class="nav-mobile-signout">
+      <form method="post" action="{% url 'logout' %}" class="border-t border-subtle px-2 py-2">
         {% csrf_token %}
-        <button type="submit">Sign out</button>
+        <button type="submit" class="btn btn-ghost w-full justify-start min-h-11 text-lg font-normal">Sign out</button>
       </form>
       {% endif %}
     </div>
-
-    <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">☀</button>
-
-    {% if user.is_authenticated %}
-    <form method="post" action="{% url 'logout' %}" class="logout-form">
-      {% csrf_token %}
-      <button type="submit" class="logout-btn">Sign out</button>
-    </form>
-    {% endif %}
-
-    <div class="sync-menu">
-      <button class="btn btn-sm btn-accent" onclick="this.closest('.sync-menu').classList.toggle('open')">
-        <span class="sync-icon">↻</span> Sync ▾
-      </button>
-      <div class="sync-dropdown">
-        {% enabled_integrations as enabled %}
-        {% last_synced as ls %}{% if ls %}
-        <div class="sync-option-label">Last synced: {{ ls|date:"M j, Y g:i A" }}</div>
-        {% endif %}
-        {% last_daily_sync as lds %}{% if lds %}
-        <div class="sync-option-label">Last auto-sync: {{ lds|date:"M j, Y g:i A" }}</div>
-        {% endif %}
-        {% if ls or lds %}<div class="sync-divider"></div>{% endif %}
-        {% if 'peloton' in enabled %}
-        <a class="sync-option" data-sync href="{% url 'sync_new_workouts' %}" target="_blank">
-          <strong>Peloton Sync New</strong>
-          <span>New Peloton workouts</span>
-        </a>
-        {% endif %}
-        {% if 'garmin' in enabled and is_owner %}
-        <div class="sync-divider"></div>
-        <a class="sync-option" data-sync href="{% url 'sync_garmin_new' %}" target="_blank">
-          <strong>Garmin Sync New</strong>
-          <span>New Garmin activities</span>
-        </a>
-        <a class="sync-option" data-sync href="{% url 'sync_garmin_wellness' %}" target="_blank">
-          <strong>Garmin Wellness Today</strong>
-          <span>Today's wellness data</span>
-        </a>
-        {% endif %}
-        {% if 'withings' in enabled %}
-        <div class="sync-divider"></div>
-        <a class="sync-option" data-sync href="{% url 'sync_withings_new' %}" target="_blank">
-          <strong>Withings Sync New</strong>
-          <span>Sync new Withings body weight data</span>
-        </a>
-        {% endif %}
-        {% if 'google_health' in enabled %}
-        <div class="sync-divider"></div>
-        <a class="sync-option" data-sync href="{% url 'sync_google_health_new' %}" target="_blank">
-          <strong>Google Health Sync New</strong>
-          <span>Sync new wellness &amp; exercise data</span>
-        </a>
-        {% endif %}
-        <div class="sync-divider"></div>
-        <a class="sync-option" href="{% url 'integrations_settings' %}">
-          <strong>Integrations</strong>
-          <span>Manage data sources, run full backfills</span>
-        </a>
-        {% if not can.training %}
-        <a class="sync-option" href="{% url 'settings' %}">
-          <strong>Settings</strong>
-          <span>Profile and preferences</span>
-        </a>
-        {% endif %}
-      </div>
-    </div>
   </nav>
 
-  <main class="main">
+  <main class="mx-auto w-full max-w-[1400px] px-4 lg:px-8 py-6 lg:py-8">
     {% if setup_pending or peloton_reconnect or plan_nudges %}
+    <div class="mb-4 flex flex-col gap-2 [&:not(:has(>:not([hidden])))]:hidden">
     {% for step in setup_pending %}
-    <div class="setup-banner" data-step="{{ step.key }}" hidden>
-      <a href="{% url 'get_started' %}#{{ step.key }}">Finish setting up {{ step.title }} →</a>
-      <button type="button" class="setup-banner-close" aria-label="Dismiss">&times;</button>
+    <div class="setup-banner alert alert-soft alert-info flex justify-between gap-3 py-2" role="status" data-step="{{ step.key }}" hidden>
+      <a class="font-medium text-current hover:underline" href="{% url 'get_started' %}#{{ step.key }}">Finish setting up {{ step.title }} →</a>
+      <button type="button" class="setup-banner-close btn btn-ghost btn-xs btn-circle" aria-label="Dismiss">{% include "workouts/partials/icon_x.html" %}</button>
     </div>
     {% endfor %}
     {% for n in plan_nudges %}
-    <div class="setup-banner" data-step="plan-nudge-{{ n.key }}" hidden>
-      <a href="{% url 'program_run' n.run_pk %}">{{ n.program.name }} may need a refresh: {{ n.reasons|join:"; " }} → Reassess</a>
-      <button type="button" class="setup-banner-close" aria-label="Dismiss">&times;</button>
+    <div class="setup-banner alert alert-soft alert-info flex justify-between gap-3 py-2" role="status" data-step="plan-nudge-{{ n.key }}" hidden>
+      <a class="font-medium text-current hover:underline" href="{% url 'program_run' n.run_pk %}">{{ n.program.name }} may need a refresh: {{ n.reasons|join:"; " }} → Reassess</a>
+      <button type="button" class="setup-banner-close btn btn-ghost btn-xs btn-circle" aria-label="Dismiss">{% include "workouts/partials/icon_x.html" %}</button>
     </div>
     {% endfor %}
     {% if peloton_reconnect %}
-    <div class="setup-banner" data-step="peloton-reconnect-{{ peloton_reconnect.key }}" hidden>
-      <a href="{% url 'integrations_settings' %}">Peloton needs reconnecting → Data Sources</a>
-      <button type="button" class="setup-banner-close" aria-label="Dismiss">&times;</button>
+    <div class="setup-banner alert alert-soft alert-warning flex justify-between gap-3 py-2" role="status" data-step="peloton-reconnect-{{ peloton_reconnect.key }}" hidden>
+      <a class="font-medium text-current hover:underline" href="{% url 'integrations_settings' %}">Peloton needs reconnecting → Data Sources</a>
+      <button type="button" class="setup-banner-close btn btn-ghost btn-xs btn-circle" aria-label="Dismiss">{% include "workouts/partials/icon_x.html" %}</button>
     </div>
     {% endif %}
+    </div>
     <script>
       document.querySelectorAll('.setup-banner').forEach(function (el) {
         var key = 'setupBannerDismissed:' + el.dataset.step;
@@ -220,35 +294,36 @@
   </main>
 
   {% if can.ai_chat %}
-  <div id="chat-sidebar" class="chat-sidebar" data-open="false">
-    <div id="chat-backdrop" class="chat-backdrop"></div>
+  <div id="chat-sidebar" class="group fixed inset-0 z-50 pointer-events-none" data-open="false">
+    <div id="chat-backdrop" class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200 group-data-[open=true]:opacity-100 group-data-[open=true]:pointer-events-auto"></div>
 
-    <button id="chat-toggle" class="chat-toggle" aria-label="Toggle stats chat">
-      ASK
+    <button type="button" id="chat-toggle" class="btn btn-primary btn-circle btn-lg shadow-lg pointer-events-auto absolute bottom-4 right-4 sm:bottom-6 sm:right-6 group-data-[open=true]:hidden" aria-label="Toggle stats chat">
+      <svg class="size-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.8 7.04L4 20l1.04-4.6A8 8 0 1 1 21 12Z"/></svg>
     </button>
 
-    <div class="chat-panel">
-      <div class="chat-panel-header">
-        <span>ASK YOUR STATS</span>
-        <div class="chat-header-actions">
+    <div class="ui-glass absolute inset-y-0 right-0 flex w-full sm:w-[420px] flex-col sm:rounded-l-box shadow-xl pointer-events-auto invisible translate-x-full transition-[translate,visibility] duration-200 group-data-[open=true]:visible group-data-[open=true]:translate-x-0" role="dialog" aria-label="Ask your stats">
+      <div class="flex items-center justify-between gap-2 border-b border-subtle px-4 py-3">
+        <h2 class="font-semibold">Ask your stats</h2>
+        <div class="flex items-center gap-1">
           <button
-            class="chat-clear-btn"
+            type="button"
+            class="btn btn-ghost btn-sm"
             hx-post="{% url 'chat_clear_api' %}"
             hx-target="#chat-log"
             hx-swap="innerHTML"
             hx-include="#chat-context-fields"
-          >clear</button>
-          <button id="chat-close" class="chat-close-btn" aria-label="Close stats chat">&times;</button>
+          >Clear</button>
+          <button type="button" id="chat-close" class="btn btn-ghost btn-sm btn-circle" aria-label="Close stats chat">{% include "workouts/partials/icon_x.html" %}</button>
         </div>
       </div>
 
-      <div id="chat-log" class="chat-log">
-        <div class="chat-empty">Ask something about your stats.</div>
+      <div id="chat-log" class="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
+        {% include "workouts/partials/chat_cleared.html" %}
       </div>
 
       <form
         id="chat-form"
-        class="chat-form"
+        class="border-t border-subtle px-4 py-3"
         hx-post="{% url 'chat_message_api' %}"
         hx-target="#chat-log"
         hx-swap="beforeend"
@@ -260,26 +335,49 @@
           <input type="hidden" name="ctx_page" value="unknown">
           {% endblock %}
         </div>
-        <input
-          type="text"
-          name="message"
-          class="chat-input"
-          placeholder="e.g. how's my sleep this week?"
-          autocomplete="off"
-          required
-        >
-        <button type="submit" class="chat-send-btn">Send</button>
+        <div class="join w-full">
+          <input
+            type="text"
+            name="message"
+            class="input join-item w-full"
+            placeholder="e.g. how's my sleep this week?"
+            aria-label="Ask about your stats"
+            autocomplete="off"
+            required
+          >
+          <button type="submit" class="chat-send-btn btn btn-primary join-item">Send</button>
+        </div>
       </form>
     </div>
   </div>
   {% endif %}
 
   <script>
-    document.addEventListener('click', e => {
-      if (!e.target.closest('.sync-menu')) {
-        document.querySelectorAll('.sync-menu.open').forEach(m => m.classList.remove('open'));
+    // Nav dropdowns (<details class="dropdown">, incl. the Sync menu): one open at a
+    // time; outside click, Escape or choosing a page closes them.
+    (function() {
+      var drops = document.querySelectorAll('nav details.dropdown');
+      function closeAll(except) {
+        drops.forEach(function(d) { if (d !== except) d.open = false; });
       }
-    });
+      drops.forEach(function(d) {
+        d.addEventListener('toggle', function() { if (d.open) closeAll(d); });
+      });
+      document.addEventListener('click', function(e) {
+        drops.forEach(function(d) { if (d.open && !d.contains(e.target)) d.open = false; });
+      });
+      document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Escape') return;
+        drops.forEach(function(d) {
+          if (!d.open) return;
+          d.open = false;
+          if (d.contains(document.activeElement)) d.querySelector('summary').focus();
+        });
+      });
+      document.querySelectorAll('nav details.nav-group a').forEach(function(a) {
+        a.addEventListener('click', function() { closeAll(null); });
+      });
+    })();
 
     // Sync New links run in place: spinner on the row (and the Sync button) while
     // running, then a one-line summary of the endpoint's JSON result.
@@ -313,7 +411,9 @@
         var el = link.nextElementSibling;
         if (!el || !el.classList.contains('sync-status')) {
           el = document.createElement('div');
-          el.className = 'sync-status';
+          el.className = 'sync-status flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-3 pb-2 text-xs leading-snug ' +
+            'text-muted data-[state=done]:text-success data-[state=error]:text-error data-[state=error]:break-words ' +
+            'cursor-default hover:bg-transparent';
           link.after(el);
         }
         el.dataset.state = state;
@@ -336,7 +436,7 @@
           if (link.classList.contains('is-syncing')) return;
           link.classList.add('is-syncing');
           updateMenuState();
-          setStatus(link, 'running', '<span class="sync-spinner"></span>Syncing…');
+          setStatus(link, 'running', 'Syncing…');
 
           fetch(link.href, { headers: { 'Accept': 'application/json' } })
             .then(function(resp) {
@@ -351,7 +451,7 @@
                 setStatus(link, 'error', '✕ ' + escapeHtml(text));
               } else {
                 setStatus(link, 'done', '✓ Complete — ' + escapeHtml(text) +
-                  ' <button type="button" class="sync-reload" onclick="location.reload()">Reload page</button>');
+                  ' <button type="button" class="link link-primary" onclick="location.reload()">Reload page</button>');
               }
             })
             .catch(function(err) {
@@ -367,29 +467,31 @@
 
     (function() {
       var burger = document.getElementById('nav-burger');
-      var nav = burger && burger.closest('.nav');
-      if (burger) {
-        burger.addEventListener('click', function(e) {
-          e.stopPropagation();
-          var open = nav.classList.toggle('nav-open');
-          burger.textContent = open ? '✕' : '☰';
-          burger.setAttribute('aria-expanded', open);
-        });
-        document.addEventListener('click', function(e) {
-          if (nav.classList.contains('nav-open') && !e.target.closest('.nav')) {
-            nav.classList.remove('nav-open');
-            burger.textContent = '☰';
-            burger.setAttribute('aria-expanded', 'false');
-          }
-        });
-        document.querySelectorAll('.nav-dropdown-item').forEach(function(link) {
-          link.addEventListener('click', function() {
-            nav.classList.remove('nav-open');
-            burger.textContent = '☰';
-            burger.setAttribute('aria-expanded', 'false');
-          });
-        });
+      var nav = burger && burger.closest('nav');
+      if (!burger) return;
+      function setOpen(open) {
+        nav.classList.toggle('nav-open', open);
+        burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        burger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
       }
+      burger.addEventListener('click', function(e) {
+        e.stopPropagation();
+        setOpen(!nav.classList.contains('nav-open'));
+      });
+      document.addEventListener('click', function(e) {
+        if (nav.classList.contains('nav-open') && !e.target.closest('nav')) setOpen(false);
+      });
+      document.querySelectorAll('#nav-mobile a').forEach(function(link) {
+        link.addEventListener('click', function() { setOpen(false); });
+      });
+      // The nav_* blocks can render only once (desktop), so mirror the current
+      // section into the mobile menu: highlight it and expand its group.
+      document.querySelectorAll('#nav-pills [data-nav-group].active').forEach(function(el) {
+        var m = document.querySelector('#nav-mobile [data-nav-group="' + el.dataset.navGroup + '"]');
+        if (!m) return;
+        m.classList.add('active');
+        if (m.tagName === 'DETAILS') m.open = true;
+      });
     })();
 
     (function() {
@@ -397,16 +499,43 @@
       function applyTheme(t) {
         document.documentElement.setAttribute('data-theme', t);
         localStorage.setItem('theme', t);
-        btn.textContent = t === 'dark' ? '☀' : '☾';
         btn.title = t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
         if (typeof window._applyChartTheme === 'function') window._applyChartTheme();
         document.dispatchEvent(new CustomEvent('cadence:themechange'));
       }
       applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+      // Crossfade the switch (charts update inside the callback, so they fade too).
+      function switchTheme(next) {
+        var apply = function () { applyTheme(next); };
+        var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (document.startViewTransition && !reduce) document.startViewTransition(apply);
+        else apply();
+      }
       btn.addEventListener('click', function() {
         var current = document.documentElement.getAttribute('data-theme') || 'dark';
-        applyTheme(current === 'dark' ? 'light' : 'dark');
+        switchTheme(current === 'dark' ? 'light' : 'dark');
       });
+    })();
+
+    // Card → page header morph (cross-document View Transitions). Only one element per
+    // page may be named fp-hero: the clicked link (or its [data-vt-card] wrapper) takes
+    // the name from the page's own header ([data-vt-target]) just before navigating.
+    (function() {
+      function resetHero() {
+        document.querySelectorAll('[data-vt-hero], [data-vt-card]').forEach(function (el) { el.style.viewTransitionName = ''; });
+        document.querySelectorAll('[data-vt-target]').forEach(function (el) { el.style.viewTransitionName = 'fp-hero'; });
+      }
+      document.addEventListener('click', function (e) {
+        var a = e.target.closest && e.target.closest('a[data-vt-hero]');
+        if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.target === '_blank') return;
+        document.querySelectorAll('[data-vt-target]').forEach(function (el) { el.style.viewTransitionName = 'none'; });
+        (a.closest('[data-vt-card]') || a).style.viewTransitionName = 'fp-hero';
+      });
+      // Coming back (Back button / bfcache): let the morph back play, then reset.
+      window.addEventListener('pagereveal', function (e) {
+        if (e.viewTransition) e.viewTransition.finished.finally(resetHero); else resetHero();
+      });
+      window.addEventListener('pageshow', function (e) { if (e.persisted && !('onpagereveal' in window)) resetHero(); });
     })();
 
     (function() {

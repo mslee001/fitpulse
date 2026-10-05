@@ -3,68 +3,68 @@
 {% block title %}{{ workout.title }} — FitPulse{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <a href="{% url 'history' %}" class="back-link">← History</a>
-  <div class="page-header-row">
-    <div>
-      <div class="discipline-tag">{% block discipline_tag %}{{ workout.fitness_discipline_display|default:"Workout" }}{% endblock %}</div>
-      <h1 class="page-title">{% block page_title %}{{ workout.title|default:"Workout" }}{% endblock %}</h1>
-      <p class="page-sub">
+{% with dcolor=workout.discipline|discipline_color %}
+<div class="mb-6 flex flex-col gap-4">
+  <a href="{% url 'history' %}" class="text-sm">← History</a>
+  <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between" data-vt-target style="view-transition-name: fp-hero">
+    <div class="min-w-0">
+      <span class="badge border-0 font-medium" style="color: {{ dcolor }}; background: color-mix(in oklab, {{ dcolor }} 15%, transparent)">{% block discipline_tag %}{{ workout.fitness_discipline_display|default:"Workout" }}{% endblock %}</span>
+      <h1 class="ui-page-title mt-2">{% block page_title %}{{ workout.title|default:"Workout" }}{% endblock %}</h1>
+      <p class="ui-page-sub mt-1">
         {{ workout.created_at|date:"l, F j, Y · g:i A" }}
         {% if workout.instructor_name %} · {{ workout.instructor_name }}{% endif %}
         {% if workout.duration_minutes %} · {{ workout.duration_minutes }} min{% endif %}
       </p>
     </div>
     {% if workout.class_image_url %}
-    <div class="detail-hero-img" style="background-image:url('{{ workout.class_image_url }}')"></div>
+    <img src="{{ workout.class_image_url }}" alt="" class="aspect-[21/9] w-full rounded-box object-cover md:w-80">
     {% elif workout.source == "garmin" and workout.discipline %}
-    <div class="detail-hero-img garmin-default-img garmin-default-img--{{ workout.discipline }}">{{ workout.discipline|garmin_emoji }}</div>
+    <div class="garmin-default-img garmin-default-img--{{ workout.discipline }} flex aspect-[21/9] w-full items-center justify-center rounded-box text-6xl md:w-80" aria-hidden="true">{{ workout.discipline|garmin_emoji }}</div>
     {% endif %}
   </div>
 </div>
+{% endwith %}
 
-<div class="detail-layout">
-  <div class="detail-main">
+<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+  <div class="flex min-w-0 flex-col gap-5">
 
-    <!-- PR banner -->
     {% if workout_detail.is_pr %}
-    <div class="pr-banner">
-      <div class="pr-banner-icon">🏆</div>
+    <div role="status" class="alert alert-soft alert-success">
+      <svg class="size-6 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
       <div>
-        <div class="pr-banner-text">Personal Record</div>
+        <div class="font-semibold">Personal record</div>
         {% block pr_sub %}{% endblock %}
       </div>
     </div>
     {% endif %}
 
-    <!-- Class info (description + difficulty + your effort) -->
     {% with di=workout_detail.difficulty_info %}
     {% if workout_detail.class_description or di or workout_detail.effort_per_min %}
-    <div class="class-info-card">
+    <div class="ui-panel flex flex-col gap-3">
       {% if workout_detail.class_description %}
-      <div class="class-description">{{ workout_detail.class_description }}</div>
+      <p class="text-sm leading-relaxed">{{ workout_detail.class_description }}</p>
       {% endif %}
       {% if di %}
-      <div class="class-difficulty">
-        <span class="difficulty-label">Difficulty</span>
-        <div class="difficulty-pips">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <span class="text-muted">Difficulty</span>
+        <span class="flex gap-0.5" aria-hidden="true">
           {% for filled in di.difficulty|difficulty_pips %}
-          <div class="difficulty-pip{% if filled %} difficulty-pip--filled{% endif %}"></div>
+          <span class="h-2 w-3 rounded-sm {% if filled %}bg-primary{% else %}bg-base-300{% endif %}"></span>
           {% endfor %}
-        </div>
-        <span class="difficulty-num">{{ di.difficulty|floatformat:1 }} / 10</span>
-        {% if di.phrase %}<span class="difficulty-context">{{ di.phrase }}</span>{% endif %}
+        </span>
+        <span class="font-mono font-medium">{{ di.difficulty|floatformat:1 }} / 10</span>
+        {% if di.phrase %}<span class="text-muted">{{ di.phrase }}</span>{% endif %}
       </div>
       {% endif %}
       {% if workout_detail.effort_per_min %}
-      <div class="class-difficulty">
-        <span class="difficulty-label">Your effort</span>
-        <span class="difficulty-num">{{ workout_detail.effort_per_min }} pts/min</span>
-        <span class="difficulty-context">{{ workout_detail.effort_points|floatformat:0 }} effort points over {{ workout.duration_seconds|format_duration }}</span>
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <span class="text-muted">Your effort</span>
+        <span class="font-mono font-medium">{{ workout_detail.effort_per_min }} pts/min</span>
+        <span class="text-muted">{{ workout_detail.effort_points|floatformat:0 }} effort points over {{ workout.duration_seconds|format_duration }}</span>
       </div>
       {% endif %}
       {% if di %}
-      <p class="difficulty-note">Peloton members rate each class against their own fitness, so the score only compares classes of the same type and length. Your effort comes from your heart rate during this session.</p>
+      <p class="text-xs text-muted">Peloton members rate each class against their own fitness, so the score only compares classes of the same type and length. Your effort comes from your heart rate during this session.</p>
       {% endif %}
     </div>
     {% endif %}
@@ -74,65 +74,66 @@
 
   </div>
 
-  <aside class="detail-sidebar">
+  <aside class="flex flex-col gap-5">
     {% if workout_detail.leaderboard_rank and workout_detail.total_leaderboard_users %}
-    <div class="sidebar-title">LEADERBOARD</div>
-    <div class="leaderboard-card">
-      <div>
-        <div class="leaderboard-rank-num">#{{ workout_detail.leaderboard_rank }}</div>
-        <div class="leaderboard-rank-of">of {{ workout_detail.total_leaderboard_users }}</div>
+    <div class="ui-panel">
+      <h2 class="ui-panel-title mb-3">Leaderboard</h2>
+      <div class="flex items-baseline gap-2">
+        <span class="font-mono text-3xl font-medium">#{{ workout_detail.leaderboard_rank }}</span>
+        <span class="text-sm text-muted">of {{ workout_detail.total_leaderboard_users }}</span>
       </div>
-      <div class="leaderboard-pct-bar">
-        <div class="leaderboard-pct-fill" style="width:{{ workout.leaderboard_pct|floatformat:0 }}%"></div>
-      </div>
-      <div class="leaderboard-pct-label">beat {{ workout.leaderboard_pct|floatformat:0 }}%</div>
+      <div class="ui-bar mt-3"><span style="width: {{ workout.leaderboard_pct|floatformat:0 }}%"></span></div>
+      <div class="mt-1 text-sm text-muted">Beat {{ workout.leaderboard_pct|floatformat:0 }}%</div>
+      {% if workout_detail.strava_id %}
+      <div class="mt-2 font-mono text-xs text-muted">Strava #{{ workout_detail.strava_id }}</div>
+      {% endif %}
     </div>
-    {% if workout_detail.strava_id %}
-    <div style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--text-dim);padding:0 0.1rem 1rem">Strava #{{ workout_detail.strava_id }}</div>
-    {% endif %}
     {% endif %}
 
     {% if class_history %}
-    <div class="sidebar-title">PREVIOUS ATTEMPTS</div>
-    <div class="sidebar-scroll-list">
-    {% for w in class_history %}
-    <div class="history-item">
-      <a href="{% url 'workout_detail' w.workout_id %}" class="history-item-content">
-        <div class="history-item-date">{{ w.created_at|date:"M j, Y" }}</div>
-        <div class="history-item-stats">
-          {% block history_item_stats %}{% endblock %}
-        </div>
+    <div class="ui-panel">
+      <h2 class="ui-panel-title mb-2">Previous attempts</h2>
+      <div class="max-h-96 overflow-y-auto">
+      {% for w in class_history %}
+      <div class="flex items-center gap-3 border-b border-subtle py-2 last:border-0">
+        <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="min-w-0 flex-1 text-base-content hover:no-underline">
+          <div class="text-sm font-medium">{{ w.created_at|date:"M j, Y" }}</div>
+          <div class="flex flex-wrap gap-x-3 font-mono text-xs text-muted">
+            {% block history_item_stats %}{% endblock %}
+          </div>
+        </a>
+        <input type="checkbox" class="compare-check checkbox checkbox-sm checkbox-primary border-base-content/50" value="{{ w.workout_id }}" aria-label="Compare with {{ w.created_at|date:'M j, Y' }}">
+      </div>
+      {% endfor %}
+      </div>
+      {% if workout.ride_id %}
+      <a href="{% url 'class_history' workout.ride_id %}" class="btn btn-sm btn-ghost mt-3 w-full">Full class history →</a>
+      {% elif garmin_activity_url %}
+      <a href="{{ garmin_activity_url }}" class="btn btn-sm btn-ghost mt-3 w-full">Full activity history →</a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if workout.external_url or workout.source == "peloton" and workout.garmin_activity_id %}
+    <div class="flex flex-col gap-2">
+      {% if workout.external_url %}
+      <a href="{{ workout.external_url }}" class="btn btn-sm btn-ghost w-full" target="_blank" rel="noopener">
+        View on {% if workout.source == "garmin" %}Garmin Connect{% else %}Peloton{% endif %} {% include "workouts/partials/icon_external.html" %}
       </a>
-      <input type="checkbox" class="compare-check" value="{{ w.workout_id }}" style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0">
+      {% endif %}
+      {% if workout.source == "peloton" and workout.garmin_activity_id %}
+      <a href="https://connect.garmin.com/modern/activity/{{ workout.garmin_activity_id }}" class="btn btn-sm btn-ghost w-full" target="_blank" rel="noopener">
+        View on Garmin Connect {% include "workouts/partials/icon_external.html" %}
+      </a>
+      {% endif %}
     </div>
-    {% endfor %}
-    </div>
-    {% if workout.ride_id %}
-    <a href="{% url 'class_history' workout.ride_id %}" class="btn btn-ghost btn-full" style="margin-top:1rem">
-      Full class history →
-    </a>
-    {% elif garmin_activity_url %}
-    <a href="{{ garmin_activity_url }}" class="btn btn-ghost btn-full" style="margin-top:1rem">
-      Full activity history →
-    </a>
-    {% endif %}
-    {% endif %}
-    {% if workout.external_url %}
-    <a href="{{ workout.external_url }}" class="btn btn-ghost btn-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
-      View on {% if workout.source == "garmin" %}Garmin Connect{% else %}Peloton{% endif %} ↗
-    </a>
-    {% endif %}
-    {% if workout.source == "peloton" and workout.garmin_activity_id %}
-    <a href="https://connect.garmin.com/modern/activity/{{ workout.garmin_activity_id }}" class="btn btn-ghost btn-full" target="_blank" rel="noopener" style="margin-top:0.5rem">
-      View on Garmin Connect ↗
-    </a>
     {% endif %}
 
     {% block recent_section %}{% endblock %}
 
-    <div id="compareBar" class="compare-sidebar-bar" style="display:none">
-      <span id="compareBarCount" style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;color:var(--text-muted)">0 selected</span>
-      <a id="compareBarLink" href="#" class="btn btn-accent btn-sm btn-full" style="margin-top:0.5rem">Compare →</a>
+    <div id="compareBar" class="ui-panel !p-4 sticky bottom-4 flex flex-col gap-2" style="display:none">
+      <span id="compareBarCount" class="text-sm text-muted">0 selected</span>
+      <a id="compareBarLink" href="#" class="btn btn-primary btn-sm w-full">Compare →</a>
     </div>
   </aside>
 </div>

@@ -1,17 +1,21 @@
 {% extends "base.html" %}
+{% block title %}Sign in — FitPulse{% endblock %}
 {% block content %}
-<div class="login-wrap">
-  <h1>FitPulse</h1>
-  <form method="post" class="login-form">
+<div class="ui-panel mx-auto mt-16 w-full max-w-sm">
+  <div class="mb-1 text-2xl font-bold tracking-tight">FitPulse</div>
+  <h1 class="mb-5 text-sm text-muted">Sign in to your account</h1>
+  <form method="post" class="flex flex-col gap-3">
     {% csrf_token %}
     {% if form.errors %}
-      <div class="login-error">Invalid username or password.</div>
+      <div role="alert" class="alert alert-soft alert-error">Invalid username or password.</div>
     {% endif %}
-    <label for="id_username">Username</label>
-    <input type="text" name="username" id="id_username" autocomplete="username" autofocus required>
-    <label for="id_password">Password</label>
-    <input type="password" name="password" id="id_password" autocomplete="current-password" required>
-    <button type="submit">Sign in</button>
+    <label class="fieldset py-0" for="id_username"><span class="fieldset-legend">Username</span>
+      <input type="text" class="input w-full" name="username" id="id_username" autocomplete="username" autofocus required>
+    </label>
+    <label class="fieldset py-0" for="id_password"><span class="fieldset-legend">Password</span>
+      <input type="password" class="input w-full" name="password" id="id_password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="btn btn-primary mt-2 w-full">Sign in</button>
   </form>
 </div>
 {% endblock %}

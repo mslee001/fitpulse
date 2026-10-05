@@ -1,22 +1,24 @@
 {% if job %}
-<div class="gs-sync-status" id="gs-status-{{ source }}"
+<div class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" id="gs-status-{{ source }}" role="status"
      {% if job.status == "running" %}hx-get="{% url 'gs_sync_status' source %}" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
   {% if job.status == "running" %}
-    <span class="gs-spinner"></span> {% if source == "catalog" %}Syncing the class catalog…{% else %}Importing your history…{% endif %} <span class="muted">(started {{ job.started_at|timesince }} ago)</span>
+    <span class="flex items-center gap-2"><span class="loading loading-spinner loading-sm shrink-0 text-primary" aria-hidden="true"></span>{% if source == "catalog" %}Syncing the class catalog…{% else %}Importing your history…{% endif %}</span> <span class="text-muted">(started {{ job.started_at|timesince }} ago)</span>
   {% elif job.status == "done" %}
-    <span style="color:#81C784">{% if source == "catalog" %}Synced ✓{% else %}Imported ✓{% endif %}</span>
-    <span class="muted">
+    <span class="text-success">{% if source == "catalog" %}Synced ✓{% else %}Imported ✓{% endif %}</span>
+    <span class="text-muted">
       {% if source == "peloton" %}{{ job.summary.created|default:0 }} workouts
       {% elif source == "withings" %}{{ job.summary.fetched|default:0 }} weigh-ins
       {% elif source == "catalog" %}{{ job.summary.total_classes|default:0 }} classes
       {% else %}{{ job.summary.wellness.synced|default:0 }} days of wellness, {{ job.summary.exercise.created|default:0 }} workouts{% endif %}
     </span>
   {% else %}
-    <span style="color:var(--accent-red)">{% if source == "catalog" %}Catalog sync{% else %}Import{% endif %} failed: {{ job.error }}</span>
-    <form hx-post="{% url 'gs_retry' source %}" hx-target="#gs-status-{{ source }}" hx-swap="outerHTML" style="display:inline;margin-left:0.5rem">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-sm btn-ghost">Retry</button>
-    </form>
+    <div class="alert alert-soft alert-error w-full flex flex-wrap items-center justify-between gap-2 py-2">
+      <span>{% if source == "catalog" %}Catalog sync{% else %}Import{% endif %} failed: {{ job.error }}</span>
+      <form hx-post="{% url 'gs_retry' source %}" hx-target="#gs-status-{{ source }}" hx-swap="outerHTML">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-ghost">Retry</button>
+      </form>
+    </div>
   {% endif %}
 </div>
 {% endif %}

@@ -101,7 +101,7 @@ class OnboardingTests(TwoUserTestCase):
         self.assertIsNotNone(access_for(self.carol).onboarding_completed_at)
         self.assertEqual(self.client_c.get("/nutrition/").status_code, 200)
         page = self.client_c.get(reverse("get_started")).content.decode()
-        self.assertIn("SETUP COMPLETE", page)
+        self.assertIn("Setup complete", page)
         self.assertNotIn("Finish setup", page)
 
     def test_nutrition_profile_step_saves_only_its_fields(self):

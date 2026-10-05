@@ -4,27 +4,25 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <p class="stat-sub">{{ program.name }} &middot; {{ run.display_name }}</p>
-      <h1 class="page-title">Retrospective</h1>
-    </div>
-    <div class="page-header-actions">
-      <a class="btn btn-ghost btn-sm" href="?refresh=1">Regenerate</a>
-      <a class="btn btn-ghost btn-sm" href="{% url 'program_run' run.pk %}">&larr; Grid</a>
-    </div>
+<div class="ui-page-header">
+  <div>
+    <div class="text-sm text-muted">{{ program.name }} · {{ run.display_name }}</div>
+    <h1 class="ui-page-title mt-1">Retrospective</h1>
+  </div>
+  <div class="ui-page-actions">
+    <a class="btn btn-sm" href="?refresh=1">Regenerate</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'program_run' run.pk %}">&larr; Grid</a>
   </div>
 </div>
 
 {% if text %}
-<div class="chart-card">
+<div class="ui-panel">
   {{ text|format_nutrition_insights }}
 </div>
 {% if run.retrospective_generated_at %}
-<p class="stat-sub" style="margin-top:0.75rem">Generated {{ run.retrospective_generated_at|date:"M j, Y g:i A" }}</p>
+<p class="mt-3 text-sm text-muted">Generated {{ run.retrospective_generated_at|date:"M j, Y g:i A" }}</p>
 {% endif %}
 {% else %}
-<p class="stat-sub">Couldn't generate a retrospective right now &mdash; try Regenerate.</p>
+<div class="ui-empty">Couldn't generate a retrospective right now &mdash; try Regenerate.</div>
 {% endif %}
 {% endblock %}

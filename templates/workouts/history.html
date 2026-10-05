@@ -8,50 +8,53 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">WORKOUT HISTORY</h1>
-  <p class="page-sub">{{ total }} workouts — filter, sort, and select to compare</p>
+<div class="ui-page-header">
+  <div>
+    <h1 class="ui-page-title">Workout history</h1>
+    <p class="ui-page-sub">{{ total }} workouts — filter, sort, and select to compare</p>
+  </div>
 </div>
 
-<div class="discipline-pills">
-  <button class="discipline-pill{% if not filters.discipline %} active{% endif %}"
+<div class="mb-5 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
+  <button type="button" class="discipline-pill btn btn-sm rounded-full max-sm:h-11 shrink-0{% if not filters.discipline %} active btn-primary{% endif %}"
           data-slug="" onclick="setDiscipline('')">All</button>
   {% for slug, display, color in discipline_pills %}
-  <button class="discipline-pill{% if filters.discipline == slug %} active{% endif %}"
-          data-slug="{{ slug }}" style="--pill-color:{{ color }}"
-          onclick="setDiscipline('{{ slug }}')">{{ display }}</button>
+  <button type="button" class="discipline-pill btn btn-sm rounded-full max-sm:h-11 shrink-0{% if filters.discipline == slug %} active btn-primary{% endif %}"
+          data-slug="{{ slug }}"
+          onclick="setDiscipline('{{ slug }}')"><span class="size-2 rounded-full" style="background: {{ color }}" aria-hidden="true"></span>{{ display }}</button>
   {% endfor %}
 </div>
 
-<div class="history-layout">
+<div class="grid items-start gap-6 pb-20 lg:grid-cols-[260px_1fr]">
 
   <!-- Filter sidebar -->
-  <aside class="filter-panel" id="filter-panel">
-    <button type="button" class="filter-title filter-toggle" id="filter-toggle" aria-expanded="false">
-      FILTERS
-      <span class="filter-toggle-caret">▾</span>
+  <aside class="ui-panel !p-4 lg:sticky lg:top-20" id="filter-panel">
+    <button type="button" class="filter-toggle btn btn-sm w-full lg:hidden" id="filter-toggle" aria-expanded="false" aria-controls="filter-body">
+      Filters
+      <span class="filter-toggle-caret" aria-hidden="true">▾</span>
     </button>
-    <div class="filter-body" id="filter-body">
-    <form id="filter-form"
+    <h2 class="mb-3 hidden font-semibold lg:block">Filters</h2>
+    <div class="max-lg:mt-4" id="filter-body">
+    <form id="filter-form" class="flex flex-col gap-1"
           hx-get="{% url 'history' %}"
           hx-target="#workout-list"
           hx-push-url="true"
           hx-trigger="change, submit">
 
-      <div class="filter-group">
-        <label class="filter-label">Search</label>
-        <input type="search" name="q" class="filter-input" placeholder="Class name…"
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Search</legend>
+        <input type="search" name="q" class="input input-sm w-full" placeholder="Class name…" aria-label="Search class name"
                value="{{ filters.q }}"
                hx-get="{% url 'history' %}"
                hx-target="#workout-list"
                hx-push-url="true"
                hx-include="#filter-form"
                hx-trigger="input changed delay:400ms">
-      </div>
+      </fieldset>
 
-      <div class="filter-group">
-        <label class="filter-label">Discipline</label>
-        <select name="discipline" class="filter-select">
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Discipline</legend>
+        <select name="discipline" class="select select-sm w-full" aria-label="Discipline">
           <option value="">All</option>
           {% for slug, display in disciplines %}
           <option value="{{ slug }}" {% if filters.discipline == slug %}selected{% endif %}>
@@ -59,11 +62,11 @@
           </option>
           {% endfor %}
         </select>
-      </div>
+      </fieldset>
 
-      <div class="filter-group">
-        <label class="filter-label">Duration</label>
-        <select name="duration" class="filter-select">
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Duration</legend>
+        <select name="duration" class="select select-sm w-full" aria-label="Duration">
           <option value="">Any length</option>
           {% for d in durations %}
           <option value="{{ d }}" {% if filters.duration == d|stringformat:"s" %}selected{% endif %}>
@@ -71,77 +74,78 @@
           </option>
           {% endfor %}
         </select>
-      </div>
+      </fieldset>
 
-      <div class="filter-group">
-        <label class="filter-label">Instructor</label>
-        <select name="instructor" class="filter-select">
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Instructor</legend>
+        <select name="instructor" class="select select-sm w-full" aria-label="Instructor">
           <option value="">Any instructor</option>
           {% for name in instructors %}
           <option value="{{ name }}" {% if filters.instructor == name %}selected{% endif %}>{{ name }}</option>
           {% endfor %}
         </select>
-      </div>
+      </fieldset>
 
-      <div class="filter-group">
-        <label class="filter-label">Sort by</label>
-        <select name="sort" class="filter-select">
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Sort by</legend>
+        <select name="sort" class="select select-sm w-full" aria-label="Sort by">
           <option value="-created_at" {% if filters.sort == "-created_at" %}selected{% endif %}>Newest first</option>
           <option value="created_at" {% if filters.sort == "created_at" %}selected{% endif %}>Oldest first</option>
           <option value="-output_watts" {% if filters.sort == "-output_watts" %}selected{% endif %}>Highest output</option>
           <option value="-avg_cadence" {% if filters.sort == "-avg_cadence" %}selected{% endif %}>Highest cadence</option>
           <option value="-calories" {% if filters.sort == "-calories" %}selected{% endif %}>Most calories</option>
         </select>
-      </div>
+      </fieldset>
 
       {% if filters.date_from %}
-      <div class="filter-group">
-        <label class="filter-label">Date Range</label>
-        <div class="filter-date-badge">
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Date range</legend>
+        <span class="badge badge-ghost font-mono">
           {{ filters.date_from }}{% if filters.date_to %} – {{ filters.date_to }}{% endif %}
-        </div>
+        </span>
         <input type="hidden" name="date_from" value="{{ filters.date_from }}">
         {% if filters.date_to %}<input type="hidden" name="date_to" value="{{ filters.date_to }}">{% endif %}
-      </div>
+      </fieldset>
       {% endif %}
 
-      <button type="button" class="btn btn-ghost btn-full"
+      <button type="button" class="btn btn-ghost btn-sm mt-3 w-full"
               onclick="window.location='{% url 'history' %}'">
         Clear filters
       </button>
     </form>
-
-    <!-- Compare button — shown when checkboxes are selected -->
-    <div id="compare-bar" class="compare-bar" style="display:none">
-      <div class="compare-count"><span id="compare-count-num">0</span> selected</div>
-      <a id="compare-link" href="{% url 'compare' %}" class="btn btn-accent btn-full">
-        Compare →
-      </a>
-    </div>
-
-    <!-- Create Program button — shown once at least one workout is checked -->
-    <div id="create-program-bar" style="display:none;margin-top:0.5rem">
-      <a id="create-program-link" href="{% url 'program_new' %}" class="btn btn-ghost btn-full">
-        Create Program →
-      </a>
-    </div>
     </div>{# end filter-body #}
   </aside>
 
   <!-- Workout list -->
-  <div id="workout-list">
+  <div id="workout-list" class="min-w-0">
     {% include "workouts/partials/workout_list.html" %}
   </div>
 
 </div>
 
+<!-- Selection bar: shown once a workout is checked -->
+<div id="selection-bar" class="ui-glass fixed inset-x-0 bottom-0 z-30 border-t border-subtle py-3" hidden>
+  <div class="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 lg:px-8{% if can.ai_chat %} pr-20 lg:pr-24{% endif %}">
+    <div class="text-sm"><span id="compare-count-num" class="font-mono">0</span> selected</div>
+    <div class="flex items-center gap-2">
+      <div id="create-program-bar" style="display:none">
+        <a id="create-program-link" href="{% url 'program_new' %}" class="btn btn-sm btn-ghost">Create program</a>
+      </div>
+      <div id="compare-bar" style="display:none">
+        <a id="compare-link" href="{% url 'compare' %}" class="btn btn-sm btn-primary">Compare →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-  // Filter panel toggle (mobile)
+  // Filter panel toggle (below lg, where the toggle button shows)
   (function() {
     var toggle = document.getElementById('filter-toggle');
     var body   = document.getElementById('filter-body');
     if (!toggle) return;
-    function isMobile() { return window.innerWidth <= 768; }
+    var desktop = window.matchMedia('(min-width: 64rem)');
+    function isMobile() { return !desktop.matches; }
     function applyState(open) {
       body.style.display = (open || !isMobile()) ? '' : 'none';
       toggle.setAttribute('aria-expanded', open);
@@ -164,6 +168,7 @@
     document.querySelectorAll('.discipline-pill').forEach(btn => {
       const btnSlug = btn.dataset.slug;
       btn.classList.toggle('active', btnSlug === slug);
+      btn.classList.toggle('btn-primary', btnSlug === slug);
     });
     select.dispatchEvent(new Event('change', { bubbles: true }));
   }
@@ -174,6 +179,7 @@
   const compareLink = document.getElementById('compare-link');
   const createProgramBar = document.getElementById('create-program-bar');
   const createProgramLink = document.getElementById('create-program-link');
+  const selectionBar = document.getElementById('selection-bar');
   const selected = new Set();
 
   document.addEventListener('change', e => {
@@ -181,6 +187,7 @@
     const id = e.target.dataset.id;
     e.target.checked ? selected.add(id) : selected.delete(id);
     compareCountEl.textContent = selected.size;
+    selectionBar.hidden = selected.size === 0;
     compareBar.style.display = selected.size >= 2 ? 'block' : 'none';
     compareLink.href = `{% url 'compare' %}?ids=${[...selected].join(',')}`;
     createProgramBar.style.display = selected.size >= 1 ? 'block' : 'none';

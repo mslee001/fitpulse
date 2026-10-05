@@ -1,36 +1,36 @@
 {# One plan session on the review page. r = training_plan_views._slot_row_context(...) #}
-<div class="tp-row" id="tp-row-{{ r.key }}">
-  <div class="tp-row-spec">
-    <span class="tp-day">{{ r.day_name }}</span>
-    <span>{{ r.slot.class_type }} · {{ r.slot.duration_min }} min · <span class="tp-int tp-int--{{ r.slot.intensity }}">{{ r.slot.intensity }}</span>{% if r.slot.pace_zone %} · {{ r.slot.pace_zone }} zone{% endif %}{% if r.slot.setting == "outdoor" %} · outdoor{% endif %}{% if r.slot.optional %} · optional{% endif %}</span>
+<div class="grid gap-x-4 gap-y-2 border-b border-subtle py-3 last:border-0 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] md:items-start" id="tp-row-{{ r.key }}">
+  <div class="flex gap-2 text-sm">
+    <span class="w-9 shrink-0 font-semibold">{{ r.day_name }}</span>
+    <span class="text-muted">{{ r.slot.class_type }} · {{ r.slot.duration_min }} min · <span class="badge badge-xs badge-soft {% if r.slot.intensity == 'hard' %}badge-error{% elif r.slot.intensity == 'moderate' %}badge-warning{% else %}badge-success{% endif %}">{{ r.slot.intensity }}</span>{% if r.slot.pace_zone %} · {{ r.slot.pace_zone }} zone{% endif %}{% if r.slot.setting == "outdoor" %} · outdoor{% endif %}{% if r.slot.optional %} · optional{% endif %}</span>
   </div>
-  <div class="tp-row-class">
+  <div class="flex min-w-0 flex-col gap-0.5">
     {% if r.cls %}
-      <a href="{{ r.cls.peloton_url }}" target="_blank" rel="noopener" class="tp-class-title" title="Open on Peloton to add it to your Stack">{{ r.cls.title }}</a>
-      <span class="stat-sub">
+      <a href="{{ r.cls.peloton_url }}" target="_blank" rel="noopener" class="font-medium" title="Open on Peloton to add it to your Stack">{{ r.cls.title }}</a>
+      <span class="text-sm text-muted">
         {{ r.cls.instructor_name|default:"" }}
-        {% if r.rank %} · difficulty {{ r.rank.difficulty|floatformat:1 }}{% if r.rank.phrase %} ({{ r.rank.phrase }}){% endif %}{% endif %}
-        {% if r.cls.overall_rating_avg is not None %} · {% widthratio r.cls.overall_rating_avg 1 100 %}% rating{% endif %}
-        · aired {{ r.cls.original_air_time|date:"M j, Y" }}
+        {% if r.rank %} · difficulty <span class="font-mono">{{ r.rank.difficulty|floatformat:1 }}</span>{% if r.rank.phrase %} ({{ r.rank.phrase }}){% endif %}{% endif %}
+        {% if r.cls.overall_rating_avg is not None %} · <span class="font-mono">{% widthratio r.cls.overall_rating_avg 1 100 %}%</span> rating{% endif %}
+        · aired <span class="font-mono">{{ r.cls.original_air_time|date:"M j, Y" }}</span>
       </span>
-      {% if r.pick.repeat %}<span class="badge badge-muted">Taken before · {{ r.last_taken|date:"M Y" }}</span>{% endif %}
+      {% if r.pick.repeat %}<span><span class="badge badge-sm badge-warning badge-soft">Taken before · {{ r.last_taken|date:"M Y" }}</span></span>{% endif %}
     {% else %}
-      <span class="stat-sub">No matching class in the catalog — will be created unpinned.</span>
+      <span class="text-sm text-muted">No matching class in the catalog — will be created unpinned.</span>
     {% endif %}
-    {% if r.slot.purpose %}<span class="stat-sub tp-purpose">{{ r.slot.purpose }}</span>{% endif %}
+    {% if r.slot.purpose %}<span class="text-sm text-muted">{{ r.slot.purpose }}</span>{% endif %}
   </div>
   {% if r.cls or r.alternates %}
-  <div class="tp-row-actions">
-    <form hx-post="{% url 'program_training_plan_swap' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML">
+  <div class="flex flex-wrap items-start gap-1 md:justify-end">
+    <form hx-post="{% url 'program_training_plan_swap' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML transition:true">
       {% csrf_token %}<input type="hidden" name="key" value="{{ r.key }}">
-      <button type="submit" class="btn btn-sm btn-ghost">Swap</button>
+      <button type="submit" class="btn btn-xs">Swap</button>
     </form>
     {% if r.alternates %}
-    <details class="tp-choose">
-      <summary class="btn btn-sm btn-ghost">Choose…</summary>
-      <form hx-post="{% url 'program_training_plan_pick' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML">
+    <details class="dropdown dropdown-end">
+      <summary class="btn btn-xs btn-ghost list-none [&::-webkit-details-marker]:hidden">Choose…</summary>
+      <form class="dropdown-content z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-box border border-subtle ui-glass p-2 shadow-lg" hx-post="{% url 'program_training_plan_pick' draft.pk %}" hx-target="#tp-row-{{ r.key }}" hx-swap="outerHTML transition:true">
         {% csrf_token %}<input type="hidden" name="key" value="{{ r.key }}">
-        <select name="ride_id" class="form-select" onchange="this.form.requestSubmit()">
+        <select name="ride_id" class="select select-sm w-full" aria-label="Choose a class" onchange="this.form.requestSubmit()">
           <option value="">Pick a class…</option>
           {% for a in r.alternates %}<option value="{{ a.ride_id }}">{{ a.title }} · {{ a.instructor_name }}{% if a.difficulty_estimate is not None %} · {{ a.difficulty_estimate|floatformat:1 }}{% endif %}</option>{% endfor %}
         </select>

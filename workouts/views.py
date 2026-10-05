@@ -284,6 +284,39 @@ def _get_perf_dict(workout, client):
     return {}
 
 
+def _share_rows(pairs):
+    """[(label, value, color)] → [{label, value, pct, color}] with pct = share of the
+    total, for ui-bar rows (day view / calendar). [] when every value is empty."""
+    total = sum(v for _, v, _ in pairs if v)
+    if not total:
+        return []
+    return [{"label": label, "value": v, "pct": round((v or 0) / total * 100), "color": color}
+            for label, v, color in pairs]
+
+
+def _day_hr_zone_rows(stats):
+    """A day's Google Health time-in-zone minutes, same colors as _google_health_hr_zones."""
+    if not stats:
+        return []
+    return _share_rows([
+        ("Light", stats.hr_zone_light_minutes, "#81C784"),
+        ("Moderate", stats.hr_zone_moderate_minutes, "#FFD54F"),
+        ("Vigorous", stats.hr_zone_vigorous_minutes, "#FF8A65"),
+        ("Peak", stats.hr_zone_peak_minutes, "#E57373"),
+    ])
+
+
+def _load_focus_rows(stats):
+    """Garmin training-load focus split; bars use the default (primary) fill."""
+    if not stats:
+        return []
+    return _share_rows([
+        ("Anaerobic", stats.load_focus_anaerobic, None),
+        ("High aerobic", stats.load_focus_high_aerobic, None),
+        ("Low aerobic", stats.load_focus_low_aerobic, None),
+    ])
+
+
 def _google_health_hr_zones(workout):
     """Google Health's own 4-zone HR-time breakdown (metricsSummary.
     heartRateZoneDurations, see CachedWorkout.hr_zone_*_seconds) — a coarser,
@@ -1749,6 +1782,7 @@ def calendar_view(request, year=None, month=None):
         "today_stats": today_stats,
         "discipline_colors": DISCIPLINE_COLORS,
         "legend_colors": legend_colors,
+        "load_focus_rows": _load_focus_rows(today_stats),
     })
 
 
@@ -1822,6 +1856,8 @@ def day_view(request, date_str):
         "nutrition_entries": nutrition_entries,
         "nutrition_targets": nutrition_targets,
         "nutrition_totals": nutrition_totals,
+        "hr_zone_rows": _day_hr_zone_rows(stats),
+        "load_focus_rows": _load_focus_rows(stats),
     })
 
 
@@ -3390,6 +3426,7 @@ def today_page(request):
         "active_interventions": active_interventions,
         "next_workout_text": next_workout_text,
         "day_analysis_text": day_analysis_text,
+        "discipline_colors": DISCIPLINE_COLORS,
     })
 
 

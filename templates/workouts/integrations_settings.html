@@ -2,139 +2,110 @@
 {% block title %}Integrations — FitPulse{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">INTEGRATIONS</h1>
-  <p class="page-sub">Enable or disable each data source — disabled integrations disappear from the Sync menu and their sync functions no-op</p>
-  <p class="page-sub"><a href="{% url 'get_started' %}">Setup guide →</a></p>
+<div class="ui-page-header">
+  <div>
+    <h1 class="ui-page-title">Integrations</h1>
+    <p class="ui-page-sub">Enable or disable each data source — disabled integrations disappear from the Sync menu and their sync functions no-op</p>
+  </div>
+  <div class="ui-page-actions"><a href="{% url 'get_started' %}" class="btn btn-sm btn-ghost">Setup guide →</a></div>
 </div>
 
-{% if messages %}
-<div style="margin-bottom:1rem">
-  {% for message in messages %}
-  <div class="peloton-msg peloton-msg--{{ message.tags }}">{{ message }}</div>
-  {% endfor %}
-</div>
-{% endif %}
+{% include "workouts/partials/messages.html" %}
 
-<div class="integrations-row">
-  <div class="chart-card">
-    <div class="chart-header">
-      <h3 class="chart-title">DATA SOURCES</h3>
-    </div>
+<div class="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
+  <section class="ui-panel" aria-labelledby="sources-title">
+    <div class="ui-panel-header"><h2 class="ui-panel-title" id="sources-title">Data sources</h2></div>
 
     {% for integration in integrations %}
     {% include "workouts/partials/integration_row.html" %}
     {% endfor %}
 
-    <p style="font-size:0.75rem;color:var(--text-dim);margin:1rem 0 0">
+    <p class="mt-4 text-xs text-muted">
       Disabling an integration only controls whether it appears in the UI and whether its sync functions run — it does not revoke tokens or stop external scheduled jobs (e.g. Garmin's local sync).
     </p>
-    <p style="font-size:0.75rem;color:var(--text-dim);margin:0.5rem 0 0">
+    <p class="mt-2 text-xs text-muted">
       "Sync All" runs a full historical backfill and can be slow — the Sync menu in the nav only offers "Sync New" for regular use.
     </p>
-  </div>
+  </section>
 
-  {# Right column stacks two cards so the row stays two-wide instead of wrapping to three #}
-  <div style="display:flex;flex-direction:column;gap:1.25rem;min-width:0">
-    <div class="chart-card">
-      <div class="chart-header">
-        <h3 class="chart-title">PELOTON CONNECTION</h3>
-      </div>
-      <p style="font-family:'Barlow',sans-serif;font-size:0.85rem;color:var(--text-muted);margin:0 0 1.25rem">
+  <div class="flex min-w-0 flex-col gap-5">
+    <section class="ui-panel" aria-labelledby="peloton-title">
+      <div class="ui-panel-header"><h2 class="ui-panel-title" id="peloton-title">Peloton connection</h2></div>
+      <p class="mb-4 text-sm text-muted">
         Required for Peloton sync. FitPulse renews its Peloton sign-in automatically; reconnect here only if it says so.
       </p>
 
       {% if peloton_auth %}
-      <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:1.25rem;font-size:0.82rem">
+      <dl class="ui-kv mb-4">
         {% if peloton_auth.peloton_username %}
-        <div style="display:flex;gap:1rem">
-          <span style="color:var(--text-dim);min-width:120px">Account</span>
-          <span>@{{ peloton_auth.peloton_username }}</span>
-        </div>
+        <div><dt>Account</dt><dd class="font-sans">@{{ peloton_auth.peloton_username }}</dd></div>
         {% endif %}
-        <div style="display:flex;gap:1rem">
-          <span style="color:var(--text-dim);min-width:120px">Status</span>
-          {% if peloton_auth.needs_reconnect %}
-          <span style="color:var(--accent-red)">Reconnect needed{% if peloton_auth.auth_error %} — {{ peloton_auth.auth_error }}{% endif %}</span>
-          {% else %}
-          <span>Connected</span>
-          {% endif %}
+        <div><dt>Status</dt>
+          <dd class="font-sans">{% if peloton_auth.needs_reconnect %}<span class="font-medium text-error">Reconnect needed</span>{% else %}<span class="text-success">Connected</span>{% endif %}</dd>
         </div>
         {% if peloton_auth.has_tokens and peloton_auth.access_expires_at %}
-        <div style="display:flex;gap:1rem">
-          <span style="color:var(--text-dim);min-width:120px">Access token renews</span>
-          <span style="color:var(--text-muted)">{% if peloton_auth.access_expires_at > now %}in {{ peloton_auth.access_expires_at|timeuntil }}{% else %}on next sync{% endif %}</span>
-        </div>
+        <div><dt>Access token renews</dt><dd class="text-muted">{% if peloton_auth.access_expires_at > now %}in {{ peloton_auth.access_expires_at|timeuntil }}{% else %}on next sync{% endif %}</dd></div>
         {% endif %}
         {% if peloton_auth.refresh_rotated_at %}
-        <div style="display:flex;gap:1rem">
-          <span style="color:var(--text-dim);min-width:120px">Last renewed</span>
-          <span style="color:var(--text-muted)">{{ peloton_auth.refresh_rotated_at|date:"M j, Y g:i A" }}</span>
-        </div>
+        <div><dt>Last renewed</dt><dd class="text-muted">{{ peloton_auth.refresh_rotated_at|date:"M j, Y g:i A" }}</dd></div>
         {% endif %}
         {% if peloton_auth.connected_at %}
-        <div style="display:flex;gap:1rem">
-          <span style="color:var(--text-dim);min-width:120px">Connected since</span>
-          <span style="color:var(--text-muted)">{{ peloton_auth.connected_at|date:"M j, Y" }}</span>
-        </div>
+        <div><dt>Connected since</dt><dd class="text-muted">{{ peloton_auth.connected_at|date:"M j, Y" }}</dd></div>
         {% endif %}
-      </div>
+      </dl>
+      {% if peloton_auth.needs_reconnect and peloton_auth.auth_error %}
+      <div role="alert" class="alert alert-soft alert-error mb-4 text-sm">{{ peloton_auth.auth_error }}</div>
+      {% endif %}
       {% else %}
-      <p style="font-size:0.82rem;color:var(--text-dim);margin-bottom:1.25rem">Not connected yet.</p>
+      <p class="mb-4 text-sm text-muted">Not connected yet.</p>
       {% endif %}
 
-      <details style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden"{% if peloton_auth.needs_reconnect or not peloton_auth %} open{% endif %}>
-        <summary style="padding:0.55rem 0.85rem;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.08em;color:var(--text-muted);text-transform:uppercase;list-style:none;background:var(--bg-raised)">
-          {% if peloton_auth %}Reconnect{% else %}Connect{% endif %} ▾
-        </summary>
-        <div style="padding:1rem">
+      <details class="collapse collapse-arrow border border-subtle bg-base-100"{% if peloton_auth.needs_reconnect or not peloton_auth %} open{% endif %}>
+        <summary class="collapse-title min-h-11 text-sm font-semibold">{% if peloton_auth %}Reconnect{% else %}Connect{% endif %}</summary>
+        <div class="collapse-content">
           {% include "workouts/partials/peloton_token_help.html" %}
-          <form method="post" action="{% url 'set_peloton_auth' %}" style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.75rem">
+          <form method="post" action="{% url 'set_peloton_auth' %}" class="mt-4 flex flex-col gap-3">
             {% csrf_token %}
-            <div class="form-group">
-              <label class="form-label">Peloton sign-in token</label>
-              <input type="password" name="refresh_token" class="form-input" autocomplete="off" placeholder="Paste the copied token" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Notes (optional)</label>
-              <input type="text" name="notes" class="form-input" placeholder="e.g. copied from Chrome 2026-10-03">
-            </div>
-            <button type="submit" class="btn btn-accent" style="align-self:flex-start">Connect</button>
+            <label class="fieldset py-0"><span class="fieldset-legend">Peloton sign-in token</span>
+              <input type="password" name="refresh_token" class="input w-full font-mono" autocomplete="off" placeholder="Paste the copied token" required>
+            </label>
+            <label class="fieldset py-0"><span class="fieldset-legend">Notes (optional)</span>
+              <input type="text" name="notes" class="input w-full" placeholder="e.g. copied from Chrome 2026-10-03">
+            </label>
+            <div><button type="submit" class="btn btn-primary max-sm:w-full">Connect</button></div>
           </form>
         </div>
       </details>
 
       {% if catalog %}
-      <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--border);font-size:0.82rem">
-        <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-          <span style="color:var(--text-dim);min-width:120px">Class catalog</span>
-          <span style="color:var(--text-muted)">{% if catalog.total %}{{ catalog.total }} classes{% if catalog.last_synced %} · last synced {{ catalog.last_synced|date:"M j" }}{% endif %}{% else %}empty{% endif %}</span>
-          <form hx-post="{% url 'catalog_sync_start' %}" hx-target="#catalog-status" hx-swap="innerHTML" style="margin-left:auto">
+      <div class="mt-5 border-t border-subtle pt-4 text-sm">
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="font-medium">Class catalog</span>
+          <span class="text-muted">{% if catalog.total %}<span class="font-mono">{{ catalog.total }}</span> classes{% if catalog.last_synced %} · last synced {{ catalog.last_synced|date:"M j" }}{% endif %}{% else %}empty{% endif %}</span>
+          <form hx-post="{% url 'catalog_sync_start' %}" hx-target="#catalog-status" hx-swap="innerHTML" class="ml-auto">
             {% csrf_token %}
-            <button type="submit" class="btn btn-sm btn-ghost">Refresh catalog</button>
+            <button type="submit" class="btn btn-sm btn-outline">Refresh catalog</button>
           </form>
         </div>
         <div id="catalog-status">{% include "workouts/partials/gs_sync_status.html" with job=catalog_job source="catalog" %}</div>
       </div>
       {% endif %}
-    </div>
+    </section>
 
-    <div class="chart-card">
-      <div class="chart-header">
-        <h3 class="chart-title">WEBHOOK ERRORS</h3>
-        {% if webhook_error_count %}
-        <span class="badge" style="background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);">{{ webhook_error_count }}</span>
-        {% endif %}
+    <section class="ui-panel" aria-labelledby="errors-title">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title" id="errors-title">Webhook errors</h2>
+        {% if webhook_error_count %}<span class="badge badge-soft badge-error">{{ webhook_error_count }} error{{ webhook_error_count|pluralize }}</span>{% endif %}
       </div>
-      <p style="font-size:0.85rem;color:var(--text-muted);margin:0.75rem 0 1rem;">
+      <p class="mb-4 text-sm text-muted">
         {% if webhook_error_count %}
           {{ webhook_error_count }} failed background sync{{ webhook_error_count|pluralize }} from incoming webhooks in the last {{ webhook_retention_days }} days.
         {% else %}
           No webhook processing failures in the last {{ webhook_retention_days }} days.
         {% endif %}
       </p>
-      <a href="{% url 'webhook_errors' %}" class="btn btn-sm btn-ghost">View errors</a>
-    </div>
+      <a href="{% url 'webhook_errors' %}" class="btn btn-sm btn-outline">View errors</a>
+    </section>
   </div>
 </div>
 {% endblock %}
