@@ -3350,11 +3350,57 @@ def target_accept_api(request):
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
 
+# Today's wellness tiles: field per tile, for the 7-day mini bars.
+WELLNESS_SPARK_FIELDS = {
+    "hrv": "hrv_last_night", "sleep": "sleep_score", "body_battery": "body_battery_start",
+    "resting_hr": "resting_hr", "stress": "stress_avg", "steps": "steps",
+}
+
+
+def _wellness_spark(user, end_date):
+    """{tile: [7 × {"pct", "is_today"}]} for the 7 days ending on end_date, oldest first.
+
+    Each metric is scaled min→max within those 7 days onto 20–100% (so the lowest real
+    day stays visible next to a missing one, which is None and renders as a stub); a
+    flat week is 60% throughout. "note" is a screen-reader sentence when today is the
+    week's high or low.
+    """
+    dates = [end_date - datetime.timedelta(days=i) for i in range(6, -1, -1)]
+    rows = {
+        r["date"]: r
+        for r in DailyStats.objects.for_user(user)
+        .filter(date__gte=dates[0], date__lte=end_date)
+        .values("date", *WELLNESS_SPARK_FIELDS.values())
+    }
+    spark = {}
+    for key, field in WELLNESS_SPARK_FIELDS.items():
+        vals = [(rows.get(d) or {}).get(field) for d in dates]
+        present = [v for v in vals if v is not None]
+        lo, hi = (min(present), max(present)) if present else (0, 0)
+        bars = []
+        for d, v in zip(dates, vals):
+            if v is None:
+                pct = None
+            elif hi == lo:
+                pct = 60
+            else:
+                pct = round(20 + 80 * (v - lo) / (hi - lo))
+            bars.append({"pct": pct, "is_today": d == end_date})
+        today_v = vals[-1]
+        note = ""
+        if today_v is not None and len(present) > 1 and hi != lo:
+            note = ("Highest of the last 7 days" if today_v == hi
+                    else "Lowest of the last 7 days" if today_v == lo else "")
+        spark[key] = {"bars": bars, "note": note}
+    return spark
+
+
 def today_page(request):
     """Today page — single-glance morning check-in."""
     from django.db.models import Sum
     from .nutrition import compute_macro_targets
     from .ai import _get_or_generate_day_analysis
+    from .week_summary import week_summary
 
     today_date = datetime.date.today()
     yesterday = today_date - datetime.timedelta(days=1)
@@ -3400,6 +3446,18 @@ def today_page(request):
             t = v["target"]
             v["pct"] = min(round((v["now"] / t) * 100), 100) if t else 0
 
+    # Today's entries in the Nutrition panel: 4 shown, the 5th only decides "+N more"
+    todays_food = list(
+        FoodEntry.objects.for_user(request.user).filter(date=today_date).order_by("-logged_at")[:5]
+    )
+    todays_food_count = (
+        len(todays_food) if len(todays_food) < 5
+        else FoodEntry.objects.for_user(request.user).filter(date=today_date).count()
+    )
+    cal_left = None
+    if nutrition_progress and nutrition_progress["cal"]["target"]:
+        cal_left = round(nutrition_progress["cal"]["target"] - nutrition_progress["cal"]["now"])
+
     # Active interventions
     active_interventions = [i for i in Intervention.objects.for_user(request.user).all() if i.is_active]
 
@@ -3420,9 +3478,15 @@ def today_page(request):
         "today_date": today_date,
         "daily": daily,
         "wellness_is_yesterday": wellness_is_yesterday,
+        "wellness_spark": _wellness_spark(request.user, daily.date) if daily else {},
         "todays_workouts": todays_workouts,
         "nutrition_progress": nutrition_progress,
         "nutrition_targets": nutrition_targets,
+        "todays_food": todays_food[:4],
+        "todays_food_more": max(todays_food_count - 4, 0),
+        "cal_left": cal_left,
+        "cal_over": -cal_left if cal_left is not None and cal_left < 0 else None,
+        "week": week_summary(request.user, today_date, targets=nutrition_targets),
         "active_interventions": active_interventions,
         "next_workout_text": next_workout_text,
         "day_analysis_text": day_analysis_text,

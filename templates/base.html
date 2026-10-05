@@ -88,16 +88,16 @@
 </head>
 <body class="min-h-screen">
 
-  <nav class="ui-glass sticky top-0 z-40 border-b border-subtle">
+  <nav class="ui-glass ui-navlift sticky top-0 z-40 border-b border-subtle">
     <div class="mx-auto max-w-[1400px] px-4 lg:px-8 h-16 flex items-center gap-4">
       <a href="{% url 'today' %}" class="text-xl font-bold tracking-tight text-base-content hover:no-underline">FitPulse</a>
 
       <div id="nav-pills" class="hidden lg:flex items-center gap-1 rounded-full bg-base-100 p-1 shadow-sm">
-        <a href="{% url 'today' %}" data-nav-group="today" class="rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content hover:no-underline [&.active]:bg-primary [&.active]:text-primary-content {% block nav_today %}{% endblock %}">Today</a>
+        <a href="{% url 'today' %}" data-nav-group="today" class="rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content hover:no-underline [&.active]:bg-primary [&.active]:text-primary-content [&.active]:ui-glow {% block nav_today %}{% endblock %}">Today</a>
 
         {% if can.training %}
         <details class="dropdown nav-group {% block nav_training %}{% endblock %}" data-nav-group="training">
-          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Training {% include "workouts/partials/nav_caret.html" %}</summary>
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content [.active>&]:ui-glow">Training {% include "workouts/partials/nav_caret.html" %}</summary>
           <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% include "workouts/partials/nav_items.html" with group="training" %}
           </ul>
@@ -106,7 +106,7 @@
 
         {% if can.body or can.interventions or can.symptoms %}
         <details class="dropdown nav-group {% block nav_body_group %}{% endblock %}" data-nav-group="body">
-          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Body {% include "workouts/partials/nav_caret.html" %}</summary>
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content [.active>&]:ui-glow">Body {% include "workouts/partials/nav_caret.html" %}</summary>
           <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% include "workouts/partials/nav_items.html" with group="body" %}
           </ul>
@@ -115,7 +115,7 @@
 
         {% if can.nutrition %}
         <details class="dropdown nav-group {% block nav_nutrition_group %}{% endblock %}" data-nav-group="nutrition">
-          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Nutrition {% include "workouts/partials/nav_caret.html" %}</summary>
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content [.active>&]:ui-glow">Nutrition {% include "workouts/partials/nav_caret.html" %}</summary>
           <ul class="dropdown-content menu z-50 mt-2 w-52 rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% include "workouts/partials/nav_items.html" with group="nutrition" %}
           </ul>
@@ -124,7 +124,7 @@
 
         {% if can.ai_pattern_insights or can.ai_weekly_review or can.interventions %}
         <details class="dropdown nav-group {% block nav_insights_group %}{% endblock %}" data-nav-group="insights">
-          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content">Insights {% include "workouts/partials/nav_caret.html" %}</summary>
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none flex items-center gap-1 rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content [.active>&]:bg-primary [.active>&]:text-primary-content [.active>&]:ui-glow">Insights {% include "workouts/partials/nav_caret.html" %}</summary>
           <ul class="dropdown-content menu z-50 mt-2 w-56 rounded-box ui-glass p-2 shadow-lg border border-subtle">
             {% include "workouts/partials/nav_items.html" with group="insights" %}
           </ul>

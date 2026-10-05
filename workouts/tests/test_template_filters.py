@@ -19,6 +19,12 @@ class ToneFilterTests(SimpleTestCase):
         self.assertEqual(tone("green", "stroke"), "stroke-success")
         self.assertEqual(tone("Low", "stroke"), "stroke-error")
 
+    def test_bg_kind(self):
+        self.assertEqual(tone("green", "bg"), "bg-success")
+        self.assertEqual(tone("yellow", "bg"), "bg-warning")
+        self.assertEqual(tone("red", "bg"), "bg-error")
+        self.assertEqual(tone("", "bg"), "hidden")
+
     def test_unknown_or_empty_is_muted(self):
         self.assertEqual(tone("PRIME"), "text-muted")
         self.assertEqual(tone(""), "text-muted")

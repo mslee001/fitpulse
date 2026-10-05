@@ -147,11 +147,6 @@
     {% endif %}
 {% endblock %}
 
-{% block history_item_stats %}
-          {% if w.calories %}<span>{{ w.calories|floatformat:0 }} cal</span>{% endif %}
-          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
-{% endblock %}
-
 {% block detail_scripts %}
 <script>
 const perf = {{ perf|safe }};

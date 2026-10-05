@@ -294,12 +294,6 @@
     {% endif %}
 {% endblock %}
 
-{% block history_item_stats %}
-          {% if w.effort_score %}<span>Effort {{ w.effort_score|floatformat:1 }}</span>{% endif %}
-          {% if w.calories %}<span>{{ w.calories|floatformat:0 }} cal</span>{% endif %}
-          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
-{% endblock %}
-
 {% block recent_section %}
     <!-- Recent strength workouts, populated by JS -->
     <div class="ui-panel" id="recentStrengthSidebar" style="display:none">

@@ -40,7 +40,7 @@
         hx-encoding="multipart/form-data"
         hx-indicator="#parse-spinner"
         enctype="multipart/form-data"
-        class="flex flex-col gap-3">
+        id="log" class="flex scroll-mt-28 flex-col gap-3">
     {% csrf_token %}
     <input type="hidden" name="date" value="{{ page_date|date:'Y-m-d' }}">
     <textarea name="raw_text" id="food-textarea" class="textarea w-full" rows="3" aria-label="What did you eat?"
@@ -84,13 +84,15 @@
         <option value="{{ val }}">{{ label }}</option>
         {% endfor %}
       </select>
-      <button type="submit" class="btn btn-primary btn-sm max-sm:flex-1">Parse</button>
+      <button type="submit" class="btn btn-primary ui-glow btn-sm max-sm:flex-1">Parse</button>
       <span id="parse-spinner" class="htmx-indicator flex items-center gap-2 text-sm text-muted"><span class="loading loading-dots loading-sm" aria-hidden="true"></span>Parsing…</span>
     </div>
   </form>
   <div id="parse-result" class="mt-4 empty:mt-0"></div>
 </div>
 <script>
+// Today's "Log food" lands on #log: start typing straight away.
+if (location.hash === '#log') document.getElementById('food-textarea')?.focus({ preventScroll: true });
 const PHOTO_MAX_EDGE = 1568;
 
 // Returns a JPEG File no larger than PHOTO_MAX_EDGE on the long edge.

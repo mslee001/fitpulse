@@ -326,12 +326,6 @@
     {% endif %}
 {% endblock %}
 
-{% block history_item_stats %}
-          {% if w.avg_pace_seconds %}<span>{{ w.avg_pace_display }}</span>{% endif %}
-          {% if w.distance_miles %}<span>{{ w.distance_miles|floatformat:2 }} mi</span>{% endif %}
-          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
-{% endblock %}
-
 {% block recent_section %}
     <!-- Recent runs of same discipline, populated by JS -->
     <div class="ui-panel" id="recentRunsSidebar" style="display:none">

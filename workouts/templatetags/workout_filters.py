@@ -495,14 +495,19 @@ TONE_TEXT = {"green": "text-success", "yellow": "text-warning", "red": "text-err
 TONE_STROKE = {"green": "stroke-success", "yellow": "stroke-warning", "red": "stroke-error",
                "high": "stroke-success", "moderate": "stroke-warning", "low": "stroke-error",
                "balanced": "stroke-success", "unbalanced": "stroke-warning", "poor": "stroke-error"}
+TONE_BG = {"green": "bg-success", "yellow": "bg-warning", "red": "bg-error",
+           "high": "bg-success", "moderate": "bg-warning", "low": "bg-error",
+           "balanced": "bg-success", "unbalanced": "bg-warning", "poor": "bg-error"}
 
 
 @register.filter
 def tone(value, kind="text"):
     """'green'/'High'/'BALANCED' → a whole class: text-success, or with
-    kind="stroke", stroke-success. Unknown → text-muted / stroke-current."""
-    table = TONE_STROKE if kind == "stroke" else TONE_TEXT
-    return table.get(str(value or "").strip().lower(), "text-muted" if kind == "text" else "stroke-current")
+    kind="stroke" stroke-success, kind="bg" bg-success.
+    Unknown → text-muted / stroke-current / hidden."""
+    table, default = {"stroke": (TONE_STROKE, "stroke-current"),
+                      "bg": (TONE_BG, "hidden")}.get(kind, (TONE_TEXT, "text-muted"))
+    return table.get(str(value or "").strip().lower(), default)
 
 
 @register.filter

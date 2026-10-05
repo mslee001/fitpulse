@@ -32,9 +32,12 @@ sentinel, which replace the previous sentinel inside the same grid.
         <span>{{ w.created_at|date:"M j, Y" }}</span>
       </div>
 
-      <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="font-semibold leading-snug text-base-content">
-        {{ w.title|default:"Untitled Workout" }}
-      </a>
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="font-semibold leading-snug text-base-content">
+          {{ w.title|default:"Untitled Workout" }}
+        </a>
+        {% if w.is_pr %}<span class="badge badge-sm badge-primary badge-soft">New PR</span>{% endif %}
+      </div>
 
       {% if w.instructor_name %}
       <div class="text-sm text-muted">{{ w.instructor_name }}</div>

@@ -261,28 +261,7 @@
       {% if workouts %}
       <div class="flex flex-col gap-2">
         {% for w in workouts %}
-        {% with color=discipline_colors|get_item:w.discipline|default:"#888888" %}
-        <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="ui-lift flex flex-col gap-2 rounded-xl bg-inset p-3 text-base-content hover:no-underline hover:bg-base-300">
-          <span class="flex items-center gap-3">
-            <span class="flex size-11 shrink-0 items-center justify-center rounded-xl text-xs font-semibold" style="color: {{ color }}; background: color-mix(in oklab, {{ color }} 15%, transparent)" aria-hidden="true">{{ w.discipline|slice:":3"|upper }}</span>
-            <span class="min-w-0 flex-1">
-              <span class="block truncate font-semibold">{{ w.title }}</span>
-              <span class="block text-sm text-muted">
-                {{ w.fitness_discipline_display|default:w.discipline|title }}{% if w.instructor_name %} · {{ w.instructor_name }}{% endif %}{% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}
-              </span>
-            </span>
-            <span class="shrink-0 font-mono text-sm text-muted">{{ w.created_at|date:"g:i A" }}</span>
-          </span>
-          <span class="flex flex-wrap gap-x-5 gap-y-1 pl-14 text-sm">
-            {% if w.heart_rate_avg_best %}<span><span class="text-muted">Avg HR</span> <span class="font-mono">{{ w.heart_rate_avg_best|floatformat:0 }} bpm</span></span>{% endif %}
-            {% with effort=w.effort_points|default:w.average_effort_score %}{% if effort %}<span><span class="text-muted">Effort</span> <span class="font-mono">{{ effort|floatformat:1 }}</span></span>{% endif %}{% endwith %}
-            {% if w.calories %}<span><span class="text-muted">Calories</span> <span class="font-mono">{{ w.calories|floatformat:0 }}</span></span>{% endif %}
-            {% if w.avg_pace_display %}<span><span class="text-muted">Pace</span> <span class="font-mono">{{ w.avg_pace_display }}</span></span>{% endif %}
-            {% if w.output_watts %}<span><span class="text-muted">Output</span> <span class="font-mono">{{ w.output_watts|floatformat:0 }} W</span></span>{% endif %}
-            {% if w.avg_watts and not w.output_watts %}<span><span class="text-muted">Avg power</span> <span class="font-mono">{{ w.avg_watts|floatformat:0 }} W</span></span>{% endif %}
-          </span>
-        </a>
-        {% endwith %}
+        {% include "workouts/partials/workout_row.html" with w=w row_detailed=True only %}
         {% endfor %}
       </div>
       {% else %}

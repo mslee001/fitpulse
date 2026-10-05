@@ -129,6 +129,9 @@
     --chart-1: #0E8C7E; --chart-2: #2A78D6; --chart-3: #E2602B;
     --chart-4: #4A3AA7; --chart-5: #A87400; --chart-6: #C94F7C;
   }
+  /* Glow strength (.ui-glow): softer in dark, where a bright teal halo reads as neon. */
+  :root, [data-theme="dark"] { --fp-glow: 35%; --fp-glow-hover: 50%; --fp-glow-y: 6px; --fp-glow-blur: 16px; --fp-noise: .07; }
+  [data-theme="light"]       { --fp-glow: 70%; --fp-glow-hover: 85%; --fp-glow-y: 8px; --fp-glow-blur: 20px; --fp-noise: .05; }
   /* Intervention category colors (domain colors, shown as dots next to the name). */
   :root {
     --cat-medication: #ff35da; --cat-supplement: #B4FF39; --cat-hormone: #A78BFA;
@@ -140,6 +143,15 @@
   /* Plain links are primary-colored; components (btn, menu, link) set their own. */
   a { color: var(--color-primary); }
   a:hover { text-decoration: underline; }
+
+  /* Grain over the whole app (the one noise texture; not daisyUI's --noise, which only
+     textures some components). Popovers live in the top layer, above it. */
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: 60; pointer-events: none;
+    mix-blend-mode: overlay; opacity: var(--fp-noise);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  @media print { body::after { display: none; } }
 
   /* Invisible polish */
   :where(.font-mono, code, kbd, td, .ui-stat-value) { font-variant-numeric: tabular-nums; }
@@ -176,7 +188,7 @@
   .ui-stat          { @apply flex flex-col gap-0.5 rounded-box bg-base-100 p-4 shadow-sm; }
   .ui-stat-hero     { @apply sm:col-span-2; }
   .ui-stat-label    { @apply text-sm text-muted; }
-  .ui-stat-value    { @apply font-mono text-2xl font-medium tabular-nums leading-tight; }
+  .ui-stat-value    { @apply font-sans text-2xl font-bold tracking-tight tabular-nums leading-tight; }
   .ui-stat-hero .ui-stat-value { @apply text-4xl; }
   .ui-stat-unit     { @apply ml-0.5 font-sans text-sm font-medium text-muted; }
   .ui-stat-sub      { @apply text-sm text-muted; }
@@ -284,8 +296,47 @@
     }
   }
 
+  /* ── Extras: each lives in one place (CLAUDE.md → Styling → Motion) ── */
+  /* Hero wash: Today's hero panel only. */
+  .ui-hero-wash { background: radial-gradient(120% 160% at 0% 0%, color-mix(in oklab, var(--color-primary) 12%, transparent), transparent 55%), var(--color-base-100); }
+  /* Featured: a 1px border fading from primary. PR banners only. */
+  .ui-featured {
+    border: 1px solid transparent;
+    background: linear-gradient(var(--color-base-100), var(--color-base-100)) padding-box,
+                linear-gradient(120deg, var(--color-primary), transparent 65%) border-box;
+  }
+  /* Gradient text: Today's readiness number, and only when it's High. */
+  .ui-gradient-text {
+    background: linear-gradient(135deg, var(--color-success), var(--color-primary));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  /* Container-query host: children use @[…]: / @max-[…]: variants. */
+  .ui-cq { container-type: inline-size; }
+
+  /* Scroll-driven: the nav lift (every page) and section reveals (Today only). Browsers
+     without scroll timelines (Firefox) keep the nav's static border and show sections. */
+  @keyframes fp-navlift {
+    from { box-shadow: 0 6px 24px -10px rgb(0 0 0 / 0); border-bottom-color: transparent; }
+    to   { box-shadow: 0 6px 24px -10px rgb(0 0 0 / .35); border-bottom-color: var(--color-subtle); }
+  }
+  @keyframes fp-reveal { from { opacity: 0; translate: 0 24px; } }
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      .ui-navlift { animation: fp-navlift linear both; animation-timeline: scroll(); animation-range: 0 80px; }
+      .ui-reveal  { animation: fp-reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
+    }
+  }
+
   /* Invisible polish */
   .ui-page-title, .ui-section-title, .ui-panel-title { text-wrap: balance; }
+}
+
+/* Glow: the active nav pill, one main button per page. A utility, not a component:
+   daisyUI's .btn box-shadow lives in nested sublayers of `utilities`, which beat
+   `components` but lose to direct utilities. Strength is per theme (--fp-glow*). */
+@utility ui-glow {
+  box-shadow: 0 var(--fp-glow-y) var(--fp-glow-blur) -8px color-mix(in oklab, var(--color-primary) var(--fp-glow), transparent);
+  &:hover { box-shadow: 0 var(--fp-glow-y) calc(var(--fp-glow-blur) + 6px) -8px color-mix(in oklab, var(--color-primary) var(--fp-glow-hover), transparent); }
 }
 
 /* Page transitions: every same-origin navigation crossfades (Chrome/Edge, Safari 18.2+);
