@@ -601,7 +601,18 @@ def program_run(request, pk):
         except AI_UNAVAILABLE:
             retro_text = run.retrospective or None
 
+    reassess = None
+    if run.is_current and (run.program.goal_json or {}).get("start_date") \
+            and has_feature(request.user, "ai_program_tools"):
+        from .training_plans import reassess_signals, reassess_window
+        window, reason = reassess_window(run.program)
+        reassess = {"window": window, "reason": reason,
+                    "signals": reassess_signals(run.program) if window else [],
+                    "last": ((run.program.goal_json or {}).get("reassessments") or [None])[-1]}
+        if reassess["last"]:
+            reassess["last"] = dict(reassess["last"], date=date.fromisoformat(reassess["last"]["date"]))
     return render(request, "workouts/program_run.html", {
+        "reassess": reassess,
         "program": run.program, "run": run,
         "rows": rows, "totals": totals,
         "other_runs": run.program.runs.exclude(pk=run.pk),

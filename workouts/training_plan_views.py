@@ -1,6 +1,7 @@
 """AI training plans — the form, draft polling, review/swap and create views.
 All plan logic lives in training_plans.py; these views only route and render."""
 import json
+from collections import defaultdict
 from datetime import timedelta
 
 from django.contrib import messages
@@ -96,6 +97,12 @@ def _review_weeks(draft):
     ranker = DifficultyRanker()
     companion = tp.companion_schedule(draft.user, inputs)
     _, race = tp.plan_dates(inputs)
+    was = defaultdict(list)     # reassessment: what each rewritten week has now
+    if draft.kind == "reassess" and draft.program:
+        for slot in (ProgramSlot.objects.filter(week__program=draft.program, week__number__gte=draft.from_week)
+                     .select_related("week").order_by("day", "order")):
+            if slot.spec_json:
+                was[slot.week.number].append(f"{tp.DAY_NAMES.get(slot.day, '')} {slot.title}")
     weeks = []
     for wk in spec.get("weeks", []):
         dates = tp.week_dates(inputs, wk["number"])
@@ -110,7 +117,7 @@ def _review_weeks(draft):
         for r in rows:
             r["date"] = dates[r["day"] - 1]
         weeks.append({"number": wk["number"], "phase": wk["phase"], "focus": wk["focus"], "rows": rows,
-                      "start": dates[0], "end": dates[-1]})
+                      "start": dates[0], "end": dates[-1], "was": was.get(wk["number"], [])})
     return weeks
 
 
@@ -128,12 +135,19 @@ def _slot_row_context(draft, week, slot, classes=None, ranker=None):
             "day_name": tp.DAY_NAMES[slot["day"]]}
 
 
+def _done_redirect(draft):
+    """Where a finished draft goes: a reassessment back to its plan's run page."""
+    if draft.kind == "reassess" and draft.program and draft.program.active_run:
+        return redirect("program_run", pk=draft.program.active_run.pk)
+    return redirect("program_detail", slug=draft.program.slug)
+
+
 def program_training_plan_draft(request, pk):
     draft = get_object_or_404(_drafts(request), pk=pk).refreshed()
     PlanDraft.prune(request.user)
     if draft.status == "created" and draft.program_id:
-        return redirect("program_detail", slug=draft.program.slug)
-    ctx = {"draft": draft, "inputs": draft.inputs_json}
+        return _done_redirect(draft)
+    ctx = {"draft": draft, "inputs": draft.inputs_json, "reassess": draft.kind == "reassess"}
     if draft.status == "ready":
         start, race = tp.plan_dates(draft.inputs_json)
         ctx.update({
@@ -173,7 +187,7 @@ def _ready_draft(request, pk):
     """(draft, None) when the draft is ready for review actions, else (None, response)."""
     draft = get_object_or_404(_drafts(request), pk=pk).refreshed()
     if draft.status == "created" and draft.program_id:
-        return None, redirect("program_detail", slug=draft.program.slug)
+        return None, _done_redirect(draft)
     if draft.status != "ready":
         return None, HttpResponseBadRequest("This plan isn't ready for review.")
     return draft, None
@@ -226,6 +240,11 @@ def program_training_plan_create(request, pk):
     draft, resp = _ready_draft(request, pk)
     if resp:
         return resp
+    if draft.kind == "reassess":
+        program = tp.apply_reassessment(draft)
+        messages.success(request, f"Updated weeks {draft.from_week}–{program.goal_json.get('weeks')} of "
+                                  f"{program.name}.")
+        return redirect("program_run", pk=program.active_run.pk)
     name = (request.POST.get("name") or draft.spec_json.get("plan_name") or "Training plan").strip()[:200]
     program = tp.create_program_from_draft(draft, name)
     messages.success(request, f"Created {program.name}. Its cycle starts {program.goal_json['start_date']}.")
@@ -236,10 +255,26 @@ def program_training_plan_create(request, pk):
 def program_training_plan_discard(request, pk):
     draft = get_object_or_404(_drafts(request), pk=pk)
     if draft.status == "created" and draft.program_id:
-        return redirect("program_detail", slug=draft.program.slug)
+        return _done_redirect(draft)
+    program = draft.program if draft.kind == "reassess" else None
     draft.delete()
+    if program and program.active_run:
+        messages.success(request, "Discarded the reassessment — the plan is unchanged.")
+        return redirect("program_run", pk=program.active_run.pk)
     messages.success(request, "Discarded the draft plan.")
     return redirect("program_list")
+
+
+@require_POST
+def program_reassess(request, slug):
+    """POST /programs/<slug>/reassess/ — rewrite the rest of an AI plan from how it's going (review first)."""
+    program = get_object_or_404(Program.objects.for_user(request.user), slug=slug)
+    try:
+        draft = tp.start_reassessment(program)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect("program_detail", slug=slug)
+    return redirect("program_training_plan_draft", pk=draft.pk)
 
 
 # ---------------------------------------------------------------------------

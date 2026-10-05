@@ -152,6 +152,7 @@ urlpatterns = [
     path("programs/training-plan/<int:pk>/discard/", training_plan_views.program_training_plan_discard,
          name="program_training_plan_discard"),
     path("programs/slot/<int:pk>/swap/", training_plan_views.program_slot_swap, name="program_slot_swap"),
+    path("programs/<slug:slug>/reassess/", training_plan_views.program_reassess, name="program_reassess"),
     path("programs/new-blank/", program_new_blank, name="program_new_blank"),
     path("programs/<slug:slug>/", program_detail, name="program_detail"),
     path("programs/<slug:slug>/delete/", program_delete, name="program_delete"),

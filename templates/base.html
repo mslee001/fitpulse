@@ -184,10 +184,16 @@
   </nav>
 
   <main class="main">
-    {% if setup_pending or peloton_reconnect %}
+    {% if setup_pending or peloton_reconnect or plan_nudges %}
     {% for step in setup_pending %}
     <div class="setup-banner" data-step="{{ step.key }}" hidden>
       <a href="{% url 'get_started' %}#{{ step.key }}">Finish setting up {{ step.title }} →</a>
+      <button type="button" class="setup-banner-close" aria-label="Dismiss">&times;</button>
+    </div>
+    {% endfor %}
+    {% for n in plan_nudges %}
+    <div class="setup-banner" data-step="plan-nudge-{{ n.key }}" hidden>
+      <a href="{% url 'program_run' n.run_pk %}">{{ n.program.name }} may need a refresh: {{ n.reasons|join:"; " }} → Reassess</a>
       <button type="button" class="setup-banner-close" aria-label="Dismiss">&times;</button>
     </div>
     {% endfor %}
