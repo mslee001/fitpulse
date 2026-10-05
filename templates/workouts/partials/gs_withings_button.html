@@ -1,5 +1,5 @@
-<form method="post" action="{% url 'withings_oauth_connect' %}" style="margin:0 0 0.5rem">
+<form method="post" action="{% url 'withings_oauth_connect' %}" class="mb-2">
   {% csrf_token %}
   <input type="hidden" name="next" value="/get-started/#withings">
-  <button type="submit" class="btn {% if label == 'Reconnect' %}btn-sm btn-ghost{% else %}btn-primary{% endif %}">{{ label }}</button>
+  <button type="submit" class="btn {% if label == 'Reconnect' %}btn-sm btn-outline{% else %}btn-primary max-sm:w-full{% endif %}">{{ label }}</button>
 </form>

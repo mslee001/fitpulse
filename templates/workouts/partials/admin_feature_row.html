@@ -1,14 +1,15 @@
 <div class="feature-row">
   <form hx-post="{% url 'admin_user_feature_toggle' target.pk row.slug %}"
-        hx-target="closest .feature-row" hx-swap="outerHTML" style="margin:0">
+        hx-target="closest .feature-row" hx-swap="outerHTML">
     {% csrf_token %}
-    <label style="display:flex;align-items:flex-start;gap:0.6rem;cursor:pointer">
-      <input type="checkbox" {% if row.granted %}checked{% endif %} onchange="htmx.trigger(this.form, 'submit')"
+    <label class="flex min-h-11 cursor-pointer items-start gap-3 py-1.5{% if row.ai and not target.is_superuser and not target.access.ai_enabled %} opacity-60{% endif %}">
+      <input type="checkbox" class="toggle toggle-sm toggle-primary mt-0.5" {% if row.granted or target.is_superuser %}checked{% endif %} onchange="htmx.trigger(this.form, 'submit')"
              {% if target.is_superuser %}disabled{% endif %}>
-      <span>
-        <span style="font-weight:600">{{ row.label }}</span>
-        {% if row.needs %}<span class="muted" style="font-size:0.75rem;margin-left:0.4rem">Needs: {{ row.needs|join:", " }}</span>{% endif %}
-        {% if row.note %}<span class="muted" style="display:block;font-size:0.75rem;margin-top:0.15rem">{{ row.note }}</span>{% endif %}
+      <span class="text-sm">
+        <span class="font-medium">{{ row.label }}</span>
+        {% if row.needs %}<span class="ml-1 text-xs text-muted">Needs: {{ row.needs|join:", " }}</span>{% endif %}
+        {% if row.granted and row.ai and not target.is_superuser and not target.access.ai_enabled %}<span class="ml-1 text-xs text-warning">AI is off</span>{% endif %}
+        {% if row.note %}<span class="mt-0.5 block text-xs text-muted">{{ row.note }}</span>{% endif %}
       </span>
     </label>
   </form>

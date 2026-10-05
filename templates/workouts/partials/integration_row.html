@@ -1,32 +1,32 @@
-<div id="integration-row-{{ integration.key }}" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.6rem;padding:0.85rem 0;border-bottom:1px solid var(--fp-border)">
-  <div style="display:flex;flex-direction:column;gap:0.3rem;min-width:0;">
-    <span style="font-family:var(--font-sans);font-size:0.95rem;font-weight:700;color:var(--text)">{{ integration.display_name }}</span>
-    <div style="display:flex;gap:0.75rem;align-items:center;font-size:0.75rem;flex-wrap:wrap;">
+<div id="integration-row-{{ integration.key }}" class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle py-3.5 last:border-b-0">
+  <div class="flex min-w-0 flex-col gap-1">
+    <span class="font-semibold">{{ integration.display_name }}</span>
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
       {% if integration.is_authenticated %}
-      <span style="color:#81C784;white-space:nowrap;">● Connected</span>
+      <span class="inline-flex items-center gap-1.5 whitespace-nowrap text-success"><span class="size-2 rounded-full bg-success" aria-hidden="true"></span>Connected</span>
       {% else %}
-      <span style="color:var(--text-dim);white-space:nowrap;">○ Not connected</span>
+      <span class="inline-flex items-center gap-1.5 whitespace-nowrap text-muted"><span class="size-2 rounded-full border border-current" aria-hidden="true"></span>Not connected</span>
       {% endif %}
-      <span style="color:var(--text-dim);white-space:nowrap;">
-        {% if integration.last_synced_at %}Last synced {{ integration.last_synced_at|date:"M j, Y g:i A" }}{% else %}Never synced{% endif %}
+      <span class="whitespace-nowrap text-muted">
+        {% if integration.last_synced_at %}Last synced <span class="font-mono">{{ integration.last_synced_at|date:"M j, Y g:i A" }}</span>{% else %}Never synced{% endif %}
       </span>
     </div>
     {% if integration.key == 'google_health' and google_health_auth %}
-    <span class="fp-badge" style="text-transform:none;letter-spacing:normal;align-self:flex-start;{% if google_health_auth.days_since_connected >= 5 %}background:color-mix(in srgb, var(--accent-red) 15%, transparent);color:var(--accent-red);{% else %}background:var(--bg-raised);color:var(--text-muted);{% endif %}"
+    <span class="badge badge-sm badge-soft {% if google_health_auth.days_since_connected >= 5 %}badge-error{% else %}badge-success{% endif %}"
           title="Refresh token expires ~7 days after connecting, while the Google Cloud OAuth consent screen is in Testing status">
-      Connected {{ google_health_auth.days_since_connected }} day{{ google_health_auth.days_since_connected|pluralize }} ago
+      Connected {{ google_health_auth.days_since_connected }} day{{ google_health_auth.days_since_connected|pluralize }} ago{% if google_health_auth.days_since_connected >= 5 %} · reconnect soon{% endif %}
     </span>
     {% endif %}
   </div>
 
-  <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+  <div class="flex flex-wrap items-center gap-2">
     {% if integration.key == 'google_health' %}
-    <a href="{% url 'google_health_oauth_connect' %}" class="btn btn-sm btn-ghost">{% if google_health_auth %}Reconnect{% else %}Connect{% endif %}</a>
+    <a href="{% url 'google_health_oauth_connect' %}" class="btn btn-sm btn-outline">{% if google_health_auth %}Reconnect{% else %}Connect{% endif %}</a>
     {% elif integration.key == 'withings' %}
-    <form method="post" action="{% url 'withings_oauth_connect' %}" style="margin:0">
+    <form method="post" action="{% url 'withings_oauth_connect' %}">
       {% csrf_token %}
       <input type="hidden" name="next" value="{% url 'integrations_settings' %}">
-      <button type="submit" class="btn btn-sm btn-ghost">{% if integration.is_authenticated %}Reconnect{% else %}Connect Withings{% endif %}</button>
+      <button type="submit" class="btn btn-sm btn-outline">{% if integration.is_authenticated %}Reconnect{% else %}Connect Withings{% endif %}</button>
     </form>
     {% endif %}
     {% if integration.is_enabled and integration.sync_all_url_name %}
@@ -35,12 +35,13 @@
       Sync All
     </a>
     {% endif %}
-    <form hx-post="{% url 'integration_toggle' integration.key %}"
+    <form hx-post="{% url 'integration_toggle' integration.key %}" hx-trigger="change"
           hx-target="#integration-row-{{ integration.key }}" hx-swap="outerHTML">
       {% csrf_token %}
-      <button type="submit" class="btn btn-sm {% if integration.is_enabled %}btn-primary{% else %}btn-ghost{% endif %}">
-        {% if integration.is_enabled %}Enabled{% else %}Disabled{% endif %}
-      </button>
+      <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+        <input type="checkbox" class="toggle toggle-primary" aria-label="{{ integration.display_name }} enabled"{% if integration.is_enabled %} checked{% endif %}>
+        <span class="w-16">{% if integration.is_enabled %}Enabled{% else %}Disabled{% endif %}</span>
+      </label>
     </form>
   </div>
 </div>

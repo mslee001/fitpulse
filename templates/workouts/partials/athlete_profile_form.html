@@ -1,72 +1,37 @@
-<form method="post" action="{% url 'set_athlete_profile' %}">
+<form method="post" action="{% url 'set_athlete_profile' %}" class="flex flex-col gap-4">
   {% csrf_token %}
   {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
 
-  <!-- Experience levels -->
-  <div style="margin-bottom:1.25rem">
-    <div style="font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.6rem">EXPERIENCE LEVEL</div>
-    <div class="experience-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem">
-      {% with sel_style="width:100%;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.82rem;padding:0.4rem 0.5rem;border-radius:4px" %}
-      <div>
-        <label style="display:block;font-family:var(--font-sans);font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Running</label>
-        <select name="running_experience" style="{{ sel_style }}">
-          <option value="">— not set —</option>
-          {% for val, display in experience_choices %}
-          <option value="{{ val }}" {% if athlete.running_experience == val %}selected{% endif %}>{{ display }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label style="display:block;font-family:var(--font-sans);font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Cycling</label>
-        <select name="cycling_experience" style="{{ sel_style }}">
-          <option value="">— not set —</option>
-          {% for val, display in experience_choices %}
-          <option value="{{ val }}" {% if athlete.cycling_experience == val %}selected{% endif %}>{{ display }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label style="display:block;font-family:var(--font-sans);font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem">Strength</label>
-        <select name="strength_experience" style="{{ sel_style }}">
-          <option value="">— not set —</option>
-          {% for val, display in experience_choices %}
-          <option value="{{ val }}" {% if athlete.strength_experience == val %}selected{% endif %}>{{ display }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% endwith %}
-    </div>
+  <div class="flex flex-col gap-3">
+    <div class="text-sm font-medium">Experience level</div>
+    {% include "workouts/partials/experience_radios.html" with field="running_experience" label="Running" current=athlete.running_experience %}
+    {% include "workouts/partials/experience_radios.html" with field="cycling_experience" label="Cycling" current=athlete.cycling_experience %}
+    {% include "workouts/partials/experience_radios.html" with field="strength_experience" label="Strength" current=athlete.strength_experience %}
   </div>
 
-  <!-- Coaching tone -->
-  <div style="margin-bottom:1.25rem">
-    <label style="display:block;font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.5rem">COACHING TONE</label>
-    <select name="coaching_tone" style="background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.4rem 0.6rem;border-radius:4px;min-width:200px">
-      {% for val, display in tone_choices %}
-      <option value="{{ val }}" {% if athlete.coaching_tone == val %}selected{% endif %}>{{ display }}</option>
-      {% endfor %}
-    </select>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <label class="fieldset py-0"><span class="fieldset-legend">Coaching tone</span>
+      <select name="coaching_tone" class="select w-full">
+        {% for val, display in tone_choices %}
+        <option value="{{ val }}" {% if athlete.coaching_tone == val %}selected{% endif %}>{{ display }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="fieldset py-0"><span class="fieldset-legend">Current training focus</span>
+      <textarea name="training_focus" rows="2" class="textarea w-full" placeholder="e.g. building running base, training for a 10K, strength recomp">{{ athlete.training_focus }}</textarea>
+    </label>
+
+    <label class="fieldset py-0 sm:col-span-2"><span class="fieldset-legend">PT / rehab keywords</span>
+      <input type="text" name="rehab_keywords" class="input w-full" value="{{ athlete.rehab_keywords|join:', ' }}" placeholder="e.g. shoulder pt, physical therapy, rehab">
+      <span class="label whitespace-normal">Comma-separated. Workout titles containing any of these are tagged as PT/rehab and excluded from training-load reasoning.</span>
+    </label>
+
+    <label class="fieldset py-0 sm:col-span-2"><span class="fieldset-legend">{% if onboarding %}Anything the AI should keep in mind (optional){% else %}Health context (optional override){% endif %}</span>
+      <textarea name="health_context_override" rows="3" class="textarea w-full" placeholder="e.g. managing weight loss on a GLP-1 medication, building muscle, perimenopausal">{{ athlete.health_context_override }}</textarea>
+      <span class="label whitespace-normal">Free-form context injected into AI health and nutrition prompts. Leave blank to derive context from your tracked Interventions automatically.</span>
+    </label>
   </div>
 
-  <!-- Training focus -->
-  <div style="margin-bottom:1.25rem">
-    <label style="display:block;font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.5rem">CURRENT TRAINING FOCUS</label>
-    <textarea name="training_focus" rows="2" placeholder="e.g. building running base, training for a 10K, strength recomp" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.training_focus }}</textarea>
-  </div>
-
-  <!-- Rehab keywords -->
-  <div style="margin-bottom:1.25rem">
-    <label style="display:block;font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem">PT / REHAB KEYWORDS</label>
-    <p style="font-family:var(--font-sans);font-size:0.72rem;color:var(--text-dim);margin:0 0 0.5rem">Comma-separated. Workout titles containing any of these are tagged as PT/rehab and excluded from training-load reasoning.</p>
-    <input type="text" name="rehab_keywords" value="{{ athlete.rehab_keywords|join:', ' }}" placeholder="e.g. shoulder pt, physical therapy, rehab" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.4rem 0.65rem;border-radius:4px">
-  </div>
-
-  <!-- Health context override -->
-  <div style="margin-bottom:1.5rem">
-    <label style="display:block;font-family:var(--font-sans);font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);margin-bottom:0.3rem">{% if onboarding %}ANYTHING THE AI SHOULD KEEP IN MIND (OPTIONAL){% else %}HEALTH CONTEXT (OPTIONAL OVERRIDE){% endif %}</label>
-    <p style="font-family:var(--font-sans);font-size:0.72rem;color:var(--text-dim);margin:0 0 0.5rem">Free-form context injected into AI health and nutrition prompts. Leave blank to derive context from your tracked Interventions automatically.</p>
-    <textarea name="health_context_override" rows="3" placeholder="e.g. managing weight loss on a GLP-1 medication, building muscle, perimenopausal" style="width:100%;box-sizing:border-box;background:var(--bg-card);border:1px solid var(--fp-border);color:var(--text);font-family:var(--font-sans);font-size:0.85rem;padding:0.5rem 0.65rem;border-radius:4px;resize:vertical">{{ athlete.health_context_override }}</textarea>
-  </div>
-
-  <button type="submit" class="btn btn-primary">Save Profile</button>
+  <div><button type="submit" class="btn btn-primary max-sm:w-full">Save profile</button></div>
 </form>
