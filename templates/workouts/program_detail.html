@@ -4,61 +4,51 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <a href="{% url 'program_list' %}" class="back-link">&larr; Programs</a>
-      <p class="stat-sub">{{ program.get_kind_display }}{% if program.instructor %} &middot; {{ program.instructor }}{% endif %}{% with tag=program|ai_plan_tag %}{% if tag %} &middot; {{ tag }}{% endif %}{% endwith %}</p>
-      <h1 class="page-title">{{ program.name }}</h1>
+<div class="kind-scope--{{ program.kind }}">
+<div class="ui-page-header">
+  <div>
+    <a href="{% url 'program_list' %}" class="text-sm">&larr; Programs</a>
+    <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
+      <span class="badge badge-sm badge-outline text-primary">{{ program.get_kind_display }}</span>
+      {% if program.instructor %}<span>{{ program.instructor }}</span>{% endif %}
+      {% with tag=program|ai_plan_tag %}{% if tag %}<span class="badge badge-sm badge-ghost">{{ tag }}</span>{% endif %}{% endwith %}
     </div>
-    <div class="page-header-actions">
-      <a class="btn btn-ghost btn-sm" href="{% url 'program_edit' program.slug %}">Edit program</a>
-      <form method="post" action="{% url 'program_backfill' program.slug %}" style="display:inline">
-        {% csrf_token %}
-        <button class="btn btn-ghost btn-sm" type="submit" title="Re-run matching for this program — picks up anything a deleted pass orphaned, or that was never matched">Backfill History</button>
-      </form>
-      <form method="post" action="{% url 'program_start_cycle' program.slug %}" style="display:inline">
-        {% csrf_token %}
-        <button class="btn btn-primary" type="submit">Start new cycle</button>
-      </form>
-      <form method="post" action="{% url 'program_delete' program.slug %}" style="display:inline"
-            onsubmit="return confirm('Delete the entire &quot;{{ program.name }}&quot; program? This permanently removes its whole definition — every week, slot, cycle, and completion in the tracker (not from your workout history). This cannot be undone.')">
-        {% csrf_token %}
-        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete Program</button>
-      </form>
-    </div>
+    <h1 class="ui-page-title mt-1">{{ program.name }}</h1>
+  </div>
+  <div class="ui-page-actions">
+    <a class="btn btn-sm" href="{% url 'program_edit' program.slug %}">Edit program</a>
+    <form method="post" action="{% url 'program_backfill' program.slug %}">
+      {% csrf_token %}
+      <button class="btn btn-ghost btn-sm" type="submit" title="Re-run matching for this program — picks up anything a deleted pass orphaned, or that was never matched">Backfill history</button>
+    </form>
+    <form method="post" action="{% url 'program_start_cycle' program.slug %}">
+      {% csrf_token %}
+      <button class="btn btn-primary btn-sm" type="submit">Start new cycle</button>
+    </form>
+    <form method="post" action="{% url 'program_delete' program.slug %}"
+          onsubmit="return confirm('Delete the entire &quot;{{ program.name }}&quot; program? This permanently removes its whole definition — every week, slot, cycle, and completion in the tracker (not from your workout history). This cannot be undone.')">
+      {% csrf_token %}
+      <button class="btn btn-sm btn-error btn-outline" type="submit">Delete program</button>
+    </form>
   </div>
 </div>
 
-{% if messages %}
-<div style="margin-bottom:1.5rem">
-  {% for message in messages %}
-  <div class="peloton-msg peloton-msg--success">{{ message }}</div>
-  {% endfor %}
-</div>
-{% endif %}
+{% include "workouts/partials/messages.html" %}
 
-<div class="chart-card">
-  <div class="chart-header">
-    <h3 class="chart-title">CYCLES</h3>
-  </div>
+<div class="ui-panel">
+  <h2 class="ui-panel-title mb-2">Cycles</h2>
   {% for r in runs %}
-  <div class="iv-item">
-    <div class="iv-item-main">
-      <div class="iv-item-info">
-        <a href="{% url 'program_run' r.pk %}" class="iv-item-name">{{ r.display_name }}</a>
-      </div>
-      <div class="iv-item-actions">
-        <form method="post" action="{% url 'program_delete_run' r.pk %}" style="margin:0"
-              onsubmit="return confirm('Delete this entire cycle ({{ r.display_name }})? This permanently removes all its passes and completions from the tracker (not from your workout history). This cannot be undone.')">
-          {% csrf_token %}
-          <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--accent-red)">Delete</button>
-        </form>
-      </div>
-    </div>
+  <div class="flex items-center justify-between gap-3 border-b border-subtle py-2 last:border-0">
+    <a href="{% url 'program_run' r.pk %}" class="font-medium">{{ r.display_name }}</a>
+    <form method="post" action="{% url 'program_delete_run' r.pk %}"
+          onsubmit="return confirm('Delete this entire cycle ({{ r.display_name }})? This permanently removes all its passes and completions from the tracker (not from your workout history). This cannot be undone.')">
+      {% csrf_token %}
+      <button class="btn btn-ghost btn-xs text-error" type="submit">Delete</button>
+    </form>
   </div>
   {% empty %}
-  <p class="stat-sub">No cycles yet — take a class in this program and sync.</p>
+  <p class="text-sm text-muted">No cycles yet — take a class in this program and sync.</p>
   {% endfor %}
+</div>
 </div>
 {% endblock %}

@@ -3,177 +3,178 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">New Training Plan</h1>
-  <p class="page-sub">Tell FitPulse your goal. The AI writes a week-by-week plan from your running history, then fills every session with a real Peloton class you can review and swap before saving.</p>
+<div class="ui-page-header">
+  <div class="max-w-3xl">
+  <h1 class="ui-page-title">New training plan</h1>
+  <p class="ui-page-sub">Tell FitPulse your goal. The AI writes a week-by-week plan from your running history, then fills every session with a real Peloton class you can review and swap before saving.</p>
+  </div>
 </div>
 
 {% if catalog_empty %}
-<div class="add-form-card">
-  <h3 class="chart-title" style="margin-bottom:0.5rem">CLASS CATALOG IS EMPTY</h3>
+<div class="ui-panel">
+  <h2 class="ui-panel-title mb-2">Class catalog is empty</h2>
   {% if is_owner %}
-    <p class="stat-sub" style="margin-bottom:0.9rem">Plans are built from FitPulse's copy of the Peloton class library. Load it once (it takes a few minutes), then come back.</p>
+    <p class="mb-3 text-muted">Plans are built from FitPulse's copy of the Peloton class library. Load it once (it takes a few minutes), then come back.</p>
     <form hx-post="{% url 'catalog_sync_start' %}" hx-target="#catalog-status" hx-swap="innerHTML">
       {% csrf_token %}
       <button type="submit" class="btn btn-primary">Refresh catalog</button>
     </form>
     <div id="catalog-status"></div>
   {% else %}
-    <p class="stat-sub">The class catalog hasn't been loaded yet — ask Megan.</p>
+    <p class="text-muted">The class catalog hasn't been loaded yet — ask Megan.</p>
   {% endif %}
 </div>
 {% else %}
 
 {% if errors %}
-<div style="margin-bottom:1.25rem">
-  {% for e in errors %}<div class="peloton-msg peloton-msg--error">{{ e }}</div>{% endfor %}
+<div class="mb-5 flex flex-col gap-2">
+  {% for e in errors %}<div role="alert" class="alert alert-soft alert-error">{{ e }}</div>{% endfor %}
 </div>
 {% endif %}
 
-<form method="post" action="{% url 'program_training_plan_new' %}" id="tp-form">
+<form method="post" action="{% url 'program_training_plan_new' %}" id="tp-form" class="flex flex-col gap-5">
   {% csrf_token %}
 
-  <div class="add-form-card" style="margin-bottom:1.25rem">
-    <h3 class="chart-title" style="margin-bottom:0.9rem">GOAL</h3>
-    <div class="tp-grid">
-      <div class="form-group">
-        <label class="form-label" for="tp-goal">Goal</label>
-        <select name="goal" id="tp-goal" class="form-select">
+  <div class="ui-panel">
+    <h2 class="ui-panel-title mb-3">Goal</h2>
+    <div class="grid grid-cols-1 gap-x-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="fieldset py-0">
+        <label class="fieldset-legend" for="tp-goal">Goal</label>
+        <select name="goal" id="tp-goal" class="select w-full">
           {% for key, label in goals.items %}<option value="{{ key }}"{% if values.goal == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </div>
-      <div class="form-group tp-race">
-        <label class="form-label" for="tp-race">Race date</label>
-        <input type="date" name="race_date" id="tp-race" class="form-input" value="{{ values.race_date|default:'' }}">
+      <div class="fieldset py-0 tp-race">
+        <label class="fieldset-legend" for="tp-race">Race date</label>
+        <input type="date" name="race_date" id="tp-race" class="input w-full" value="{{ values.race_date|default:'' }}">
       </div>
-      <div class="form-group tp-base">
-        <label class="form-label" for="tp-weeks">Plan length (weeks)</label>
-        <input type="number" name="weeks" id="tp-weeks" class="form-input" min="4" max="16" value="{{ values.weeks|default:8 }}">
+      <div class="fieldset py-0 tp-base">
+        <label class="fieldset-legend" for="tp-weeks">Plan length (weeks)</label>
+        <input type="number" name="weeks" id="tp-weeks" class="input w-full" min="4" max="16" value="{{ values.weeks|default:8 }}">
       </div>
-      <div class="form-group">
-        <label class="form-label" for="tp-start">Start date</label>
-        <input type="date" name="start_date" id="tp-start" class="form-input" value="{{ values.start_date|default:'' }}">
+      <div class="fieldset py-0">
+        <label class="fieldset-legend" for="tp-start">Start date</label>
+        <input type="date" name="start_date" id="tp-start" class="input w-full" value="{{ values.start_date|default:'' }}">
       </div>
-      <div class="form-group tp-race">
-        <label class="form-label" for="tp-target">Target time (optional)</label>
-        <input name="target_time" id="tp-target" class="form-input" placeholder="28:30 or 1:55:00" value="{{ values.target_time|default:'' }}">
+      <div class="fieldset py-0 tp-race">
+        <label class="fieldset-legend" for="tp-target">Target time (optional)</label>
+        <input name="target_time" id="tp-target" class="input w-full" placeholder="28:30 or 1:55:00" value="{{ values.target_time|default:'' }}">
       </div>
     </div>
   </div>
 
-  <div class="add-form-card" style="margin-bottom:1.25rem">
-    <h3 class="chart-title" style="margin-bottom:0.6rem">PACE</h3>
+  <div class="ui-panel">
+    <h2 class="ui-panel-title mb-3">Pace</h2>
     {% if pace_level %}
-      <p class="stat-sub" style="margin-bottom:0.4rem">Your Peloton pace level: <strong style="color:var(--text)">Level {{ pace_level.level }}</strong> <span class="muted">(from {{ pace_level.date|date:"M j" }} · {{ pace_level.title }})</span></p>
+      <p class="mb-2 text-sm text-muted">Your Peloton pace level: <strong class="text-base-content">Level {{ pace_level.level }}</strong> <span>(from {{ pace_level.date|date:"M j" }} · {{ pace_level.title }})</span></p>
     {% else %}
-      <p class="stat-sub">No Peloton pace level found in your recent Tread runs. Pick yours below if you use one.</p>
+      <p class="mb-2 text-sm text-muted">No Peloton pace level found in your recent Tread runs. Pick yours below if you use one.</p>
     {% endif %}
-    <ul class="tp-evidence tp-zones" id="tp-zones">
+    <ul class="mb-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm text-muted [&_strong]:font-sans [&_strong]:text-base-content" id="tp-zones">
       {% for name, fast, slow in pace_zones_display %}<li><strong>{{ name }}</strong> {{ fast }}–{{ slow }}/mi</li>{% endfor %}
     </ul>
-    <div class="form-group" style="max-width:22rem">
-      <label class="form-label" for="tp-pace-level">Current pace level</label>
-      <select name="pace_level" id="tp-pace-level" class="form-select">
+    <div class="fieldset max-w-sm py-0">
+      <label class="fieldset-legend" for="tp-pace-level">Current pace level</label>
+      <select name="pace_level" id="tp-pace-level" class="select w-full">
         <option value="auto"{% if values.pace_level == "auto" %} selected{% endif %}>Auto{% if pace_level %} — Level {{ pace_level.level }}{% endif %}</option>
         {% for n in pace_levels %}<option value="{{ n }}"{% if values.pace_level|stringformat:"s" == n|stringformat:"s" %} selected{% endif %}>Level {{ n }}</option>{% endfor %}
       </select>
     </div>
-    <p id="tp-goal-pace" class="stat-sub" hidden></p>
+    <p id="tp-goal-pace" class="mt-3 text-sm text-muted" hidden></p>
   </div>
 
-  <div class="add-form-card" style="margin-bottom:1.25rem">
-    <h3 class="chart-title" style="margin-bottom:0.6rem">STARTING LEVEL</h3>
-    <p class="stat-sub" style="margin-bottom:0.4rem">Suggested from your history: <strong style="color:var(--text)">{{ assessment.level|title }}</strong></p>
-    <ul class="tp-evidence">
+  <div class="ui-panel">
+    <h2 class="ui-panel-title mb-3">Starting level</h2>
+    <p class="mb-2 text-sm text-muted">Suggested from your history: <strong class="text-base-content">{{ assessment.level|title }}</strong></p>
+    <ul class="mb-3 ml-5 list-disc text-sm text-muted">
       {% for e in assessment.evidence %}<li>{{ e }}</li>{% endfor %}
     </ul>
-    <div class="form-group" style="max-width:22rem">
-      <label class="form-label" for="tp-level">Starting level</label>
-      <select name="level" id="tp-level" class="form-select" data-suggested="{{ assessment.level }}">
+    <div class="fieldset max-w-sm py-0">
+      <label class="fieldset-legend" for="tp-level">Starting level</label>
+      <select name="level" id="tp-level" class="select w-full" data-suggested="{{ assessment.level }}">
         <option value="auto"{% if values.level == "auto" %} selected{% endif %}>Auto — suggested: {{ assessment.level|title }}</option>
         {% for l in levels %}<option value="{{ l }}"{% if values.level == l %} selected{% endif %}>{{ l|title }}</option>{% endfor %}
       </select>
     </div>
-    <div id="tp-runway" class="peloton-msg peloton-msg--warning" hidden></div>
+    <div id="tp-runway" role="status" class="alert alert-soft alert-warning mt-3" hidden></div>
   </div>
 
-  <div class="add-form-card" style="margin-bottom:1.25rem">
-    <h3 class="chart-title" style="margin-bottom:0.9rem">SCHEDULE</h3>
-    <div class="form-group">
-      <span class="form-label">Training days</span>
-      <div class="tp-days">
+  <div class="ui-panel">
+    <h2 class="ui-panel-title mb-3">Schedule</h2>
+    <div class="fieldset py-0">
+      <span class="fieldset-legend">Training days</span>
+      <div class="flex flex-wrap gap-x-5 gap-y-2">
         {% for num, name in days %}
-        <label class="tp-check"><input type="checkbox" name="days" value="{{ num }}"{% if num in values.days %} checked{% endif %}> {{ name }}</label>
+        <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="days" value="{{ num }}" class="checkbox checkbox-sm checkbox-primary"{% if num in values.days %} checked{% endif %}> {{ name }}</label>
         {% endfor %}
       </div>
     </div>
-    <div class="tp-grid">
-      <div class="form-group">
-        <label class="form-label" for="tp-long">Long-run day (optional)</label>
-        <select name="long_day" id="tp-long" class="form-select">
+    <div class="grid grid-cols-1 gap-x-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="fieldset py-0">
+        <label class="fieldset-legend" for="tp-long">Long-run day (optional)</label>
+        <select name="long_day" id="tp-long" class="select w-full">
           <option value="">No preference</option>
           {% for num, name in days %}<option value="{{ num }}"{% if values.long_day == num %} selected{% endif %}>{{ name }}</option>{% endfor %}
         </select>
       </div>
-      <div class="form-group">
-        <label class="form-label" for="tp-wkday">Max weekday session (min)</label>
-        <input type="number" name="max_weekday_min" id="tp-wkday" class="form-input" min="20" max="120" value="{{ values.max_weekday_min|default:45 }}">
+      <div class="fieldset py-0">
+        <label class="fieldset-legend" for="tp-wkday">Max weekday session (min)</label>
+        <input type="number" name="max_weekday_min" id="tp-wkday" class="input w-full" min="20" max="120" value="{{ values.max_weekday_min|default:45 }}">
       </div>
-      <div class="form-group">
-        <label class="form-label" for="tp-wkend">Max weekend session (min)</label>
-        <input type="number" name="max_weekend_min" id="tp-wkend" class="form-input" min="20" max="120" value="{{ values.max_weekend_min|default:75 }}">
+      <div class="fieldset py-0">
+        <label class="fieldset-legend" for="tp-wkend">Max weekend session (min)</label>
+        <input type="number" name="max_weekend_min" id="tp-wkend" class="input w-full" min="20" max="120" value="{{ values.max_weekend_min|default:75 }}">
       </div>
     </div>
-    <div class="form-group">
-      <span class="form-label">Where you run</span>
-      <div class="tp-days">
-        <label class="tp-check"><input type="radio" name="setting" value="tread"{% if values.setting == "tread" %} checked{% endif %}> Tread</label>
-        <label class="tp-check"><input type="radio" name="setting" value="outdoor"{% if values.setting == "outdoor" %} checked{% endif %}> Outdoor (audio classes)</label>
-        <label class="tp-check"><input type="radio" name="setting" value="either"{% if values.setting == "either" %} checked{% endif %}> Either</label>
+    <div class="fieldset py-0">
+      <span class="fieldset-legend">Where you run</span>
+      <div class="flex flex-wrap gap-x-5 gap-y-2">
+        <label class="flex cursor-pointer items-center gap-2"><input type="radio" class="radio radio-sm radio-primary" name="setting" value="tread"{% if values.setting == "tread" %} checked{% endif %}> Tread</label>
+        <label class="flex cursor-pointer items-center gap-2"><input type="radio" class="radio radio-sm radio-primary" name="setting" value="outdoor"{% if values.setting == "outdoor" %} checked{% endif %}> Outdoor (audio classes)</label>
+        <label class="flex cursor-pointer items-center gap-2"><input type="radio" class="radio radio-sm radio-primary" name="setting" value="either"{% if values.setting == "either" %} checked{% endif %}> Either</label>
       </div>
     </div>
   </div>
 
-  <div class="add-form-card" style="margin-bottom:1.25rem">
-    <h3 class="chart-title" style="margin-bottom:0.9rem">HOW IT FITS</h3>
-    <div class="tp-days" style="margin-bottom:0.9rem">
-      <label class="tp-check"><input type="radio" name="mode" value="standalone"{% if values.mode != "alongside" %} checked{% endif %}> Standalone — this is my main training</label>
-      <label class="tp-check"><input type="radio" name="mode" value="alongside"{% if values.mode == "alongside" %} checked{% endif %}{% if not companions %} disabled{% endif %}> Alongside another program</label>
+  <div class="ui-panel">
+    <h2 class="ui-panel-title mb-3">How it fits</h2>
+    <div class="mb-4 grid gap-3 sm:grid-cols-2">
+      <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-subtle p-4 has-[:checked]:ring-2 has-[:checked]:ring-primary has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"><input type="radio" name="mode" value="standalone" class="radio radio-sm radio-primary mt-0.5"{% if values.mode != "alongside" %} checked{% endif %}> <span><span class="block font-semibold">Standalone</span><span class="text-sm text-muted">This is my main training</span></span></label>
+      <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-subtle p-4 has-[:checked]:ring-2 has-[:checked]:ring-primary has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"><input type="radio" name="mode" value="alongside" class="radio radio-sm radio-primary mt-0.5"{% if values.mode == "alongside" %} checked{% endif %}{% if not companions %} disabled{% endif %}> <span><span class="block font-semibold">Alongside another program</span><span class="text-sm text-muted">{% if companions %}Plan runs around its sessions{% else %}Needs one of your programs with an active cycle{% endif %}</span></span></label>
     </div>
-    {% if not companions %}<p class="stat-sub" style="margin-top:-0.4rem">Alongside needs one of your programs with an active cycle.</p>{% endif %}
 
-    <div class="tp-mode tp-mode-standalone">
-      <div class="tp-grid">
-        <div class="form-group">
-          <label class="form-label" for="tp-spw">Strength sessions per week</label>
-          <select name="strength_per_week" id="tp-spw" class="form-select">
+    <div class="tp-mode tp-mode-standalone flex flex-col gap-3">
+      <div class="grid grid-cols-1 gap-x-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="fieldset py-0">
+          <label class="fieldset-legend" for="tp-spw">Strength sessions per week</label>
+          <select name="strength_per_week" id="tp-spw" class="select w-full">
             {% for n in "0123" %}<option value="{{ n }}"{% if values.strength_per_week|stringformat:"s" == n %} selected{% endif %}>{{ n }}</option>{% endfor %}
           </select>
         </div>
       </div>
-      <label class="tp-check"><input type="checkbox" name="mobility" value="1"{% if values.mobility %} checked{% endif %}> Add stretching, pilates and yoga sessions</label>
+      <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="mobility" value="1" class="checkbox checkbox-sm checkbox-primary"{% if values.mobility %} checked{% endif %}> Add stretching, pilates and yoga sessions</label>
     </div>
 
-    <div class="tp-mode tp-mode-alongside">
-      <div class="form-group" style="max-width:24rem">
-        <label class="form-label" for="tp-companion">Plan around</label>
-        <select name="companion_program_id" id="tp-companion" class="form-select">
+    <div class="tp-mode tp-mode-alongside flex flex-col gap-3">
+      <div class="fieldset max-w-sm py-0">
+        <label class="fieldset-legend" for="tp-companion">Plan around</label>
+        <select name="companion_program_id" id="tp-companion" class="select w-full">
           {% for p in companions %}<option value="{{ p.pk }}"{% if values.companion_program_id == p.pk %} selected{% endif %}>{{ p.name }}</option>{% endfor %}
         </select>
       </div>
-      <label class="tp-check"><input type="checkbox" name="allow_doubles" value="1"{% if values.allow_doubles %} checked{% endif %}> OK to run on a strength day</label>
-      <label class="tp-check"><input type="checkbox" name="mobility" value="1" class="tp-mobility-alongside"{% if values.mobility %} checked{% endif %}> Allow optional short yoga or stretch sessions on free days</label>
+      <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="allow_doubles" value="1" class="checkbox checkbox-sm checkbox-primary"{% if values.allow_doubles %} checked{% endif %}> OK to run on a strength day</label>
+      <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="mobility" value="1" class="checkbox checkbox-sm checkbox-primary tp-mobility-alongside"{% if values.mobility %} checked{% endif %}> Allow optional short yoga or stretch sessions on free days</label>
     </div>
   </div>
 
-  <div class="add-form-card" style="margin-bottom:1.25rem">
-    <div class="form-group" style="margin:0">
-      <label class="form-label" for="tp-notes">Anything the plan should know? (optional)</label>
-      <textarea name="notes" id="tp-notes" class="form-textarea" rows="3" maxlength="500" placeholder="e.g. my left knee gets sore on long runs; I travel the week of Nov 10">{{ values.notes|default:'' }}</textarea>
+  <div class="ui-panel">
+    <div class="fieldset py-0">
+      <label class="fieldset-legend" for="tp-notes">Anything the plan should know? (optional)</label>
+      <textarea name="notes" id="tp-notes" class="textarea w-full" rows="3" maxlength="500" placeholder="e.g. my left knee gets sore on long runs; I travel the week of Nov 10">{{ values.notes|default:'' }}</textarea>
     </div>
   </div>
 
-  <div class="page-header-actions">
+  <div class="flex flex-wrap gap-2">
     <button class="btn btn-primary" type="submit">Build my plan</button>
     <a class="btn btn-ghost" href="{% url 'program_list' %}">Cancel</a>
   </div>

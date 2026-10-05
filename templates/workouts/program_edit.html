@@ -3,106 +3,80 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <a href="{% url 'program_detail' program.slug %}" class="back-link">&larr; {{ program.name }}</a>
-      <p class="stat-sub">{{ program.get_kind_display }}{% if program.instructor %} &middot; {{ program.instructor }}{% endif %}</p>
-      <h1 class="page-title">Edit program</h1>
-      <p class="page-sub">Change the plan's classes, how each one is matched, and recovery tracking — no code needed</p>
+<div class="kind-scope--{{ program.kind }}">
+<div class="ui-page-header">
+  <div class="max-w-3xl">
+    <a href="{% url 'program_detail' program.slug %}" class="text-sm">&larr; {{ program.name }}</a>
+    <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted">
+      <span class="badge badge-sm badge-outline text-primary">{{ program.get_kind_display }}</span>
+      {% if program.instructor %}<span>{{ program.instructor }}</span>{% endif %}
     </div>
+    <h1 class="ui-page-title mt-1">Edit program</h1>
+    <p class="ui-page-sub">Change the plan's classes, how each one is matched, and recovery tracking — no code needed</p>
   </div>
 </div>
 
-{% if messages %}
-<div style="margin-bottom:1.25rem">
-  {% for message in messages %}
-  <div class="peloton-msg peloton-msg--{% if message.tags == 'error' or message.tags == 'warning' %}error{% else %}success{% endif %}">{{ message }}</div>
-  {% endfor %}
-</div>
-{% endif %}
+{% include "workouts/partials/messages.html" %}
 
-<form method="post" action="{% url 'program_edit' program.slug %}" id="programEditForm">
+<form method="post" action="{% url 'program_edit' program.slug %}" id="programEditForm" class="flex flex-col gap-5">
   {% csrf_token %}
 
-  <div class="chart-card" style="margin-bottom:1.25rem">
-    <div class="chart-header"><h3 class="chart-title">PROGRAM</h3></div>
-    <div class="add-form-card" style="border:0;padding:0">
-      <div class="form-group">
-        <label class="form-label">Name</label>
-        <input name="name" class="form-input" value="{{ program.name }}" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Instructor</label>
-        <input name="instructor" class="form-input" value="{{ program.instructor }}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Description</label>
-        <textarea name="description" class="form-textarea" rows="2">{{ program.description }}</textarea>
-      </div>
+  <div class="ui-panel">
+    <h2 class="ui-panel-title mb-2">Program</h2>
+    <div class="grid grid-cols-1 gap-x-4 md:grid-cols-2">
+      <label class="fieldset py-0"><span class="fieldset-legend">Name</span><input name="name" class="input w-full" value="{{ program.name }}" required></label>
+      <label class="fieldset py-0"><span class="fieldset-legend">Instructor</span><input name="instructor" class="input w-full" value="{{ program.instructor }}"></label>
+      <label class="fieldset py-0 md:col-span-2"><span class="fieldset-legend">Description</span><textarea name="description" class="textarea w-full" rows="2">{{ program.description }}</textarea></label>
     </div>
   </div>
 
-  <div class="chart-card" style="margin-bottom:1.25rem">
-    <div class="chart-header">
-      <h3 class="chart-title">RECOVERY TRACKING</h3>
-      <span class="chart-sub">Attach a cool-down walk and/or stretch taken right after each workout</span>
+  <div class="ui-panel">
+    <div class="ui-panel-header">
+      <h2 class="ui-panel-title">Recovery tracking</h2>
+      <span class="text-sm text-muted">Attach a cool-down walk and/or stretch taken right after each workout</span>
     </div>
-    <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.9rem">
-      <input type="checkbox" name="track_recovery" {% if program.track_recovery %}checked{% endif %}>
+    <label class="mb-4 flex cursor-pointer items-center gap-3">
+      <input type="checkbox" name="track_recovery" class="toggle toggle-primary" {% if program.track_recovery %}checked{% endif %}>
       <span>Track recovery sessions for this program</span>
     </label>
-    <div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:flex-end;{% if not program.track_recovery %}opacity:0.6{% endif %}">
-      <label style="display:flex;align-items:center;gap:0.4rem"><input type="checkbox" name="recovery_walks" {% if program.recovery_walks %}checked{% endif %}> Count walks</label>
-      <label style="display:flex;align-items:center;gap:0.4rem"><input type="checkbox" name="recovery_stretches" {% if program.recovery_stretches %}checked{% endif %}> Count stretches</label>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Must start within (min)</label>
-        <input name="recovery_window_min" type="number" min="0" max="120" value="{{ program.recovery_window_min }}" class="form-input" style="width:6rem">
-      </div>
-      <div class="form-group" style="margin:0">
-        <label class="form-label">Max length (min)</label>
-        <input name="recovery_max_min" type="number" min="1" max="240" value="{{ program.recovery_max_min }}" class="form-input" style="width:6rem">
-      </div>
+    <div class="flex flex-wrap items-end gap-6{% if not program.track_recovery %} opacity-60{% endif %}">
+      <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="recovery_walks" class="toggle toggle-sm toggle-primary" {% if program.recovery_walks %}checked{% endif %}> Count walks</label>
+      <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="recovery_stretches" class="toggle toggle-sm toggle-primary" {% if program.recovery_stretches %}checked{% endif %}> Count stretches</label>
+      <label class="fieldset py-0"><span class="fieldset-legend">Must start within (min)</span><input name="recovery_window_min" type="number" min="0" max="120" value="{{ program.recovery_window_min }}" class="input input-sm w-24 font-mono"></label>
+      <label class="fieldset py-0"><span class="fieldset-legend">Max length (min)</span><input name="recovery_max_min" type="number" min="1" max="240" value="{{ program.recovery_max_min }}" class="input input-sm w-24 font-mono"></label>
     </div>
-    <p class="stat-sub" style="margin-top:0.75rem">
+    <p class="mt-3 text-sm text-muted">
       A walk or stretch that starts within the window after a workout ends is attached to it; after a walk, a stretch can follow the same way.
       Sessions longer than the max length are treated as real workouts.
     </p>
   </div>
 
   {% for w in weeks %}
-  <div class="chart-card" style="margin-bottom:1.25rem" data-week="{{ w.week.pk }}">
-    <div class="chart-header" style="gap:0.75rem;flex-wrap:wrap">
-      <h3 class="chart-title">WEEK {{ w.week.number }}</h3>
-      <input name="week_{{ w.week.pk }}_label" value="{{ w.week.label }}" class="form-input" style="max-width:14rem" placeholder="label (optional)">
+  <div class="ui-panel week-panel" data-week="{{ w.week.pk }}">
+    <div class="ui-panel-header">
+      <div class="flex flex-wrap items-center gap-3">
+        <h2 class="ui-panel-title">Week {{ w.week.number }}</h2>
+        <input name="week_{{ w.week.pk }}_label" value="{{ w.week.label }}" class="input input-sm w-56" placeholder="label (optional)" aria-label="Week {{ w.week.number }} label">
+      </div>
       {% if not w.has_passes and weeks|length > 1 %}
-      <button type="submit" name="delete_week" value="{{ w.week.pk }}" class="btn btn-ghost btn-sm" style="color:var(--accent-red)"
+      <button type="submit" name="delete_week" value="{{ w.week.pk }}" class="btn btn-sm btn-error btn-outline"
               onclick="return confirm('Remove week {{ w.week.number }} and its slots? Other edits on this page are saved too.')">Remove week</button>
       {% endif %}
     </div>
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th title="Delete slot">Del</th><th>Day</th><th>Order</th><th>Title</th><th>Min</th>
-            <th title="Optional slots are hidden once a pass is finished">Opt.</th><th>Match by</th><th>Class / type</th>
-          </tr>
-        </thead>
-        <tbody class="slot-body">
-          {% for r in w.rows %}{% include "workouts/partials/program_slot_row.html" %}{% endfor %}
-          {% for r in w.blanks %}{% include "workouts/partials/program_slot_row.html" %}{% endfor %}
-        </tbody>
-      </table>
+    <div class="hidden gap-3 border-b border-subtle pb-2 text-xs font-medium text-muted lg:grid lg:grid-cols-[3rem_4rem_4rem_minmax(12rem,1fr)_4.5rem_3rem_11rem_minmax(12rem,1fr)]" aria-hidden="true">
+      <span class="text-center">Del</span><span>Day</span><span>Order</span><span>Title</span><span>Min</span><span class="text-center" title="Optional slots are hidden once a pass is finished">Opt.</span><span>Match by</span><span>Class / type</span>
     </div>
-    <div style="margin-top:0.75rem">
-      <button type="button" class="btn btn-ghost btn-sm add-slot-btn" data-week="{{ w.week.pk }}" data-next="2">+ Add slot</button>
+    <div class="slot-body">
+      {% for r in w.rows %}{% include "workouts/partials/program_slot_row.html" %}{% endfor %}
+      {% for r in w.blanks %}{% include "workouts/partials/program_slot_row.html" %}{% endfor %}
     </div>
+    <button type="button" class="btn btn-ghost btn-sm add-slot-btn mt-2" data-week="{{ w.week.pk }}" data-next="2">+ Add slot</button>
   </div>
   {% endfor %}
 
-  <div class="page-header-actions" style="margin-bottom:2rem">
+  <div class="flex flex-wrap gap-2">
     <button class="btn btn-primary" type="submit">Save changes</button>
-    <button class="btn btn-ghost" type="submit" name="action" value="add_week">Save &amp; add a week</button>
+    <button class="btn" type="submit" name="action" value="add_week">Save &amp; add a week</button>
     <a class="btn btn-ghost" href="{% url 'program_detail' program.slug %}">Back</a>
   </div>
 </form>
@@ -111,22 +85,20 @@
   {% with r=blank_row %}{% include "workouts/partials/program_slot_row.html" %}{% endwith %}
 </template>
 
-<div class="chart-card" style="margin-bottom:2rem">
-  <div class="chart-header"><h3 class="chart-title">DUPLICATE THIS PROGRAM</h3></div>
-  <form method="post" action="{% url 'program_duplicate' program.slug %}" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end">
+<div class="ui-panel mt-8">
+  <h2 class="ui-panel-title mb-2">Duplicate this program</h2>
+  <form method="post" action="{% url 'program_duplicate' program.slug %}" class="flex flex-wrap items-end gap-3">
     {% csrf_token %}
-    <div class="form-group" style="margin:0">
-      <label class="form-label">New name</label>
-      <input name="name" class="form-input" value="{{ program.name }} (copy)" style="min-width:18rem">
-    </div>
-    <label style="display:flex;align-items:center;gap:0.4rem" title="Two programs pinning the same classes compete for every workout, and the original wins">
-      <input type="checkbox" name="keep_ride_ids"> Keep class links (ride ids)
+    <label class="fieldset min-w-64 flex-1 py-0"><span class="fieldset-legend">New name</span><input name="name" class="input w-full" value="{{ program.name }} (copy)"></label>
+    <label class="flex cursor-pointer items-center gap-2 pb-2" title="Two programs pinning the same classes compete for every workout, and the original wins">
+      <input type="checkbox" name="keep_ride_ids" class="checkbox checkbox-sm"> Keep class links (ride ids)
     </label>
-    <button class="btn btn-ghost" type="submit">Duplicate</button>
+    <button class="btn" type="submit">Duplicate</button>
   </form>
-  <p class="stat-sub" style="margin-top:0.6rem">
+  <p class="mt-3 text-sm text-muted">
     Copies the weeks, slots and recovery settings — not cycles or completions. Class links are cleared by default so the copy doesn't compete with this program for your workouts; "any class" slots are kept.
   </p>
+</div>
 </div>
 
 <script>
@@ -137,9 +109,9 @@
   function syncRow(row) {
     const match = row.querySelector(".slot-match").value;
     row.querySelector(".slot-detail--ride").style.display = match === "ride" ? "" : "none";
-    row.querySelector(".slot-detail--any").style.display = match === "any" ? "" : "none";
+    row.querySelector(".slot-detail--any").style.display = match === "any" ? "flex" : "none";
     const preset = row.querySelector(".slot-preset").value;
-    row.querySelector(".slot-custom").style.display = (match === "any" && preset === "custom") ? "inline" : "none";
+    row.querySelector(".slot-custom").style.display = (match === "any" && preset === "custom") ? "flex" : "none";
   }
   form.querySelectorAll(".slot-row").forEach(syncRow);
   form.addEventListener("change", e => {
@@ -149,7 +121,7 @@
   form.querySelectorAll(".add-slot-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const wk = btn.dataset.week;
-      const body = btn.closest(".chart-card").querySelector(".slot-body");
+      const body = btn.closest(".week-panel").querySelector(".slot-body");
       // continue numbering after the blank rows already rendered for this week
       let k = parseInt(btn.dataset.next, 10);
       btn.dataset.next = k + 1;

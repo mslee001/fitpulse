@@ -1,38 +1,48 @@
-{# One slot row on the program edit page. Context: r (see program_views._slot_row), presets. #}
-<tr class="slot-row" data-pfx="{{ r.pfx }}">
-  <td style="text-align:center">
-    {% if r.is_new %}<span class="stat-sub">new</span>
+{# One slot on the program edit page (real rows, blank rows and the JS clone template). Context: r (see program_views._slot_row), presets. Stacked on phones, one row on lg. #}
+<div class="slot-row grid grid-cols-2 gap-2 border-b border-subtle py-3 last:border-0 sm:grid-cols-4 lg:grid-cols-[3rem_4rem_4rem_minmax(12rem,1fr)_4.5rem_3rem_11rem_minmax(12rem,1fr)] lg:items-center lg:gap-3 lg:py-2" data-pfx="{{ r.pfx }}">
+  <div class="col-span-2 flex items-center gap-2 sm:col-span-4 lg:col-span-1 lg:justify-center">
+    {% if r.is_new %}<span class="badge badge-xs badge-ghost">new</span>
     {% else %}
     <input type="hidden" name="{{ r.pfx }}present" value="1">
-    <input type="checkbox" name="{{ r.pfx }}delete" title="Delete this slot{% if r.completions %} — its {{ r.completions }} completion{{ r.completions|pluralize }} stay in the cycle as unslotted entries{% endif %}">
+    <label class="flex items-center gap-2 text-xs text-muted">
+      <input type="checkbox" name="{{ r.pfx }}delete" class="checkbox checkbox-xs checkbox-error" title="Delete this slot{% if r.completions %} — its {{ r.completions }} completion{{ r.completions|pluralize }} stay in the cycle as unslotted entries{% endif %}">
+      <span class="lg:sr-only">Delete slot</span>
+    </label>
     {% endif %}
-  </td>
-  <td><input name="{{ r.pfx }}day" value="{{ r.day }}" class="form-input" style="width:3.2rem" inputmode="numeric" placeholder="day"></td>
-  <td><input name="{{ r.pfx }}order" value="{{ r.order }}" class="form-input" style="width:3.2rem" inputmode="numeric"></td>
-  <td><input name="{{ r.pfx }}title" value="{{ r.title }}" class="form-input" style="min-width:15rem" placeholder="e.g. 45 min Upper Body Push + Run"></td>
-  <td><input name="{{ r.pfx }}duration" value="{{ r.duration_min }}" class="form-input" style="width:3.5rem" inputmode="numeric" placeholder="min"></td>
-  <td style="text-align:center"><input type="checkbox" name="{{ r.pfx }}optional" {% if r.optional %}checked{% endif %}></td>
-  <td>
-    <select name="{{ r.pfx }}match" class="form-select slot-match">
+  </div>
+  <label class="flex flex-col gap-0.5 text-xs text-muted"><span class="lg:sr-only">Day</span>
+    <input name="{{ r.pfx }}day" value="{{ r.day }}" class="input input-sm w-full font-mono" inputmode="numeric" placeholder="day"></label>
+  <label class="flex flex-col gap-0.5 text-xs text-muted"><span class="lg:sr-only">Order</span>
+    <input name="{{ r.pfx }}order" value="{{ r.order }}" class="input input-sm w-full font-mono" inputmode="numeric"></label>
+  <label class="col-span-2 flex flex-col gap-0.5 text-xs text-muted lg:col-span-1"><span class="lg:sr-only">Title</span>
+    <input name="{{ r.pfx }}title" value="{{ r.title }}" class="input input-sm w-full" placeholder="e.g. 45 min Upper Body Push + Run"></label>
+  <label class="flex flex-col gap-0.5 text-xs text-muted"><span class="lg:sr-only">Minutes</span>
+    <input name="{{ r.pfx }}duration" value="{{ r.duration_min }}" class="input input-sm w-full font-mono" inputmode="numeric" placeholder="min"></label>
+  <label class="flex items-center gap-2 text-xs text-muted lg:justify-center" title="Optional slots are hidden once a pass is finished">
+    <input type="checkbox" name="{{ r.pfx }}optional" class="checkbox checkbox-sm" {% if r.optional %}checked{% endif %}>
+    <span class="lg:sr-only">Optional</span>
+  </label>
+  <label class="col-span-2 flex flex-col gap-0.5 text-xs text-muted sm:col-span-2 lg:col-span-1"><span class="lg:sr-only">Match by</span>
+    <select name="{{ r.pfx }}match" class="select select-sm w-full slot-match">
       <option value="ride" {% if r.match == "ride" %}selected{% endif %}>Specific class</option>
       <option value="any" {% if r.match == "any" %}selected{% endif %}>Any class of a type</option>
       <option value="title" {% if r.match == "title" %}selected{% endif %}>By title only</option>
     </select>
-  </td>
-  <td>
+  </label>
+  <div class="col-span-2 sm:col-span-2 lg:col-span-1">
     <div class="slot-detail slot-detail--ride">
-      <input name="{{ r.pfx }}ride_id" value="{{ r.ride_id }}" class="form-input" style="min-width:13rem" placeholder="ride id or class link">
+      <input name="{{ r.pfx }}ride_id" value="{{ r.ride_id }}" class="input input-sm w-full" placeholder="ride id or class link" aria-label="Ride id or class link">
     </div>
-    <div class="slot-detail slot-detail--any" style="display:none">
-      <select name="{{ r.pfx }}preset" class="form-select slot-preset">
+    <div class="slot-detail slot-detail--any flex flex-col gap-2" style="display:none">
+      <select name="{{ r.pfx }}preset" class="select select-sm w-full slot-preset" aria-label="Class type">
         <option value="">Choose a type…</option>
         {% for key, label in presets %}<option value="{{ key }}" {% if r.preset == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
         <option value="custom" {% if r.preset == "custom" %}selected{% endif %}>Custom…</option>
       </select>
-      <span class="slot-custom" style="display:none;margin-left:0.35rem">
-        <input name="{{ r.pfx }}discipline" value="{{ r.discipline }}" class="form-input" style="width:7rem" placeholder="discipline">
-        <input name="{{ r.pfx }}keyword" value="{{ r.keyword }}" class="form-input" style="width:7rem" placeholder="title contains">
+      <span class="slot-custom gap-2" style="display:none">
+        <input name="{{ r.pfx }}discipline" value="{{ r.discipline }}" class="input input-sm w-full" placeholder="discipline" aria-label="Discipline">
+        <input name="{{ r.pfx }}keyword" value="{{ r.keyword }}" class="input input-sm w-full" placeholder="title contains" aria-label="Title contains">
       </span>
     </div>
-  </td>
-</tr>
+  </div>
+</div>

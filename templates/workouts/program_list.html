@@ -4,51 +4,59 @@
 {% block nav_training %}active{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div class="page-header-row">
-    <div>
-      <h1 class="page-title">PROGRAMS</h1>
-      <p class="page-sub">Plans, collections, and splits tracked across cycles</p>
-    </div>
-    <div class="page-header-actions">
-      {% if can.ai_program_tools %}<a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}">+ New Training Plan</a>{% endif %}
-      {% if can.ai_program_tools %}<a class="btn btn-ghost" href="{% url 'program_new_plan' %}">+ New Plan</a>{% endif %}
-      <a class="btn btn-primary" href="{% url 'program_new' %}">+ New Split</a>
-    </div>
+<div class="ui-page-header">
+  <div>
+    <h1 class="ui-page-title">Programs</h1>
+    <p class="ui-page-sub">Plans, collections, and splits tracked across cycles</p>
+  </div>
+  <div class="ui-page-actions">
+    {% if can.ai_program_tools %}<a class="btn btn-sm" href="{% url 'program_training_plan_new' %}">+ New training plan</a>{% endif %}
+    {% if can.ai_program_tools %}<a class="btn btn-sm" href="{% url 'program_new_plan' %}">+ New plan</a>{% endif %}
+    <a class="btn btn-sm btn-primary" href="{% url 'program_new' %}">+ New split</a>
   </div>
 </div>
 
+<div class="flex flex-col gap-8">
 {% if current_programs %}
-<h3 class="chart-title" style="margin-bottom:0.75rem">CURRENT</h3>
-<div class="discipline-grid" style="margin-bottom:2rem">
-  {% for p in current_programs %}
-  <a class="discipline-card kind-{{ p.kind }}" href="{% url 'program_detail' p.slug %}">
-    <span class="kind-badge kind-{{ p.kind }}">{{ p.get_kind_display }}</span>
-    <div class="record-discipline" style="margin-bottom:0.4rem">{{ p.name }}</div>
-    {% if p.instructor %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ p.instructor }}</div>{% endif %}
-    {% with tag=p|ai_plan_tag %}{% if tag %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ tag }}</div>{% endif %}{% endwith %}
-    <span class="fp-badge fp-badge-accent">Current cycle</span>
-  </a>
-  {% endfor %}
-</div>
+<section>
+  <h2 class="ui-section-title">Current</h2>
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    {% for p in current_programs %}
+    <a class="kind-scope--{{ p.kind }} ui-panel flex flex-col gap-2 border-l-4 border-primary text-base-content hover:no-underline hover:bg-base-300" href="{% url 'program_detail' p.slug %}">
+      <span class="badge badge-sm badge-outline text-primary">{{ p.get_kind_display }}</span>
+      <span class="text-lg font-semibold">{{ p.name }}</span>
+      {% if p.instructor %}<span class="text-sm text-muted">{{ p.instructor }}</span>{% endif %}
+      <span class="flex flex-wrap gap-1.5">
+        {% with tag=p|ai_plan_tag %}{% if tag %}<span class="badge badge-sm badge-ghost">{{ tag }}</span>{% endif %}{% endwith %}
+        <span class="badge badge-sm badge-primary badge-soft">Current cycle</span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 
 {% if past_programs %}
-<h3 class="chart-title" style="margin-bottom:0.75rem">{% if current_programs %}PAST PROGRAMS{% else %}PROGRAMS{% endif %}</h3>
-<div class="discipline-grid">
-  {% for p in past_programs %}
-  <a class="discipline-card kind-{{ p.kind }}" href="{% url 'program_detail' p.slug %}">
-    <span class="kind-badge kind-{{ p.kind }}">{{ p.get_kind_display }}</span>
-    <div class="record-discipline" style="margin-bottom:0.4rem">{{ p.name }}</div>
-    {% if p.instructor %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ p.instructor }}</div>{% endif %}
-    {% with tag=p|ai_plan_tag %}{% if tag %}<div class="stat-sub" style="margin-bottom:0.6rem">{{ tag }}</div>{% endif %}{% endwith %}
-    <span class="fp-badge fp-badge-muted">{{ p.runs.count }} cycle{{ p.runs.count|pluralize }}</span>
-  </a>
-  {% endfor %}
-</div>
+<section>
+  <h2 class="ui-section-title">{% if current_programs %}Past programs{% else %}Programs{% endif %}</h2>
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    {% for p in past_programs %}
+    <a class="kind-scope--{{ p.kind }} ui-panel flex flex-col gap-2 border-l-4 border-primary text-base-content hover:no-underline hover:bg-base-300" href="{% url 'program_detail' p.slug %}">
+      <span class="badge badge-sm badge-outline text-primary">{{ p.get_kind_display }}</span>
+      <span class="text-lg font-semibold">{{ p.name }}</span>
+      {% if p.instructor %}<span class="text-sm text-muted">{{ p.instructor }}</span>{% endif %}
+      <span class="flex flex-wrap gap-1.5">
+        {% with tag=p|ai_plan_tag %}{% if tag %}<span class="badge badge-sm badge-ghost">{{ tag }}</span>{% endif %}{% endwith %}
+        <span class="badge badge-sm badge-ghost">{{ p.runs.count }} cycle{{ p.runs.count|pluralize }}</span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 
 {% if not current_programs and not past_programs %}
-<p class="stat-sub">No programs yet.</p>
+<div class="ui-empty">No programs yet.</div>
 {% endif %}
+</div>
 {% endblock %}

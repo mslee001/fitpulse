@@ -485,7 +485,7 @@ class GenerateAndCreateTests(PlanTestCase):
         draft = self.ready_draft()
         page = self.client_a.get(reverse("program_training_plan_draft", args=[draft.pk]))
         self.assertContains(page, "Create plan")
-        self.assertContains(page, "WEEK 7")
+        self.assertContains(page, "Week 7")
         resp = self.client_a.post(reverse("program_training_plan_create", args=[draft.pk]), {"name": "Fall 10K"})
         program = Program.objects.get(user=self.a, name="Fall 10K")
         self.assertRedirects(resp, reverse("program_run", args=[program.active_run.pk]), fetch_redirect_response=False)

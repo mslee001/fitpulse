@@ -76,32 +76,10 @@ a:hover { text-decoration: underline; }
 
 /* ── Stat / Metric cards ─────────────────────── */
 
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2.5rem;
-}
-
-.stat-card {
-  background: var(--bg-card);
-  border: 1px solid var(--fp-border);
-  border-radius: var(--r);
-  padding: 1.25rem 1.5rem;
-  transition: border-color 0.15s;
-}
-.stat-card:hover { border-color: var(--border-accent); }
-.stat-card--hero { border-top: 3px solid var(--accent); }
-
 .stat-label {
   font-family: var(--font-sans);
   font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em;
   color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem;
-}
-.fp-stat-value {
-  font-family: var(--font-sans);
-  font-size: 2.2rem; font-weight: 800; line-height: 1;
-  color: var(--text);
 }
 
 /* ── Discipline pills (history filter) ───────── */
@@ -111,17 +89,6 @@ a:hover { text-decoration: underline; }
 /* ── Filter panel ────────────────────────────── */
 
 /* filter-toggle is a <button> that acts like filter-title on desktop */
-
-.filter-select {
-  width: 100%;
-  background: var(--bg); color: var(--text);
-  border: 1px solid var(--fp-border); border-radius: 4px;
-  padding: 0.4rem 0.6rem;
-  font-family: var(--font-sans); font-size: 0.85rem;
-  appearance: none; outline: none;
-  transition: border-color 0.15s;
-}
-.filter-select:focus { border-color: var(--accent); }
 
 /* ── Workout cards ───────────────────────────── */
 
@@ -163,29 +130,7 @@ a:hover { text-decoration: underline; }
 
 /* ── Discipline cards ────────────────────────── */
 
-.discipline-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 0.75rem;
-}
-.discipline-card {
-  background: var(--bg-card);
-  border: 1px solid var(--fp-border);
-  border-radius: var(--r);
-  padding: 1.25rem;
-  text-decoration: none;
-  transition: border-color 0.15s, background 0.15s;
-  display: block;
-}
-.discipline-card:hover { border-color: var(--accent); background: var(--bg-hover); text-decoration: none; }
-
 /* ── Records ─────────────────────────────────── */
-
-.record-discipline {
-  font-family: var(--font-sans);
-  font-size: 0.85rem; font-weight: 700; letter-spacing: 0.08em;
-  color: var(--accent); text-transform: uppercase; margin-bottom: 0.75rem;
-}
 
 /* ── Compare ─────────────────────────────────── */
 
@@ -195,30 +140,7 @@ a:hover { text-decoration: underline; }
 
 /* ── Data table ──────────────────────────────── */
 
-.table-wrap { overflow-x: auto; }
-.data-table {
-  width: 100%; border-collapse: collapse;
-  font-size: 0.88rem;
-}
-.data-table th {
-  font-family: var(--font-sans);
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
-  color: var(--text-muted); text-transform: uppercase; text-align: left;
-  padding: 0.5rem 1rem; border-bottom: 1px solid var(--fp-border);
-}
-.data-table td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--fp-border);
-  color: var(--text);
-}
-.data-table tr:hover td { background: var(--bg-raised); }
-.data-table .mono { font-family: var(--font-mono); }
-
 /* ── Discipline tag ──────────────────────────── */
-
-.page-header-row {
-  display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem;
-}
 
 /* ── HR zone bars ────────────────────────────── */
 
@@ -363,40 +285,11 @@ a:hover { text-decoration: underline; }
 
 /* ── Programs ───────────────────────────────────── */
 
-:root {
-  --kind-plan:       var(--accent-green);
-  --kind-split:      var(--accent-alt);
-  --kind-collection: #A78BFA;
-}
-[data-theme="light"] {
-  --kind-collection: #6B4FD6;
-}
-
-.kind-badge {
-  display: inline-block;
-  font-family: var(--font-sans);
-  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  margin-bottom: 0.5rem;
-}
-.kind-plan       { color: var(--kind-plan);       }
-.kind-split      { color: var(--kind-split);      }
-.kind-collection { color: var(--kind-collection); }
-
-.discipline-card.kind-plan       { border-left: 3px solid var(--kind-plan);       }
-.discipline-card.kind-split      { border-left: 3px solid var(--kind-split);      }
-.discipline-card.kind-collection { border-left: 3px solid var(--kind-collection); }
 
 /* A program's run/detail pages carry its kind color as the page accent —
    overriding --accent here cascades into every element already built on it
    (buttons, badges, the page-title gradient, done-cell borders/checkmarks)
    with no per-component changes needed. */
-.kind-scope--plan       { --accent: var(--kind-plan);       }
-.kind-scope--split      { --accent: var(--kind-split);      }
-.kind-scope--collection { --accent: var(--kind-collection); }
 
 .intervention-row {
   display: grid;
@@ -416,44 +309,21 @@ a:hover { text-decoration: underline; }
   font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem;
 }
 .intervention-actions { display: flex; gap: 0.4rem; }
-
-.add-form-card {
-  background: var(--bg-card);
-  border: 1px solid var(--fp-border);
-  border-radius: var(--r);
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-}
 .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
 .form-label {
   font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
   letter-spacing: 0.04em; text-transform: uppercase;
 }
-.form-input, .form-select, .form-textarea {
+.form-input, .form-select {
   background: var(--bg); color: var(--text);
   border: 1px solid var(--fp-border); border-radius: 4px;
   padding: 0.45rem 0.65rem;
   font-family: var(--font-sans); font-size: 0.875rem;
   outline: none; transition: border-color 0.15s;
 }
-.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
-.form-textarea { resize: vertical; min-height: 70px; }
+.form-input:focus, .form-select:focus { border-color: var(--accent); }
 
 /* ── Body page ─────────────────────────────────── */
-
-.range-toggle-row {
-  display: flex; gap: 0.4rem; flex-wrap: wrap;
-  margin-bottom: 1.5rem;
-}
-.range-btn {
-  font-family: var(--font-sans);
-  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  padding: 0.3rem 0.85rem; border-radius: var(--r);
-  border: 1px solid var(--fp-border); background: transparent;
-  color: var(--text-muted); cursor: pointer; transition: all 0.15s; text-decoration: none;
-}
-.range-btn:hover { background: var(--bg-raised); color: var(--text); text-decoration: none; }
-.range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 .sparkline-row {
   display: grid;
@@ -478,44 +348,6 @@ a:hover { text-decoration: underline; }
 .analysis-nodata td { color: var(--text-dim); }
 
 /* ── Intervention list items ────────────────────────── */
-
-.iv-item {
-  border-bottom: 1px solid var(--fp-border);
-  padding: 0.85rem 1rem;
-}
-.iv-item:last-child { border-bottom: none; }
-.iv-item:hover { background: var(--bg-hover); }
-
-.iv-item-main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.iv-item-info { flex: 1; min-width: 0; }
-
-.iv-item-name {
-  font-family: var(--font-sans);
-  font-size: 1rem; font-weight: 700;
-  color: var(--text); text-decoration: none;
-  display: inline;
-}
-.iv-item-name:hover { color: var(--accent); text-decoration: none; }
-
-.iv-item-dose {
-  font-weight: 400; font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.iv-item-meta {
-  font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;
-}
-
-.iv-item-actions {
-  display: flex; gap: 0.4rem; flex-shrink: 0; align-items: center; flex-wrap: wrap;
-}
 
 .quick-dose-panel {
   background: var(--bg-raised);
@@ -584,13 +416,6 @@ a:hover { text-decoration: underline; }
 }
 .fp-badge-muted { background: var(--bg-raised); color: var(--text-muted); }
 
-.stat-sub {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: 0.4rem;
-}
-
 /* Nutrition bars */
 
 /* Today's workouts */
@@ -625,63 +450,7 @@ a:hover { text-decoration: underline; }
 /* ── Programs (plan / collection / split tracker) ───────────── */
 .fp-badge-accent { background: var(--accent); color: #fff; }
 
-.page-header-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-
-.program-week { margin-bottom: 1.5rem; }
-.program-week-label {
-  font-family: var(--font-sans);
-  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--text-muted);
-  margin-bottom: 0.6rem;
-  display: flex; gap: 0.5rem; align-items: baseline; justify-content: space-between;
-}
-.program-week-label-text { display: flex; gap: 0.5rem; align-items: baseline; }
-.program-week-cells {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 0.6rem;
-}
-.pcell {
-  display: flex; flex-direction: column; gap: 0.2rem;
-  padding: 0.7rem 0.8rem;
-  border-radius: var(--r);
-  border: 1px solid var(--fp-border);
-  background: var(--bg-card);
-  text-decoration: none;
-}
-.pcell-done { border-color: var(--accent); }
-.pcell-done:hover { background: var(--bg-hover); text-decoration: none; }
-.pcell-todo { opacity: 0.55; border-style: dashed; }
-.pcell-optional { opacity: 0.4; }
-.pcell-recovery {
-  display: block; margin-top: 0.15rem;
-  font-size: 0.72rem; color: var(--text-muted);
-}
-.pcell-check { color: var(--accent); font-weight: 700; }
-.pcell-title { font-size: 0.9rem; color: var(--text); }
-.pcell-sub {
-  font-family: var(--font-mono);
-  font-size: 0.72rem; color: var(--text-muted);
-}
-
 /* ── Per-pass RPE + note ─────────────────────────────────── */
-.rw-rating { margin-bottom: 0.6rem; }
-.rw-rating-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-.rw-rating-row { display: flex; align-items: center; gap: 0.4rem; }
-.rw-rating-label {
-  font-family: var(--font-sans);
-  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--text-muted);
-}
-.rw-rating-select { width: auto; padding: 0.25rem 0.5rem; }
-.rw-rating-note { flex: 1; min-width: 180px; max-width: 320px; padding: 0.3rem 0.6rem; font-size: 0.8rem; }
-.rw-rating-badge {
-  font-family: var(--font-mono);
-  font-size: 0.72rem; padding: 0.1rem 0.45rem; border-radius: 4px;
-  border: 1px solid var(--fp-border);
-}
-.rpe-8, .rpe-9, .rpe-10 { border-color: var(--accent-red); color: var(--accent-red); }
-.rpe-1, .rpe-2, .rpe-3  { border-color: var(--accent-alt); color: var(--accent-alt); }
 
 /* ── Mobile layout ───────────────────────────────────────── */
 @media (max-width: 768px) {
@@ -773,46 +542,12 @@ a:hover { text-decoration: underline; }
 .peloton-token-help p { margin: 0.5rem 0; }
 
 /* AI training plans (program_training_plan_new / _draft) */
-.tp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.85rem; align-items: end; }
-.tp-days { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
-.tp-check { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; color: var(--text-muted); cursor: pointer; margin: 0.2rem 0; }
-.tp-mode .tp-check { display: flex; }
-.tp-evidence { margin: 0.25rem 0 0.75rem; padding-left: 1.2rem; font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; }
-.tp-name { font-family: var(--font-sans); font-size: 1.6rem; font-weight: 700; max-width: 36rem; width: 100%; }
-.tp-week { margin-bottom: 1rem; }
-.tp-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr) auto; gap: 0.75rem; align-items: start; padding: 0.6rem 0; border-top: 1px solid var(--fp-border); font-size: 0.86rem; }
-.tp-row-spec { display: flex; gap: 0.6rem; }
-.tp-day { font-family: var(--font-sans); font-weight: 700; letter-spacing: 0.05em; color: var(--text-dim); min-width: 2.2rem; text-transform: uppercase; }
-.tp-row-class { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.tp-class-title { color: var(--text); font-weight: 600; }
-.tp-purpose { font-style: italic; }
-.tp-row-actions { display: flex; gap: 0.4rem; align-items: flex-start; flex-wrap: wrap; }
-.tp-choose summary { list-style: none; }
-.tp-choose[open] form { margin-top: 0.4rem; }
-.tp-choose .form-select { max-width: 22rem; }
-.tp-row--companion, .tp-row--race { opacity: 0.6; }
-.tp-int--hard { color: var(--accent-red); }
-.tp-int--moderate { color: #FFB74D; }
-.tp-int--easy { color: var(--accent-green); }
-.pcell-swap { margin-top: 0.35rem; }
-@media (max-width: 720px) {
-  .tp-row { grid-template-columns: 1fr; }
-}
 
 /* Difficulty in context (catalog.DifficultyRanker) + your effort per minute */
 
 /* Training plan pace (form zones list, review pace card) */
-.tp-zones { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; padding-left: 0; }
-.tp-pace { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid var(--fp-border); font-size: 0.86rem; }
-.tp-pace-guidance { margin: 0.4rem 0 0; font-family: var(--font-sans); font-size: 0.86rem; line-height: 1.55; color: var(--text-muted); }
 
 /* AI training plan on the run page */
-.tp-plan-card { margin-bottom: 1.5rem; }
-.tp-plan-summary { margin: 0; font-family: var(--font-sans); font-size: 0.92rem; line-height: 1.55; }
-.pcell-day { font-family: var(--font-sans); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
 
 /* Plan reassessment (run page + review page) */
-.tp-nudge { margin: 0.25rem 0 0.75rem; font-size: 0.86rem; }
-.tp-changes { margin-top: 0.75rem; }
-.tp-changes .tp-evidence { margin-bottom: 0; }
-.tp-was { margin: 0 0 0.4rem; font-size: 0.8rem; color: var(--text-dim); }
+

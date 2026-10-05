@@ -1,14 +1,14 @@
 {% load workout_filters %}
 {# A not-yet-done cell on the run grid. AI training-plan slots dated today or later get a Swap button. #}
-<div class="pcell pcell-todo{% if cell.slot.optional %} pcell-optional{% endif %}" id="pcell-{{ cell.slot.pk }}">
-  {% if cell.day_label %}<span class="pcell-day">{{ cell.day_label }}</span>{% endif %}
-  <span class="pcell-title">{% if cell.slot.peloton_ride_id and cell.slot.spec_json %}<a href="{{ cell.slot.peloton_ride_id|peloton_class_url }}" target="_blank" rel="noopener" title="Open on Peloton to add it to your Stack">{{ cell.slot.title }}</a>{% else %}{{ cell.slot.title }}{% endif %}</span>
-  {% if cell.slot.optional %}<span class="pcell-sub">optional</span>{% endif %}
-  {% if cell.difficulty %}<span class="pcell-sub" title="Peloton members rate each class against their own fitness, so this only compares classes of the same type and length.">difficulty {{ cell.difficulty.difficulty|floatformat:1 }}{% if cell.difficulty.phrase %} · {{ cell.difficulty.phrase }}{% endif %}</span>{% endif %}
+<div class="flex flex-col gap-0.5 rounded-xl bg-inset p-3{% if cell.slot.optional %} opacity-70{% endif %}" id="pcell-{{ cell.slot.pk }}">
+  {% if cell.day_label %}<span class="text-xs font-medium text-muted">{{ cell.day_label }}</span>{% endif %}
+  <span class="font-medium">{% if cell.slot.peloton_ride_id and cell.slot.spec_json %}<a href="{{ cell.slot.peloton_ride_id|peloton_class_url }}" target="_blank" rel="noopener" title="Open on Peloton to add it to your Stack">{{ cell.slot.title }}</a>{% else %}{{ cell.slot.title }}{% endif %}</span>
+  {% if cell.slot.optional %}<span class="text-xs text-muted">optional</span>{% endif %}
+  {% if cell.difficulty %}<span class="text-xs text-muted" title="Peloton members rate each class against their own fitness, so this only compares classes of the same type and length.">difficulty {{ cell.difficulty.difficulty|floatformat:1 }}{% if cell.difficulty.phrase %} · {{ cell.difficulty.phrase }}{% endif %}</span>{% endif %}
   {% if cell.swappable and can.programs %}
-  <form class="pcell-swap" hx-post="{% url 'program_slot_swap' cell.slot.pk %}" hx-target="#pcell-{{ cell.slot.pk }}" hx-swap="outerHTML">
-    {% csrf_token %}<button type="submit" class="btn btn-sm btn-ghost">Swap</button>
+  <form class="mt-1" hx-post="{% url 'program_slot_swap' cell.slot.pk %}" hx-target="#pcell-{{ cell.slot.pk }}" hx-swap="outerHTML">
+    {% csrf_token %}<button type="submit" class="btn btn-xs btn-ghost">Swap</button>
   </form>
   {% endif %}
-  {% if swap_note %}<span class="pcell-sub">{{ swap_note }}</span>{% endif %}
+  {% if swap_note %}<span class="text-xs text-muted">{{ swap_note }}</span>{% endif %}
 </div>

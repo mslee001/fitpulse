@@ -6,92 +6,96 @@
 {% if draft.status == "ready" %}
 <form method="post" action="{% url 'program_training_plan_create' draft.pk %}" id="tp-create-form">
   {% csrf_token %}
-  <div class="page-header">
+  <div class="ui-page-header">
+    <div class="w-full max-w-3xl">
     {% if reassess %}
-    <a href="{% url 'program_run' draft.program.active_run.pk %}" class="back-link">&larr; {{ draft.program.name }}</a>
-    <h1 class="page-title">Reassess: weeks {{ draft.from_week }}–{{ inputs.weeks }}</h1>
-    <p class="page-sub">Review the revised weeks below. Nothing changes in {{ draft.program.name }} until you apply them; weeks before {{ draft.from_week }} and anything you've already done stay as they are.</p>
+    <a href="{% url 'program_run' draft.program.active_run.pk %}" class="text-sm">&larr; {{ draft.program.name }}</a>
+    <h1 class="ui-page-title mt-1">Reassess: weeks {{ draft.from_week }}–{{ inputs.weeks }}</h1>
+    <p class="ui-page-sub">Review the revised weeks below. Nothing changes in {{ draft.program.name }} until you apply them; weeks before {{ draft.from_week }} and anything you've already done stay as they are.</p>
     {% else %}
-    <input name="name" class="form-input tp-name" value="{{ draft.spec_json.plan_name }}" maxlength="200" aria-label="Plan name">
-    <p class="page-sub">{{ goal_label }} · {{ start|date:"D M j" }} → {% if race %}race {{ race|date:"D M j, Y" }}{% else %}{{ inputs.weeks }} weeks{% endif %} · {{ inputs.mode|title }}{% if companion %} with {{ companion.name }}{% endif %} · {{ inputs.level|title }} start</p>
+    <input name="name" class="input input-lg w-full text-2xl font-bold" value="{{ draft.spec_json.plan_name }}" maxlength="200" aria-label="Plan name">
+    <p class="ui-page-sub mt-2">{{ goal_label }} · {{ start|date:"D M j" }} → {% if race %}race {{ race|date:"D M j, Y" }}{% else %}{{ inputs.weeks }} weeks{% endif %} · {{ inputs.mode|title }}{% if companion %} with {{ companion.name }}{% endif %} · {{ inputs.level|title }} start</p>
     {% endif %}
+    </div>
   </div>
 </form>
 
-<div class="add-form-card" style="margin-bottom:1.25rem">
-  <p style="margin:0 0 0.6rem">{{ draft.spec_json.summary }}</p>
+<div class="flex flex-col gap-5">
+<div class="ui-panel flex flex-col gap-3">
+  <p class="leading-relaxed">{{ draft.spec_json.summary }}</p>
   {% if reassess and draft.spec_json.changes %}
-  <div class="tp-changes">
-    <span class="difficulty-label">What changed</span>
-    <ul class="tp-evidence">{% for c in draft.spec_json.changes %}<li>{{ c }}</li>{% endfor %}</ul>
+  <div class="rounded-xl bg-inset p-3">
+    <div class="text-sm font-medium text-muted">What changed</div>
+    <ul class="mt-1 ml-5 list-disc text-sm">{% for c in draft.spec_json.changes %}<li>{{ c }}</li>{% endfor %}</ul>
   </div>
   {% endif %}
   {% if draft.spec_json.assumptions %}
-    {% if draft.spec_json.assumptions|length > 2 %}<details><summary class="stat-sub">Assumptions ({{ draft.spec_json.assumptions|length }})</summary>{% endif %}
-    <ul class="tp-evidence">{% for a in draft.spec_json.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
+    {% if draft.spec_json.assumptions|length > 2 %}<details><summary class="cursor-pointer text-sm text-muted">Assumptions ({{ draft.spec_json.assumptions|length }})</summary>{% endif %}
+    <ul class="ml-5 list-disc text-sm text-muted">{% for a in draft.spec_json.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
     {% if draft.spec_json.assumptions|length > 2 %}</details>{% endif %}
   {% endif %}
   {% if draft.warnings %}
-  <details class="peloton-msg peloton-msg--warning" style="margin-top:0.6rem">
-    <summary>Adjusted {{ draft.warnings|length }} session{{ draft.warnings|length|pluralize }} to fit the catalog and your settings</summary>
-    <ul class="tp-evidence">{% for w in draft.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+  <details class="alert alert-soft alert-warning block">
+    <summary class="cursor-pointer">Adjusted {{ draft.warnings|length }} session{{ draft.warnings|length|pluralize }} to fit the catalog and your settings</summary>
+    <ul class="mt-2 ml-5 list-disc text-sm">{% for w in draft.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
   </details>
   {% endif %}
   {% if pace.lines %}
-  <div class="tp-pace">
-    <span class="difficulty-label">Pace</span> {{ pace.lines|join:" · " }}
-    {% if pace.stretch %}<span class="badge badge-muted">Stretch goal</span>{% endif %}
-    {% if pace.guidance %}<p class="tp-pace-guidance">{{ pace.guidance }}</p>{% endif %}
+  <div class="border-t border-subtle pt-3 text-sm">
+    <span class="font-medium text-muted">Pace</span> <span class="font-mono">{{ pace.lines|join:" · " }}</span>
+    {% if pace.stretch %}<span class="badge badge-sm badge-ghost">Stretch goal</span>{% endif %}
+    {% if pace.guidance %}<p class="mt-1 leading-relaxed text-muted">{{ pace.guidance }}</p>{% endif %}
   </div>
   {% endif %}
   {% for p in other_active %}
-  <p class="stat-sub" style="margin:0.6rem 0 0">You also have an active cycle of {{ p.name }}. End it from its page if this plan replaces it.</p>
+  <p class="text-sm text-muted">You also have an active cycle of {{ p.name }}. End it from its page if this plan replaces it.</p>
   {% endfor %}
 </div>
 
 {% for wk in weeks %}
-<div class="chart-card tp-week">
-  <div class="chart-header">
-    <h3 class="chart-title">WEEK {{ wk.number }} · {{ wk.phase|upper }}</h3>
-    <span class="stat-sub">{{ wk.start|date:"M j" }} – {{ wk.end|date:"M j" }}{% if wk.focus %} · {{ wk.focus }}{% endif %}</span>
+<div class="ui-panel">
+  <div class="ui-panel-header">
+    <h2 class="ui-panel-title">Week {{ wk.number }} · {{ wk.phase|capfirst }}</h2>
+    <span class="text-sm text-muted">{{ wk.start|date:"M j" }} – {{ wk.end|date:"M j" }}{% if wk.focus %} · {{ wk.focus }}{% endif %}</span>
   </div>
-  {% if reassess %}<p class="tp-was"><span class="difficulty-label">Now</span> {% if wk.was %}{{ wk.was|join:" · " }}{% else %}nothing scheduled{% endif %}</p>{% endif %}
+  {% if reassess %}<p class="mb-2 text-sm text-muted"><span class="font-medium">Now</span> {% if wk.was %}{{ wk.was|join:" · " }}{% else %}nothing scheduled{% endif %}</p>{% endif %}
   {% for r in wk.rows %}
     {% if r.kind == "slot" %}
       {% include "workouts/partials/training_plan_slot_row.html" %}
     {% elif r.kind == "companion" %}
-      <div class="tp-row tp-row--companion">
-        <div class="tp-row-spec"><span class="tp-day">{{ r.date|date:"D" }}</span><span>{{ r.c.title }}{% if r.c.duration_min %} · {{ r.c.duration_min }} min{% endif %}{% if r.c.body %} · {{ r.c.body }}{% endif %}</span></div>
-        <div class="tp-row-class"><span class="stat-sub">{{ companion.name }}</span></div>
+      <div class="grid gap-x-4 gap-y-1 border-b border-subtle py-3 opacity-60 last:border-0 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]">
+        <div class="flex gap-2 text-sm"><span class="w-9 shrink-0 font-semibold">{{ r.date|date:"D" }}</span><span>{{ r.c.title }}{% if r.c.duration_min %} · {{ r.c.duration_min }} min{% endif %}{% if r.c.body %} · {{ r.c.body }}{% endif %}</span></div>
+        <div class="text-sm text-muted">{{ companion.name }}</div>
       </div>
     {% else %}
-      <div class="tp-row tp-row--race">
-        <div class="tp-row-spec"><span class="tp-day">{{ r.date|date:"D" }}</span><span>Race day: {{ r.label }}</span></div>
-        <div class="tp-row-class"><span class="stat-sub">Added as an optional reminder; not matched automatically.</span></div>
+      <div class="grid gap-x-4 gap-y-1 rounded-xl bg-primary/10 p-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]">
+        <div class="flex gap-2 text-sm"><span class="w-9 shrink-0 font-semibold">{{ r.date|date:"D" }}</span><span class="font-semibold">Race day: {{ r.label }}</span></div>
+        <div class="text-sm text-muted">Added as an optional reminder; not matched automatically.</div>
       </div>
     {% endif %}
   {% endfor %}
 </div>
 {% endfor %}
 
-<div class="page-header-actions" style="margin-top:1.25rem">
+<div class="flex flex-wrap gap-2">
   <button class="btn btn-primary" type="submit" form="tp-create-form">{% if reassess %}Apply changes{% else %}Create plan{% endif %}</button>
   <form method="post" action="{% url 'program_training_plan_discard' draft.pk %}" onsubmit="return confirm('{% if reassess %}Discard this reassessment? The plan stays as it is.{% else %}Discard this draft plan?{% endif %}')">
     {% csrf_token %}<button class="btn btn-ghost" type="submit">Discard</button>
   </form>
   {% if not reassess %}<a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}?from={{ draft.pk }}">Change inputs</a>{% endif %}
 </div>
+</div>
 
 {% else %}
-<div class="page-header">
-  <h1 class="page-title">{% if reassess %}Reassess {{ draft.program.name }}{% else %}New Training Plan{% endif %}</h1>
+<div class="ui-page-header">
+  <h1 class="ui-page-title">{% if reassess %}Reassess {{ draft.program.name }}{% else %}New training plan{% endif %}</h1>
 </div>
 {% if draft.status == "generating" %}
   {% include "workouts/partials/training_plan_status.html" %}
 {% else %}
-  <div class="add-form-card">
-    <div class="peloton-msg peloton-msg--error">{{ draft.error|default:"The plan couldn't be built." }}</div>
-    <div class="page-header-actions" style="margin-top:0.9rem">
+  <div class="ui-panel flex flex-col gap-3">
+    <div role="alert" class="alert alert-soft alert-error">{{ draft.error|default:"The plan couldn't be built." }}</div>
+    <div class="flex flex-wrap gap-2">
       <form method="post" action="{% url 'program_training_plan_retry' draft.pk %}">
         {% csrf_token %}<button class="btn btn-primary" type="submit">Retry</button>
       </form>
