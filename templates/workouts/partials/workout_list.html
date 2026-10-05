@@ -20,7 +20,7 @@ sentinel, which replace the previous sentinel inside the same grid.
   </h2>
   {% endif %}
   <div class="flex items-center gap-3{% if page > 1 %} ui-enter{% endif %} [[data-view=grid]_&]:hidden">
-    <div class="min-w-0 flex-1">{% include "workouts/partials/workout_row.html" with w=w row_when=w.created_at|date:"M j" only %}</div>
+    <div class="min-w-0 flex-1">{% include "workouts/partials/workout_row.html" with w=w row_when=w.created_at|date:"M j" %}</div>
     <input type="checkbox" class="workout-checkbox checkbox checkbox-sm checkbox-primary border-base-content/50" data-id="{{ w.workout_id }}" aria-label="Compare {{ w.title|default:'workout' }}, {{ w.created_at|date:'M j' }}">
   </div>
   {% with disc_color=discipline_colors|get_item:w.discipline|default:"#888888" %}

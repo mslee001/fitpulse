@@ -75,7 +75,7 @@
       <div class="ui-stat-label">HRV last night {% metric_help "hrv" %}</div>
       <div class="flex items-end justify-between gap-2">
         <div class="ui-stat-value">{{ daily.hrv_last_night }}<span class="ui-stat-unit">ms</span></div>
-        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.hrv only %}
+        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.hrv %}
       </div>
       {% if daily.hrv_status %}<div class="ui-stat-sub font-medium {{ daily.hrv_status|tone }}">{{ daily.hrv_status_display }}</div>{% endif %}
     </div>
@@ -85,7 +85,7 @@
       <div class="ui-stat-label">Sleep score {% metric_help "sleep_score" %}</div>
       <div class="flex items-end justify-between gap-2">
         <div class="ui-stat-value">{{ daily.sleep_score }}</div>
-        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.sleep only %}
+        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.sleep %}
       </div>
       {% if daily.sleep_seconds %}<div class="ui-stat-sub">{{ daily.sleep_seconds|format_duration_hm }}</div>{% endif %}
     </div>
@@ -95,7 +95,7 @@
       <div class="ui-stat-label">Body battery {% metric_help "body_battery" %}</div>
       <div class="flex items-end justify-between gap-2">
         <div class="ui-stat-value">{{ daily.body_battery_start }}<span class="ui-stat-unit">at wakeup</span></div>
-        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.body_battery only %}
+        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.body_battery %}
       </div>
       {% if daily.body_battery_charge %}<div class="ui-stat-sub">+{{ daily.body_battery_charge }} charged overnight</div>{% endif %}
     </div>
@@ -105,7 +105,7 @@
       <div class="ui-stat-label">Resting HR {% metric_help "resting_hr" %}</div>
       <div class="flex items-end justify-between gap-2">
         <div class="ui-stat-value">{{ daily.resting_hr }}<span class="ui-stat-unit">bpm</span></div>
-        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.resting_hr only %}
+        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.resting_hr %}
       </div>
     </div>
     {% endif %}
@@ -114,7 +114,7 @@
       <div class="ui-stat-label">Stress avg {% metric_help "stress" %}</div>
       <div class="flex items-end justify-between gap-2">
         <div class="ui-stat-value">{{ daily.stress_avg }}</div>
-        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.stress only %}
+        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.stress %}
       </div>
     </div>
     {% endif %}
@@ -123,7 +123,7 @@
       <div class="ui-stat-label">Steps</div>
       <div class="flex items-end justify-between gap-2">
         <div class="ui-stat-value">{{ daily.steps }}</div>
-        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.steps only %}
+        {% include "workouts/partials/wellness_spark.html" with spark=wellness_spark.steps %}
       </div>
     </div>
     {% endif %}
@@ -246,7 +246,7 @@
     {% if todays_workouts %}
     <div class="flex flex-col gap-2">
       {% for w in todays_workouts %}
-      {% include "workouts/partials/workout_row.html" with w=w only %}
+      {% include "workouts/partials/workout_row.html" with w=w %}
       {% endfor %}
     </div>
     {% else %}

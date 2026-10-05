@@ -261,7 +261,7 @@
       {% if workouts %}
       <div class="flex flex-col gap-2">
         {% for w in workouts %}
-        {% include "workouts/partials/workout_row.html" with w=w row_detailed=True only %}
+        {% include "workouts/partials/workout_row.html" with w=w row_detailed=True %}
         {% endfor %}
       </div>
       {% else %}

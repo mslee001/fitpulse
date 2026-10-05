@@ -101,7 +101,7 @@
       <div class="flex max-h-96 flex-col gap-2 overflow-y-auto">
       {% for w in class_history %}
       <div class="flex items-center gap-3">
-        <div class="min-w-0 flex-1">{% include "workouts/partials/workout_row.html" with w=w row_title=w.created_at|date:"M j, Y" row_attempt=True only %}</div>
+        <div class="min-w-0 flex-1">{% include "workouts/partials/workout_row.html" with w=w row_title=w.created_at|date:"M j, Y" row_attempt=True %}</div>
         <input type="checkbox" class="compare-check checkbox checkbox-sm checkbox-primary border-base-content/50" value="{{ w.workout_id }}" aria-label="Compare with {{ w.created_at|date:'M j, Y' }}">
       </div>
       {% endfor %}
