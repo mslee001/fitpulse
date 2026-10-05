@@ -189,39 +189,54 @@ class AIBadJSON(ValueError):
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
-def parse_json_text(text):
+def parse_json_text(text, expect=None):
     """Parse a model reply as JSON, tolerating a ```json fence anywhere and prose
     before or after the JSON (models sometimes add "Here's the plan:" despite
-    being told not to). Raises ValueError when there's no JSON to be found."""
+    being told not to). With expect=dict (or list), only a value of that type
+    counts — a list-looking fragment in the prose ("days [1, 3, 5]") is skipped,
+    and each "{" is tried in turn. Raises ValueError when nothing fits."""
     text = (text or "").strip()
+
+    def ok(v):
+        return expect is None or isinstance(v, expect)
     try:
-        return json.loads(text)
+        v = json.loads(text)
+        if ok(v):
+            return v
     except ValueError:
         pass
     m = _FENCE_RE.search(text)
     if m:
         try:
-            return json.loads(m.group(1).strip())
+            v = json.loads(m.group(1).strip())
+            if ok(v):
+                return v
         except ValueError:
             pass
-    starts = [i for i in (text.find("{"), text.find("[")) if i != -1]
-    if starts:
-        obj, _ = json.JSONDecoder().raw_decode(text[min(starts):])
-        return obj
-    raise ValueError("no JSON found in the reply")
+    openers = "{" if expect is dict else "[" if expect is list else "{["
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch in openers:
+            try:
+                v, _ = decoder.raw_decode(text[i:])
+            except ValueError:
+                continue
+            if ok(v):
+                return v
+    raise ValueError(f"no JSON {expect.__name__ if expect else 'value'} found in the reply")
 
 
 def call_json(prompt, *, user, feature, model=HAIKU, max_tokens=400, system=None, timeout=30,
-              message_content=None):
-    """Same as call() but parses the reply as JSON (see parse_json_text).
-    Raises AIBadJSON (a ValueError) when it can't — including when the reply
-    was cut off by max_tokens."""
+              message_content=None, expect=None):
+    """Same as call() but parses the reply as JSON (see parse_json_text; pass
+    expect=dict to require an object). Raises AIBadJSON (a ValueError) when it
+    can't — including when the reply was cut off by max_tokens."""
     data = _send(prompt, user=user, feature=feature, model=model, max_tokens=max_tokens, system=system,
                  timeout=timeout, message_content=message_content)
     text = extract_text(data["content"]).strip()
     stop = data.get("stop_reason") or ""
     try:
-        return parse_json_text(text)
+        return parse_json_text(text, expect=expect)
     except ValueError as e:
         if stop == "max_tokens":
             raise AIBadJSON("The AI's reply was cut off before it finished.", text, stop) from e

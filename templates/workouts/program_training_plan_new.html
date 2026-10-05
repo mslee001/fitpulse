@@ -62,6 +62,26 @@
   </div>
 
   <div class="add-form-card" style="margin-bottom:1.25rem">
+    <h3 class="chart-title" style="margin-bottom:0.6rem">PACE</h3>
+    {% if pace_level %}
+      <p class="stat-sub" style="margin-bottom:0.4rem">Your Peloton pace level: <strong style="color:var(--text)">Level {{ pace_level.level }}</strong> <span class="muted">(from {{ pace_level.date|date:"M j" }} · {{ pace_level.title }})</span></p>
+    {% else %}
+      <p class="stat-sub">No Peloton pace level found in your recent Tread runs. Pick yours below if you use one.</p>
+    {% endif %}
+    <ul class="tp-evidence tp-zones" id="tp-zones">
+      {% for name, fast, slow in pace_zones_display %}<li><strong>{{ name }}</strong> {{ fast }}–{{ slow }}/mi</li>{% endfor %}
+    </ul>
+    <div class="form-group" style="max-width:22rem">
+      <label class="form-label" for="tp-pace-level">Current pace level</label>
+      <select name="pace_level" id="tp-pace-level" class="form-select">
+        <option value="auto"{% if values.pace_level == "auto" %} selected{% endif %}>Auto{% if pace_level %} — Level {{ pace_level.level }}{% endif %}</option>
+        {% for n in pace_levels %}<option value="{{ n }}"{% if values.pace_level|stringformat:"s" == n|stringformat:"s" %} selected{% endif %}>Level {{ n }}</option>{% endfor %}
+      </select>
+    </div>
+    <p id="tp-goal-pace" class="stat-sub" hidden></p>
+  </div>
+
+  <div class="add-form-card" style="margin-bottom:1.25rem">
     <h3 class="chart-title" style="margin-bottom:0.6rem">STARTING LEVEL</h3>
     <p class="stat-sub" style="margin-bottom:0.4rem">Suggested from your history: <strong style="color:var(--text)">{{ assessment.level|title }}</strong></p>
     <ul class="tp-evidence">
@@ -194,8 +214,69 @@
       warn.hidden = false;
     }
   }
-  form.addEventListener('change', update);
+  var pace = {{ pace_json|safe }};
+  var target = document.getElementById('tp-target');
+  var paceLevel = document.getElementById('tp-pace-level');
+  var goalPace = document.getElementById('tp-goal-pace');
+  function fmt(sec) { sec = Math.round(sec); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
+  function parseTime(v) {
+    var p = (v || '').trim().split(':').map(Number);
+    if (p.some(isNaN) || p.length < 2 || p.length > 3) return null;
+    return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1];
+  }
+  function zones(level) {
+    return pace.chart[level].map(function (r, i) { return {name: pace.zoneOrder[i], lo: r[0], hi: r[1]}; });
+  }
+  function zoneFor(level, sec) {
+    var mph = 3600 / sec, z = zones(level);
+    if (mph > z[z.length - 1].hi) return 'faster than Max';
+    if (mph < z[0].lo) return 'slower than Recovery';
+    return z.filter(function (x) { return mph >= x.lo; }).pop().name;
+  }
+  function raceLevel(goalKey, sec) {
+    var limit = pace.zoneOrder.indexOf(pace.raceZone[goalKey]);
+    for (var lv = 1; lv <= 10; lv++) {
+      var i = pace.zoneOrder.indexOf(zoneFor(lv, sec));
+      if (i >= 0 && i <= limit) return lv;
+    }
+    return null;
+  }
+  function selectedLevel() { return paceLevel.value === 'auto' ? pace.level : Number(paceLevel.value); }
+  function showZones() {
+    var list = document.getElementById('tp-zones'), lv = selectedLevel();
+    list.innerHTML = '';
+    if (!lv) return;
+    zones(lv).forEach(function (z) {
+      if (z.name === 'Recovery' || z.name === 'Max') return;
+      var li = document.createElement('li');
+      li.innerHTML = '<strong>' + z.name + '</strong> ' + fmt(3600 / z.hi) + '–' + fmt(3600 / z.lo) + '/mi';
+      list.appendChild(li);
+    });
+  }
+  function updatePace() {
+    showZones();
+    var miles = pace.miles[goal.value], t = parseTime(target.value), lv = selectedLevel();
+    goalPace.hidden = true;
+    if (!miles || !t) return;
+    var sec = t / miles, text = 'Goal pace: ' + fmt(sec) + '/mi';
+    if (lv) text += ' — your Level ' + lv + ' ' + zoneFor(lv, sec) + ' zone';
+    var rl = raceLevel(goal.value, sec);
+    if (rl && lv && rl <= lv) text += '. Level ' + lv + ' already covers this pace — no level change needed';
+    else if (rl) text += '. Race-pace level: ' + rl + (lv ? ' (' + (rl - lv) + ' to climb)' : '');
+    else text += '. That pace is beyond Level 10\'s ' + pace.raceZone[goal.value] + ' zone';
+    if (goal.value === '5k' || goal.value === '10k') {
+      var raw = Math.max(pace.longFloor, pace.longMultiple * t / 60);
+      var long = pace.runLengths.length ? pace.runLengths.reduce(function (a, b) {
+        return Math.abs(b - raw) < Math.abs(a - raw) ? b : a; }) : Math.ceil(raw / 5) * 5;
+      text += '. The plan will build your long run to about ' + long + ' min at easy pace.';
+    }
+    goalPace.textContent = text;
+    goalPace.hidden = false;
+  }
+  form.addEventListener('change', function () { update(); updatePace(); });
+  target.addEventListener('input', updatePace);
   update();
+  updatePace();
 })();
 </script>
 {% endif %}

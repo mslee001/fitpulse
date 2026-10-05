@@ -95,7 +95,7 @@ FEATURES = {
         "url_names": ["program_new_plan", "program_retrospective", "program_training_plan_new",
                       "program_training_plan_draft", "program_training_plan_status", "program_training_plan_retry",
                       "program_training_plan_swap", "program_training_plan_pick", "program_training_plan_create",
-                      "program_training_plan_discard"],
+                      "program_training_plan_discard", "program_reassess"],
         "requires": ["programs"], "note": None,
     },
     "ai_chat": {

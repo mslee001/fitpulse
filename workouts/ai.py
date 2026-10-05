@@ -3369,7 +3369,7 @@ def run_stats_chat(user, context, history, user_message):
 # workouts/training_plans.py validates them and picks the real classes.
 # ---------------------------------------------------------------------------
 
-def _training_plan_prompt(inputs, context_text, menu_text):
+def _training_plan_prompt(inputs, context_text, menu_text, reassess=None):
     from .training_plans import DAY_NAMES, GOALS, RACE_LABELS, _fmt_hms, plan_dates
 
     start, race = plan_dates(inputs)
@@ -3393,9 +3393,67 @@ def _training_plan_prompt(inputs, context_text, menu_text):
     weeks = inputs["weeks"]
     race_name = RACE_LABELS.get(inputs["goal"], "")
     example_name = f"{race_name} in {weeks} Weeks" if race_name else f"{weeks}-Week Running Base"
+    pace = inputs.get("pace") or {}
+    pace_rules = ""
+    if pace.get("goal_pace_s"):
+        pace_rules += """
+11. PACE: the goal is to move them from their current pace (PACE section) to goal
+    pace by race day. Easy and long runs stay in the Easy–Moderate zones. Each week's
+    quality sessions practice goal pace and faster: tempo/progression running around
+    goal pace (usually Challenging–Hard), intervals at and above it (Hard–Very Hard),
+    getting longer or more frequent as the plan builds. Use Intervals/Speed class
+    types for the fast work once the level gate allows them.
+12. If PACE says STRETCH GOAL, keep the ramp limits anyway — don't add hard sessions
+    to chase the time — and say in assumptions that the target is ambitious for this
+    runway, citing the numbers."""
+    if pace.get("long_run_min"):
+        pace_rules += f"""
+13. LONG RUN: build the weekly long run to at least {pace['long_run_min']} min at easy pace
+    (longer than the race builds the endurance to hold pace to the finish), reaching it
+    no later than 2–3 weeks before race day, within the ramp limits and the max session
+    length. If the max session length or the runway makes that impossible, go as long as
+    allowed and say so in assumptions."""
 
-    return f"""You are building a {weeks}-week training plan for one person, made only of Peloton
-classes. You write the structure; software picks the actual classes afterwards, so
+    intro = (f"You are building a {weeks}-week training plan for one person, made only of Peloton\n"
+             "classes.")
+    progress_sections = reassess_rules = changes_rule = changes_json = ""
+    if reassess:
+        from .training_plans import EASY_RPE, HARD_RPE
+        EASY_RPE_TEXT, HARD_RPE_TEXT = f"{EASY_RPE}/10 or lower", f"{HARD_RPE}/10 or higher"
+        fw = reassess["from_week"]
+        intro = (f"You are revising weeks {fw}–{weeks} of a {weeks}-week training plan that is already under\n"
+                 "way, made only of Peloton classes, based on how the weeks so far actually went.")
+        progress_sections = f"""
+
+{reassess['progress']}
+
+{reassess['current_plan']}"""
+        reassess_rules = f"""
+
+REVISION RULES
+R1. Return weeks {fw}–{weeks} only (the earlier weeks are done and stay as they are),
+    in the same JSON shape. Keep the goal, race date, available days and limits.
+R2. Base week {fw}'s running volume on what they actually completed over the last two
+    weeks in PROGRESS SO FAR, not on what was planned. The ramp limits in PLANNING
+    RULES apply from there. Never cram missed sessions into later weeks.
+R3. Evidence it's too easy — weeks rated {EASY_RPE_TEXT}, runs done faster than their target
+    zone, a higher Peloton pace level, every session done: progress somewhat faster
+    within the ramp limits (longer long runs, quality sessions a zone up), and say in
+    pace_guidance whether to try the next pace level.
+R4. Evidence it's too hard — weeks rated {HARD_RPE_TEXT}, missed sessions, runs slower than
+    their target zone, readiness or resting HR worse: hold or reduce volume and
+    quality for a week or two before building again.
+R5. Mixed or thin evidence: keep CURRENT PLAN mostly as it is and change only what
+    the evidence supports. Keep the taper and race-week rules."""
+        changes_rule = """
+- changes: 2–5 short strings, each naming one change to CURRENT PLAN and the
+  evidence for it with numbers from PROGRESS SO FAR (e.g. "Week 6 long run 45 → 60
+  min: weeks 3–4 rated 3/10 and Easy runs done at Moderate pace"). If you kept the
+  plan as it was, say so and why in one string.
+- summary (revision): 1–2 sentences on how the plan is going and what this revision does."""
+        changes_json = '\n  "changes": ["..."],'
+
+    return f"""{intro} You write the structure; software picks the actual classes afterwards, so
 you describe each session as a class spec, never a class title or id.
 
 GOAL
@@ -3408,7 +3466,7 @@ Max session length: weekdays {inputs['max_weekday_min']} min, weekends {inputs['
 Their notes: {inputs.get('notes') or 'none'}
 
 FITNESS CONTEXT
-{context_text}
+{context_text}{progress_sections}
 
 CLASS MENU — choose class types and durations ONLY from these lines
 {menu_text}
@@ -3456,9 +3514,11 @@ PLANNING RULES
    use it only to see whether they usually choose easier or harder classes, never as
    an ability score.
 9. Respect available days and max session lengths exactly. One running session per
-   day at most.
+   day at most. duration_min must be one of the lengths listed on that class type's
+   CLASS MENU line — Peloton doesn't make in-between lengths like 25, 35 or 40 min, so
+   build progression by stepping between listed lengths (e.g. 20 → 30 → 45).
 10. If their notes mention pain or an injury, keep intensity lower than you otherwise
-    would and say so in assumptions. Don't give medical instructions.
+    would and say so in assumptions. Don't give medical instructions.{pace_rules}{reassess_rules}
 
 WRITING RULES
 - summary: 2–3 sentences. Name the starting point using numbers from FITNESS CONTEXT
@@ -3470,18 +3530,27 @@ WRITING RULES
   minutes", "race-pace practice") — no motivation lines.
 - assumptions: things you inferred because data was missing, each one sentence.
   If FITNESS CONTEXT lacks something you needed, say so here instead of guessing.
+- pace_zone (running/walking sessions only, else null): the Peloton pace zone the
+  session mostly targets — Recovery, Easy, Moderate, Challenging, Hard, Very Hard or Max.
+- pace_guidance: 1–3 sentences (under 600 characters). If PACE gives a race-pace level
+  above their current level, map roughly which weeks to try each step up (when Hard-zone
+  efforts start to feel controlled), no faster than the ramp rules allow, and say where
+  they can realistically get to if it's out of reach. If PACE says no level change is
+  needed, say which zones to run goal-pace work in at their current level instead —
+  never suggest moving to a lower level. Empty string if PACE has no Peloton pace level.{changes_rule}
 
 Return ONLY JSON, no prose, in exactly this shape:
 {{
   "plan_name": "{example_name}",
   "summary": "...",
   "assumptions": ["..."],
+  "pace_guidance": "...",{changes_json}
   "weeks": [
-    {{"number": 1, "phase": "base", "focus": "one short line",
+    {{"number": {reassess['from_week'] if reassess else 1}, "phase": "base", "focus": "one short line",
      "slots": [
        {{"day": 1, "order": 0, "discipline": "running", "class_type": "Endurance",
         "class_type_id": "19efefbcf7394ff8bac0ac89a674c545", "duration_min": 30,
-        "intensity": "easy", "setting": "tread", "purpose": "...", "optional": false}}
+        "intensity": "easy", "setting": "tread", "pace_zone": "Easy", "purpose": "...", "optional": false}}
      ]}}
   ]
 }}
@@ -3490,16 +3559,19 @@ setting ∈ tread | outdoor (only when the menu lists both; otherwise use the on
 discipline ∈ the first column of the CLASS MENU (running, walking, stretching, strength, pilates, yoga, cycling)."""
 
 
-def generate_training_plan_spec(user, inputs, context_text, menu_text) -> dict:
+_TRAINING_PLAN_SYSTEM = ("You write training plans as data for software to read. Reply with exactly one JSON "
+                         "object matching the requested shape — no introduction, no explanation, no code fence.")
+
+
+def generate_training_plan_spec(user, inputs, context_text, menu_text, reassess=None) -> dict:
     """Sonnet writes the plan structure as class specs (feature ai_program_tools).
     Input ≈ 6–9k tokens, output ≈ 3–10k (more for long standalone plans) →
     roughly $0.03–0.12 per plan at the MODEL_PRICES Sonnet rate.
     AIFeatureDenied / AIBudgetExceeded propagate; llm.AIBadJSON on an
     unreadable or cut-off reply."""
-    prompt = _training_plan_prompt(inputs, context_text, menu_text)
+    prompt = _training_plan_prompt(inputs, context_text, menu_text, reassess=reassess)
     raw = llm.call_json(prompt, user=user, feature="ai_program_tools", model=llm.SONNET,
-                        max_tokens=16000, timeout=300)   # long plans run past 8k tokens; this runs in a thread
-    if not isinstance(raw, dict):
-        raise ValueError("The AI returned something other than a plan.")
+                        max_tokens=16000, timeout=300,   # long plans run past 8k tokens; this runs in a thread
+                        system=_TRAINING_PLAN_SYSTEM, expect=dict)
     raw["model"] = llm.SONNET
     return raw

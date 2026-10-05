@@ -1657,9 +1657,13 @@ class PlanDraft(models.Model):
     STALE_ERROR = "Interrupted, probably by a deploy or restart"
     PRUNE_AFTER = timedelta(days=30)
 
+    KIND = [("new", "New plan"), ("reassess", "Reassessment")]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+", db_index=True)
     objects = UserOwnedManager()
     status = models.CharField(max_length=12, choices=STATUS, default="generating")
+    # "reassess": rewrites weeks from_week… of an existing AI plan (`program`), applied in place.
+    kind = models.CharField(max_length=10, choices=KIND, default="new")
+    from_week = models.PositiveSmallIntegerField(null=True, blank=True)
     inputs_json = models.JSONField(default=dict)
     context_text = models.TextField(blank=True)     # exactly what the prompt's FITNESS CONTEXT said — for spot-checks
     spec_json = models.JSONField(default=dict, blank=True)   # validated AI output
@@ -1748,6 +1752,12 @@ models.signals.post_save.connect(_create_user_access, sender=settings.AUTH_USER_
 # describe Peloton's library, not anyone's training. Synced by workouts/catalog.py.
 # ---------------------------------------------------------------------------
 
+def peloton_class_url(ride_id):
+    """The class's details page on Peloton's site — where you can add it to your
+    Stack and start it on the Tread — rather than the web player."""
+    return f"https://members.onepeloton.com/home/?modal=classDetailsModal&classId={ride_id}"
+
+
 class PelotonClassType(models.Model):
     """Peloton class type lookup (from the class_types list on every archive
     page). Global — not user-owned."""
@@ -1818,7 +1828,7 @@ class PelotonClass(models.Model):
 
     @property
     def peloton_url(self):
-        return f"https://members.onepeloton.com/classes/player/{self.ride_id}"
+        return peloton_class_url(self.ride_id)
 
 
 class SyncJob(models.Model):

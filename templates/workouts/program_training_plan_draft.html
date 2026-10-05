@@ -7,13 +7,25 @@
 <form method="post" action="{% url 'program_training_plan_create' draft.pk %}" id="tp-create-form">
   {% csrf_token %}
   <div class="page-header">
+    {% if reassess %}
+    <a href="{% url 'program_run' draft.program.active_run.pk %}" class="back-link">&larr; {{ draft.program.name }}</a>
+    <h1 class="page-title">Reassess: weeks {{ draft.from_week }}–{{ inputs.weeks }}</h1>
+    <p class="page-sub">Review the revised weeks below. Nothing changes in {{ draft.program.name }} until you apply them; weeks before {{ draft.from_week }} and anything you've already done stay as they are.</p>
+    {% else %}
     <input name="name" class="form-input tp-name" value="{{ draft.spec_json.plan_name }}" maxlength="200" aria-label="Plan name">
     <p class="page-sub">{{ goal_label }} · {{ start|date:"D M j" }} → {% if race %}race {{ race|date:"D M j, Y" }}{% else %}{{ inputs.weeks }} weeks{% endif %} · {{ inputs.mode|title }}{% if companion %} with {{ companion.name }}{% endif %} · {{ inputs.level|title }} start</p>
+    {% endif %}
   </div>
 </form>
 
 <div class="add-form-card" style="margin-bottom:1.25rem">
   <p style="margin:0 0 0.6rem">{{ draft.spec_json.summary }}</p>
+  {% if reassess and draft.spec_json.changes %}
+  <div class="tp-changes">
+    <span class="difficulty-label">What changed</span>
+    <ul class="tp-evidence">{% for c in draft.spec_json.changes %}<li>{{ c }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
   {% if draft.spec_json.assumptions %}
     {% if draft.spec_json.assumptions|length > 2 %}<details><summary class="stat-sub">Assumptions ({{ draft.spec_json.assumptions|length }})</summary>{% endif %}
     <ul class="tp-evidence">{% for a in draft.spec_json.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
@@ -24,6 +36,13 @@
     <summary>Adjusted {{ draft.warnings|length }} session{{ draft.warnings|length|pluralize }} to fit the catalog and your settings</summary>
     <ul class="tp-evidence">{% for w in draft.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
   </details>
+  {% endif %}
+  {% if pace.lines %}
+  <div class="tp-pace">
+    <span class="difficulty-label">Pace</span> {{ pace.lines|join:" · " }}
+    {% if pace.stretch %}<span class="badge badge-muted">Stretch goal</span>{% endif %}
+    {% if pace.guidance %}<p class="tp-pace-guidance">{{ pace.guidance }}</p>{% endif %}
+  </div>
   {% endif %}
   {% for p in other_active %}
   <p class="stat-sub" style="margin:0.6rem 0 0">You also have an active cycle of {{ p.name }}. End it from its page if this plan replaces it.</p>
@@ -36,6 +55,7 @@
     <h3 class="chart-title">WEEK {{ wk.number }} · {{ wk.phase|upper }}</h3>
     <span class="stat-sub">{{ wk.start|date:"M j" }} – {{ wk.end|date:"M j" }}{% if wk.focus %} · {{ wk.focus }}{% endif %}</span>
   </div>
+  {% if reassess %}<p class="tp-was"><span class="difficulty-label">Now</span> {% if wk.was %}{{ wk.was|join:" · " }}{% else %}nothing scheduled{% endif %}</p>{% endif %}
   {% for r in wk.rows %}
     {% if r.kind == "slot" %}
       {% include "workouts/partials/training_plan_slot_row.html" %}
@@ -55,16 +75,16 @@
 {% endfor %}
 
 <div class="page-header-actions" style="margin-top:1.25rem">
-  <button class="btn btn-primary" type="submit" form="tp-create-form">Create plan</button>
-  <form method="post" action="{% url 'program_training_plan_discard' draft.pk %}" onsubmit="return confirm('Discard this draft plan?')">
+  <button class="btn btn-primary" type="submit" form="tp-create-form">{% if reassess %}Apply changes{% else %}Create plan{% endif %}</button>
+  <form method="post" action="{% url 'program_training_plan_discard' draft.pk %}" onsubmit="return confirm('{% if reassess %}Discard this reassessment? The plan stays as it is.{% else %}Discard this draft plan?{% endif %}')">
     {% csrf_token %}<button class="btn btn-ghost" type="submit">Discard</button>
   </form>
-  <a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}?from={{ draft.pk }}">Change inputs</a>
+  {% if not reassess %}<a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}?from={{ draft.pk }}">Change inputs</a>{% endif %}
 </div>
 
 {% else %}
 <div class="page-header">
-  <h1 class="page-title">New Training Plan</h1>
+  <h1 class="page-title">{% if reassess %}Reassess {{ draft.program.name }}{% else %}New Training Plan{% endif %}</h1>
 </div>
 {% if draft.status == "generating" %}
   {% include "workouts/partials/training_plan_status.html" %}
@@ -75,7 +95,8 @@
       <form method="post" action="{% url 'program_training_plan_retry' draft.pk %}">
         {% csrf_token %}<button class="btn btn-primary" type="submit">Retry</button>
       </form>
-      <a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}?from={{ draft.pk }}">Change inputs</a>
+      {% if reassess %}<a class="btn btn-ghost" href="{% url 'program_run' draft.program.active_run.pk %}">Back to the plan</a>
+      {% else %}<a class="btn btn-ghost" href="{% url 'program_training_plan_new' %}?from={{ draft.pk }}">Change inputs</a>{% endif %}
     </div>
   </div>
 {% endif %}

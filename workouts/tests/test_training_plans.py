@@ -222,7 +222,7 @@ class ValidateTests(PlanTestCase):
     def test_bad_duration_snapped(self):
         clean, warnings = self.validate(full_spec(extra={2: [spec_slot(1, minutes=33)]}))
         self.assertEqual(clean["weeks"][1]["slots"][0]["duration_min"], 30)
-        self.assertTrue(any("33 min → 30 min" in w for w in warnings))
+        self.assertTrue(any(w.startswith("Rounded 1 session length") and "Week 2 Mon 33→30" in w for w in warnings))
 
     def test_weekday_max_caps_duration(self):
         clean, _ = self.validate(full_spec(extra={2: [spec_slot(1, minutes=60)]}))
@@ -566,6 +566,27 @@ class JsonReplyTests(TwoUserTestCase):
         with self.assertRaises(ValueError):
             llm.parse_json_text("I can't help with that.")
 
+    def test_expect_dict_skips_list_fragments_in_prose(self):
+        text = 'Using your days [1, 3, 5, 6] as given:\n{"plan_name": "10K", "weeks": []}'
+        self.assertEqual(llm.parse_json_text(text), [1, 3, 5, 6])          # what broke plan generation
+        self.assertEqual(llm.parse_json_text(text, expect=dict), {"plan_name": "10K", "weeks": []})
+        with self.assertRaises(ValueError):
+            llm.parse_json_text("[1, 2, 3]", expect=dict)
+
+    def test_plan_spec_requires_an_object_and_sends_a_system_prompt(self):
+        with patch("workouts.llm.requests.post",
+                   return_value=self._reply('Days [1, 3]:\n{"weeks": [], "plan_name": "x"}')) as post:
+            from workouts.ai import generate_training_plan_spec
+            with patch("workouts.ai._training_plan_prompt", return_value="p"):
+                raw = generate_training_plan_spec(self.a, {}, "", "")
+        self.assertEqual(raw["plan_name"], "x")
+        self.assertIn("exactly one JSON object", post.call_args.kwargs["json"]["system"])
+        with patch("workouts.llm.requests.post", return_value=self._reply("[1, 2, 3]")), \
+             patch("workouts.ai._training_plan_prompt", return_value="p"):
+            with self.assertRaises(llm.AIBadJSON) as ctx:
+                generate_training_plan_spec(self.a, {}, "", "")
+        self.assertEqual(ctx.exception.text, "[1, 2, 3]")    # the reply is kept for Webhook Errors
+
     def _reply(self, text, stop="end_turn"):
         from unittest.mock import MagicMock
         r = MagicMock()
@@ -582,3 +603,422 @@ class JsonReplyTests(TwoUserTestCase):
         with patch("workouts.llm.requests.post", return_value=self._reply("Sure! Here it is:\n{\"ok\": true}")):
             self.assertEqual(llm.call_json("p", user=self.a, feature="ai_program_tools", model=llm.SONNET),
                              {"ok": True})
+
+
+ZONES_L4 = [  # Peloton Level 4 zone paces, decimal min/mi (from json_response_examples)
+    {"name": "Recovery", "fast_pace": 16.13, "slow_pace": 20.0}, {"name": "Easy", "fast_pace": 14.38, "slow_pace": 15.47},
+    {"name": "Moderate", "fast_pace": 13.2, "slow_pace": 14.17}, {"name": "Challenging", "fast_pace": 12.0, "slow_pace": 13.03},
+    {"name": "Hard", "fast_pace": 11.07, "slow_pace": 11.46}, {"name": "Very Hard", "fast_pace": 9.5, "slow_pace": 10.55},
+    {"name": "Max", "fast_pace": 4.48, "slow_pace": 9.41},
+]
+
+
+class PaceTests(PlanTestCase):
+    def paced_run(self, d, minutes=30, miles=2.6, level=4, wid=None):
+        w = self.run_workout(self.a, d, minutes=minutes, wid=wid or f"paced-{d}")
+        w.distance_miles = miles
+        w.avg_pace_seconds = round(minutes * 60 / miles)
+        w.performance_graph_json = {"pace_level": f"Level {level}", "pace_zones": ZONES_L4}
+        w.save()
+        return w
+
+    def test_zone_for_pace_uses_the_chart(self):
+        self.assertEqual(tp.zone_for_pace(4, 11.2 * 60), "Hard")            # 5.36 mph, Hard 5.1–5.4
+        self.assertEqual(tp.zone_for_pace(4, 11.8 * 60), "Challenging")     # 5.08 mph
+        self.assertEqual(tp.zone_for_pace(4, 3600 / 4.15), "Easy")           # in the chart's 4.1–4.2 rounding gap
+        self.assertEqual(tp.zone_for_pace(4, 8.0 * 60), "Max")
+        self.assertEqual(tp.zone_for_pace(10, 4.5 * 60), "faster than Max") # 13.3 mph
+
+    def test_race_pace_level(self):
+        self.assertEqual(tp.race_pace_level("5k", round(1680 / 3.10686)), 6)    # 28:00 5K → Hard at Level 6
+        self.assertEqual(tp.race_pace_level("10k", round(2400 / 6.21371)), 10)  # 40:00 10K → Challenging at 10
+        self.assertIsNone(tp.race_pace_level("5k", round(900 / 3.10686)))       # 15:00 5K is beyond Level 10
+
+    def test_latest_pace_level_from_performance_graph(self):
+        self.paced_run(TODAY - timedelta(days=20), level=3, wid="old")
+        self.paced_run(TODAY - timedelta(days=2), level=4, wid="new")
+        level = tp.latest_pace_level(self.a)
+        self.assertEqual(level["level"], 4)
+        self.assertEqual(level["zones"][4]["name"], "Hard")
+
+    def test_race_estimate_riegel(self):
+        self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=3.0)
+        est = tp.race_estimate(self.a, "5k", TODAY)
+        self.assertEqual(est["seconds"], round(1800 * (3.10686 / 3.0) ** 1.06))
+
+    def test_profile_goal_pace_gap_zone_and_long_run(self):
+        self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=3.0)
+        inputs = self.inputs(goal="5k", target_time="28:00")
+        p = inputs["pace"]
+        self.assertEqual(p["goal_pace_s"], round(1680 / 3.10686))            # 9:01/mi
+        self.assertEqual(p["goal_zone"], "Max")                      # 6.66 mph at Level 4
+        self.assertEqual(p["race_level"], 6)
+        self.assertGreater(p["gap_pct"], 0)
+        self.assertEqual(p["long_run_min"], 45)                              # 1.25 × 28 min → 35, floor 45
+        for i in range(3):
+            make_class(f"end60-{i}", "t_end", 60)
+        self.assertEqual(self.inputs(goal="10k", target_time="55:00")["pace"]["long_run_min"], 60)  # 68.75 → 60
+
+    def test_forty_minute_race_long_run_is_a_real_class_length(self):
+        for i in range(3):
+            make_class(f"end60-{i}", "t_end", 60)
+        self.assertEqual(self.inputs(goal="10k", target_time="40:00")["pace"]["long_run_min"], 45)  # 50 → 45, not 60
+
+    def test_level_override_uses_the_chart_for_that_level(self):
+        self.paced_run(TODAY - timedelta(days=3))
+        p = self.inputs(goal="5k", target_time="28:00", pace_level="6")["pace"]
+        self.assertEqual((p["level"], p["detected_level"], p["goal_zone"]), (6, 4, "Hard"))
+
+    def test_context_has_pace_section(self):
+        self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=3.0)
+        text = tp.build_fitness_context(self.a, self.inputs(goal="5k", target_time="28:00"), today=TODAY)
+        self.assertIn("PACE", text)
+        self.assertIn("Peloton pace level: Level 4", text)
+        self.assertIn("Hard 11:07–11:46", text)
+        self.assertIn("Race-pace level: Level 6", text)
+        self.assertIn("2 levels to climb", text)
+        self.assertIn("Goal: 5K in 28:00 = 9:01/mi", text)
+        self.assertIn("Long run target: build to at least 45 min", text)
+
+    def test_stretch_goal_flag(self):
+        self.paced_run(TODAY - timedelta(days=3), minutes=30, miles=2.5)      # ≈ 38-min 5K estimate
+        p = self.inputs(goal="5k", target_time="25:00")["pace"]
+        self.assertTrue(p["stretch"])
+
+    def test_validate_keeps_pace_zone_and_warns_on_short_long_run(self):
+        inputs = self.inputs(goal="10k", target_time="40:00")                  # long run target 45 min
+        _, allowed = tp.catalog_menu(inputs)
+        spec = full_spec()
+        for wk in spec["weeks"]:
+            wk["slots"][0]["pace_zone"] = "hard"
+            wk["slots"][1]["duration_min"] = 30
+        spec["weeks"][1]["slots"].append(spec_slot(5, tid="t_str", disc="stretching", minutes=20, pace_zone="Easy"))
+        clean, warnings = tp.validate_spec(spec, inputs, allowed)
+        self.assertEqual(clean["weeks"][0]["slots"][0]["pace_zone"], "Hard")
+        stretch = next(s for s in clean["weeks"][1]["slots"] if s["discipline"] == "stretching")
+        self.assertEqual(stretch["pace_zone"], "")
+        self.assertTrue(any("peaks at 30 min" in w for w in warnings))
+
+    def test_picker_prefers_pace_target_classes_for_tread_runs(self):
+        PelotonClass.objects.filter(class_type_id="t_end", duration_seconds=1800).update(is_available=False)
+        make_class("nopace-new", "t_end", 30, aired_days_ago=1)
+        for i in range(3):
+            c = make_class(f"paced-{i}", "t_end", 30, aired_days_ago=30 + i)
+            c.has_tread_pace_target = True
+            c.save()
+        with patch.object(tp, "MIN_TYPE_CLASSES", 1):
+            inputs = self.inputs()
+            _, allowed = tp.catalog_menu(inputs)
+            spec = full_spec()
+            spec["weeks"][0]["slots"] = [spec_slot(3, intensity="moderate")]
+            clean, _ = tp.validate_spec(spec, inputs, allowed)
+            picks = tp.pick_classes(self.a, clean, inputs, today=TODAY)
+        self.assertTrue(picks["1-3-0"]["ride_id"].startswith("paced-"))
+
+    def test_prompt_has_pace_rules_only_with_a_target(self):
+        from workouts.ai import _training_plan_prompt
+        with_target = _training_plan_prompt(self.inputs(goal="10k", target_time="40:00"), "", "")
+        self.assertIn("13. LONG RUN: build the weekly long run to at least 45 min", with_target)
+        self.assertIn("in-between lengths like 25, 35 or 40 min", with_target)
+        self.assertIn("11. PACE", with_target)
+        without = _training_plan_prompt(self.inputs(goal="10k", target_time=""), "", "")
+        self.assertNotIn("11. PACE", without)
+        self.assertIn('"pace_zone"', without)
+
+    def test_notes_include_zone(self):
+        self.assertEqual(tp.slot_notes({"purpose": "race-pace practice", "pace_zone": "Hard"}, "Becs Gentry"),
+                         "race-pace practice · Hard zone · Becs Gentry")
+
+    def test_form_shows_pace_card(self):
+        self.paced_run(TODAY - timedelta(days=3))
+        page = self.client_a.get(reverse("program_training_plan_new"))
+        self.assertContains(page, "Your Peloton pace level")
+        self.assertContains(page, "Level 4")
+        self.assertContains(page, "11:07–11:46/mi")
+        self.assertContains(page, '"chart"')
+
+
+
+class LengthAndTextTests(PlanTestCase):
+    def test_snap_rounds_up_in_build_weeks_and_down_early(self):
+        self.assertEqual(tp._snap_duration([20, 30, 45], 25, 45), 20)                 # nearest, tie → shorter
+        self.assertEqual(tp._snap_duration([20, 30, 45], 25, 45, prefer_up=True), 30)
+        self.assertEqual(tp._snap_duration([20, 30, 45], 35, 45, prefer_up=True), 45)
+        self.assertEqual(tp._snap_duration([20, 30, 45], 35, 40, prefer_up=True), 30) # day max wins
+        self.assertEqual(tp._snap_duration([20, 30, 45], 30, 45, prefer_up=True), 30)
+
+    def test_validate_rounds_by_phase_and_groups_the_note(self):
+        inputs = self.inputs()          # 7 weeks → early weeks 1–3
+        _, allowed = tp.catalog_menu(inputs)
+        spec = full_spec()
+        spec["weeks"][0]["slots"][0]["duration_min"] = 25       # early → 20
+        spec["weeks"][4]["slots"][0]["duration_min"] = 25       # build → 30
+        spec["weeks"][5]["phase"] = "taper"
+        spec["weeks"][5]["slots"][0]["duration_min"] = 25       # taper → 20
+        clean, warnings = tp.validate_spec(spec, inputs, allowed)
+        self.assertEqual([clean["weeks"][i]["slots"][0]["duration_min"] for i in (0, 4, 5)], [20, 30, 20])
+        notes = [w for w in warnings if w.startswith("Rounded")]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("Week 1 Wed 25→20, Week 5 Wed 25→30, Week 6 Wed 25→20", notes[0])
+
+    def test_level_already_covering_goal_pace(self):
+        inputs = self.inputs(goal="5k", target_time="40:00", pace_level="4")   # 12:52/mi = Challenging at 4
+        self.assertEqual(inputs["pace"]["race_level"], 2)
+        text = tp.build_fitness_context(self.a, inputs, today=TODAY)
+        self.assertIn("current Level 4 already covers goal pace", text)
+        self.assertNotIn("Race-pace level: Level 2", text)
+        from workouts.training_plan_views import _pace_summary
+        draft = PlanDraft(user=self.a, inputs_json=inputs, spec_json={"weeks": []})
+        self.assertIn("Level 4 already covers goal pace", _pace_summary(draft)["lines"])
+
+    def test_clip_never_cuts_mid_word(self):
+        text = "Start easy in the Easy zone through week 4. Then add Challenging work. Reach Level 5 by week 7."
+        self.assertEqual(tp._clip(text, 60), "Start easy in the Easy zone through week 4.")
+        self.assertEqual(tp._clip("word " * 30, 22), "word word word word…")
+        self.assertEqual(tp._clip("short", 100), "short")
+
+
+class RunPageTests(PlanTestCase):
+    def created(self, **over):
+        comp = Program.objects.create(user=self.a, name="Split", slug="s", kind="split")
+        ProgramSlot.objects.create(week=ProgramWeek.objects.create(program=comp, number=1), day=2, title="Legs",
+                                   discipline="strength")
+        ProgramRun.objects.create(program=comp, start_date=TODAY - timedelta(days=30))
+        draft = PlanDraft.objects.create(user=self.a, inputs_json=self.inputs(mode="alongside",
+                                         companion_program_id=str(comp.pk), mobility="1", **over))
+        spec = full_spec()
+        for wk in spec["weeks"]:
+            wk["slots"].append(spec_slot(5, tid="t_yoga", disc="yoga", minutes=20, optional=True))
+        spec["pace_guidance"] = "Stay at Level 4 and run goal-pace work in the Challenging zone."
+        with patch.object(llm, "call_json", return_value=spec):
+            tp._generate(draft.pk)
+        draft.refresh_from_db()
+        return tp.create_program_from_draft(draft, "Fall 10K"), draft
+
+    def page(self, program):
+        return self.client_a.get(reverse("program_run", args=[program.active_run.pk])).content.decode()
+
+    def test_optional_sessions_in_upcoming_weeks_are_listed(self):
+        program, _ = self.created()
+        html = self.page(program)
+        yoga_titles = set(ProgramSlot.objects.filter(week__program=program, discipline="yoga")
+                          .values_list("title", flat=True))
+        self.assertEqual(sum(html.count(t) for t in yoga_titles), 7)    # one per week, none hidden
+
+    def test_optional_session_hidden_once_a_later_week_has_completions(self):
+        program, _ = self.created()
+        wk3 = ProgramSlot.objects.filter(week__program=program, week__number=3, discipline="running").first()
+        w = self.run_workout(self.a, WED_START + timedelta(days=14), ride_id=wk3.peloton_ride_id, wid="wk3")
+        ProgramWorkout.objects.create(run_week=program.active_run.run_weeks.get(sequence=3), slot=wk3, workout=w)
+        wk1_yoga = ProgramSlot.objects.get(week__program=program, week__number=1, discipline="yoga")
+        wk5_yoga = ProgramSlot.objects.get(week__program=program, week__number=5, discipline="yoga")
+        html = self.page(program)
+        self.assertNotIn(wk1_yoga.title, html)       # week 1 is behind you
+        self.assertIn(wk5_yoga.title, html)
+
+    def test_days_dates_and_week_details(self):
+        program, _ = self.created()
+        html = self.page(program)
+        self.assertIn("Wed · Oct 7", html)          # week 1 Wednesday is the start date
+        self.assertIn("Fri · Oct 16", html)          # week 2 Friday
+        self.assertIn("Oct 5 – Oct 11", html)
+        self.assertIn("build", html)
+
+    def test_plan_card_shows_summary_and_pace_advice(self):
+        program, _ = self.created(goal="10k", target_time="55:00")
+        html = self.page(program)
+        self.assertIn("Stay at Level 4 and run goal-pace work", html)
+        self.assertIn("Goal pace", html)
+
+    def test_older_plans_read_pace_advice_from_their_draft(self):
+        program, _ = self.created()
+        goal = dict(program.goal_json)
+        goal.pop("pace_summary"), goal.pop("weeks_info")
+        Program.objects.filter(pk=program.pk).update(goal_json=goal)
+        program.refresh_from_db()
+        self.assertIn("Stay at Level 4 and run goal-pace work", self.page(program))
+
+
+class ClassLinkTests(PlanTestCase):
+    def test_links_open_class_details_not_the_player(self):
+        url = "https://members.onepeloton.com/home/?modal=classDetailsModal&classId=t_end-30-0"
+        self.assertEqual(PelotonClass.objects.get(pk="t_end-30-0").peloton_url, url)
+        from workouts.templatetags.workout_filters import peloton_class_url
+        self.assertEqual(peloton_class_url("t_end-30-0"), url)
+        self.assertEqual(peloton_class_url(""), "")
+
+
+WEEK4_DAY = date(2026, 10, 28)     # a Wednesday in plan week 4 (week 1 = Oct 5–11) → reassess weeks 5–7
+
+
+def reassess_spec(from_week=5, weeks=7):
+    out = {"plan_name": "x", "summary": "Runs are going well; adding a little more.", "assumptions": [],
+           "pace_guidance": "Try Level 5 in week 6.", "changes": ["Week 5 long run 45 → 45 min: kept"],
+           "weeks": []}
+    for n in range(from_week, weeks + 1):
+        out["weeks"].append({"number": n, "phase": "build", "focus": "f",
+                             "slots": [spec_slot(3, minutes=20), spec_slot(6, minutes=45)]})
+    return out
+
+
+class ReassessTests(PlanTestCase):
+    def setUp(self):
+        super().setUp()
+        p = patch("workouts.training_plans.timezone.localdate", return_value=WEEK4_DAY)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def plan(self):
+        draft = PlanDraft.objects.create(user=self.a, inputs_json=self.inputs())
+        with patch.object(llm, "call_json", return_value=full_spec()):
+            tp._generate(draft.pk)
+        draft.refresh_from_db()
+        return tp.create_program_from_draft(draft, "Fall 10K")
+
+    def complete(self, program, week, day, minutes=30, pace=None, wid=None):
+        slot = ProgramSlot.objects.get(week__program=program, week__number=week, day=day)
+        w = self.run_workout(self.a, tp.week_dates(tp.source_draft(program).inputs_json, week)[day - 1],
+                             minutes=minutes, ride_id=slot.peloton_ride_id, wid=wid or f"done-{week}-{day}")
+        if pace:
+            w.avg_pace_seconds = pace
+            w.save()
+        ProgramWorkout.objects.create(run_week=program.active_run.run_weeks.get(sequence=week), slot=slot, workout=w)
+        return w
+
+    # ── availability ───────────────────────────────────────────────────────────
+
+    def test_window_is_next_week_through_the_end(self):
+        program = self.plan()
+        self.assertEqual(tp.reassess_window(program, WEEK4_DAY), ((5, 7), ""))
+        self.assertIsNone(tp.reassess_window(program, SAT_RACE)[0])              # last week started
+        split = Program.objects.create(user=self.a, name="Split", slug="sp", kind="split")
+        self.assertIsNone(tp.reassess_window(split, WEEK4_DAY)[0])
+        PlanDraft.objects.filter(pk=program.goal_json["draft_id"]).delete()
+        program.refresh_from_db()
+        self.assertIn("original inputs", tp.reassess_window(program, WEEK4_DAY)[1])
+
+    # ── nudge signals ─────────────────────────────────────────────────────────
+
+    def test_signals_easy_ratings(self):
+        program = self.plan()
+        for seq, rpe in ((2, 3), (3, 2)):
+            program.active_run.run_weeks.filter(sequence=seq).update(rpe=rpe)
+        for wk in (2, 3):
+            for day in (3, 6):
+                self.complete(program, wk, day)
+        reasons = tp.reassess_signals(program, WEEK4_DAY)
+        self.assertEqual(reasons, ["you rated your last two weeks 3/10 and 2/10 — it may be too easy"])
+
+    def test_signals_missed_runs_and_cooldown(self):
+        program = self.plan()
+        self.complete(program, 2, 3)        # weeks 2–3 planned 4 runs, 1 done → 3 missed
+        self.assertEqual(tp.reassess_signals(program, WEEK4_DAY), ["3 planned runs were missed in the last two weeks"])
+        goal = dict(program.goal_json, reassessments=[{"date": (WEEK4_DAY - timedelta(days=2)).isoformat()}])
+        Program.objects.filter(pk=program.pk).update(goal_json=goal)
+        program.refresh_from_db()
+        self.assertEqual(tp.reassess_signals(program, WEEK4_DAY), [])
+
+    def test_signals_pace_level_change(self):
+        program = self.plan()
+        goal = dict(program.goal_json, pace_level=4)
+        Program.objects.filter(pk=program.pk).update(goal_json=goal)
+        program.refresh_from_db()
+        for wk in (2, 3):
+            for day in (3, 6):
+                self.complete(program, wk, day)
+        w = self.run_workout(self.a, WEEK4_DAY - timedelta(days=1), wid="lvl5")
+        w.performance_graph_json = {"pace_level": "Level 5", "pace_zones": [{"name": "Easy", "fast_pace": 13,
+                                                                             "slow_pace": 14}]}
+        w.save()
+        self.assertIn("your Peloton pace level is now 5 (the plan was built for Level 4)",
+                      tp.reassess_signals(program, WEEK4_DAY))
+
+    # ── progress context ──────────────────────────────────────────────────────
+
+    def test_progress_context_planned_vs_done(self):
+        program = self.plan()
+        self.complete(program, 1, 3, minutes=30, pace=13 * 60 + 40)
+        program.active_run.run_weeks.filter(sequence=1).update(rpe=4, note="felt easy")
+        self.run_workout(self.a, date(2026, 10, 10), minutes=25, title="Extra Outdoor Run", wid="extra")
+        inputs = dict(tp.source_draft(program).inputs_json, pace={"level": 4})
+        text = tp.progress_context(program, 5, inputs, WEEK4_DAY)
+        self.assertIn("PROGRESS SO FAR (weeks 1–4 of 7", text)
+        self.assertIn("Week 1 (Oct 5): planned 2 runs · 75 min; done 1 · 30 min; rated 4/10 (\"felt easy\")", text)
+        self.assertIn("13:40/mi (Moderate at Level 4)", text)
+        self.assertIn("Sat Endurance 45 min easy → missed", text)
+        self.assertIn('unplanned run: "Extra Outdoor Run" · 25 min', text)
+
+    # ── generate + apply ──────────────────────────────────────────────────────
+
+    def test_generate_and_apply(self):
+        program = self.plan()
+        done = self.complete(program, 2, 3)
+        kept_ids = {s.pk for s in ProgramSlot.objects.filter(week__program=program, week__number__lt=5)}
+        race = ProgramSlot.objects.get(week__program=program, title="Race day: 10K")
+        with patch("workouts.training_plans.start_generation"):
+            draft = tp.start_reassessment(program, WEEK4_DAY)
+        self.assertEqual((draft.kind, draft.from_week, draft.program_id), ("reassess", 5, program.pk))
+        with patch.object(llm, "call_json", return_value=reassess_spec()) as call:
+            tp._generate(draft.pk)
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, "ready", draft.error)
+        prompt = call.call_args.args[0]
+        self.assertIn("You are revising weeks 5–7", prompt)
+        self.assertIn("PROGRESS SO FAR", prompt)
+        self.assertIn("CURRENT PLAN (weeks 5–7", prompt)
+        self.assertIn("REVISION RULES", prompt)
+        self.assertEqual([w["number"] for w in draft.spec_json["weeks"]], [5, 6, 7])
+        kept_rides = {s.peloton_ride_id for s in ProgramSlot.objects.filter(pk__in=kept_ids)}
+        self.assertFalse(kept_rides & {p["ride_id"] for p in draft.picks_json.values()})
+
+        page = self.client_a.get(reverse("program_training_plan_draft", args=[draft.pk])).content.decode()
+        self.assertIn("Reassess: weeks 5–7", page)
+        self.assertIn("Apply changes", page)
+        self.assertIn("What changed", page)
+
+        resp = self.client_a.post(reverse("program_training_plan_create", args=[draft.pk]))
+        self.assertRedirects(resp, reverse("program_run", args=[program.active_run.pk]), fetch_redirect_response=False)
+        program.refresh_from_db()
+        self.assertEqual({s.pk for s in ProgramSlot.objects.filter(week__program=program, week__number__lt=5)},
+                         kept_ids)                                   # earlier weeks untouched
+        self.assertTrue(ProgramSlot.objects.filter(pk=race.pk).exists())
+        self.assertTrue(ProgramWorkout.objects.filter(workout=done).exists())
+        wk5 = ProgramSlot.objects.filter(week__program=program, week__number=5).order_by("day")
+        self.assertEqual([(s.day, s.duration_min) for s in wk5], [(3, 20), (6, 45)])
+        self.assertEqual(program.goal_json["reassessments"][-1]["from_week"], 5)
+        self.assertEqual(program.goal_json["pace_summary"]["guidance"], "Try Level 5 in week 6.")
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, "created")
+        run_page = self.client_a.get(reverse("program_run", args=[program.active_run.pk])).content.decode()
+        self.assertIn("Reassessed Oct 28", run_page)
+        self.assertIn("Week 5 long run 45 → 45 min: kept", run_page)
+
+    def test_discard_leaves_plan_alone(self):
+        program = self.plan()
+        before = list(ProgramSlot.objects.filter(week__program=program).values_list("pk", flat=True))
+        with patch("workouts.training_plans.start_generation"):
+            draft = tp.start_reassessment(program, WEEK4_DAY)
+        resp = self.client_a.post(reverse("program_training_plan_discard", args=[draft.pk]))
+        self.assertRedirects(resp, reverse("program_run", args=[program.active_run.pk]), fetch_redirect_response=False)
+        self.assertEqual(list(ProgramSlot.objects.filter(week__program=program).values_list("pk", flat=True)), before)
+
+    def test_reassess_button_and_route(self):
+        program = self.plan()
+        page = self.client_a.get(reverse("program_run", args=[program.active_run.pk])).content.decode()
+        self.assertIn("Reassess weeks 5–7", page)
+        with patch("workouts.training_plans.start_generation") as start:
+            resp = self.client_a.post(reverse("program_reassess", args=[program.slug]))
+        draft = PlanDraft.objects.get(kind="reassess")
+        self.assertRedirects(resp, reverse("program_training_plan_draft", args=[draft.pk]),
+                             fetch_redirect_response=False)
+        start.assert_called_once()
+        access = access_for(self.b)       # with the feature, someone else's plan is a 404, not a 403
+        access.features, access.ai_enabled = ["training", "programs", "ai_program_tools"], True
+        access.save()
+        self.assertEqual(self.client_b.post(reverse("program_reassess", args=[program.slug])).status_code, 404)
+
+    def test_nudge_banner_on_every_page(self):
+        program = self.plan()
+        self.complete(program, 2, 3)
+        html = self.client_a.get("/").content.decode()
+        self.assertIn("Fall 10K may need a refresh: 3 planned runs were missed in the last two weeks", html)

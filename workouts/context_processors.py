@@ -1,3 +1,5 @@
+import hashlib
+
 from .access import has_feature
 
 
@@ -18,7 +20,7 @@ def access(request):
     if not u or not u.is_authenticated:
         return {}
     return {"can": _Can(u), "is_owner": u.is_superuser, "setup_pending": _LazyPending(u),
-            "peloton_reconnect": _LazyPelotonReconnect(u)}
+            "peloton_reconnect": _LazyPelotonReconnect(u), "plan_nudges": _LazyPlanNudges(u)}
 
 
 class _LazyPending:
@@ -66,3 +68,33 @@ class _LazyPelotonReconnect:
             return ""
         failed = self._auth.auth_failed_at
         return str(int(failed.timestamp())) if failed else "no-token"
+
+
+class _LazyPlanNudges:
+    """AI training plans whose runs suggest a reassessment (training_plans.reassess_signals):
+    [{"program", "run_pk", "reasons", "key"}]. Only users with the feature are checked."""
+    def __init__(self, user):
+        self.user = user
+        self._items = None
+
+    def _load(self):
+        if self._items is None:
+            self._items = []
+            if has_feature(self.user, "ai_program_tools"):
+                from .models import Program
+                from .training_plans import reassess_signals
+                for p in Program.objects.for_user(self.user).exclude(goal_json={}):
+                    run = p.active_run
+                    reasons = reassess_signals(p) if run and p.goal_json.get("start_date") else []
+                    if reasons:
+                        # Stable across restarts (hash() isn't), so a dismissal sticks until the reasons change.
+                        digest = hashlib.md5("|".join(reasons).encode()).hexdigest()[:10]
+                        self._items.append({"program": p, "run_pk": run.pk, "reasons": reasons,
+                                            "key": f"{p.pk}-{digest}"})
+        return self._items
+
+    def __iter__(self):
+        return iter(self._load())
+
+    def __bool__(self):
+        return bool(self._load())
