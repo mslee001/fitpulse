@@ -16,8 +16,10 @@
 
 {% if total_cached == 0 %}
 <div class="ui-empty">
-  <h2 class="text-lg font-semibold text-base-content">No workouts yet</h2>
-  <p>Connect Peloton on <a href="{% url 'integrations_settings' %}">Data sources</a>, then hit <strong>Sync</strong> in the nav to pull your workout history.</p>
+  {% include "workouts/partials/icon.html" with name="dumbbell" class="size-8 text-faint" %}
+  <p class="font-medium text-base-content">No workouts yet</p>
+  <p class="text-sm">Connect Peloton, then hit <strong>Sync</strong> in the nav to pull your workout history.</p>
+  <a href="{% url 'integrations_settings' %}" class="btn btn-sm btn-primary">Data sources</a>
 </div>
 {% else %}
 

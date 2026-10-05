@@ -18,6 +18,7 @@
       <div class="ui-stat">
         <div class="ui-stat-label">Calories</div>
         <div class="ui-stat-value">{% if cal %}{{ cal.value|floatformat:0 }}{% elif workout.calories %}{{ workout.calories|floatformat:0 }}{% else %}—{% endif %}</div>
+        {% include "workouts/partials/vs_avg_chip.html" with c=vs_avg.calories %}
         {% if type_stats.avg_calories %}<div class="ui-stat-sub">Avg: {{ type_stats.avg_calories|floatformat_default:"0" }}</div>{% endif %}
       </div>
       {% endwith %}
@@ -25,6 +26,7 @@
       <div class="ui-stat">
         <div class="ui-stat-label">Avg HR</div>
         <div class="ui-stat-value">{{ workout.heart_rate_avg|floatformat:0 }}<span class="ui-stat-unit">bpm</span></div>
+        {% include "workouts/partials/vs_avg_chip.html" with c=vs_avg.hr %}
         {% if type_stats.avg_hr %}<div class="ui-stat-sub">Avg: {{ type_stats.avg_hr|floatformat_default:"0" }} bpm</div>{% endif %}
       </div>
       {% endif %}
@@ -294,12 +296,6 @@
     {% endif %}
 {% endblock %}
 
-{% block history_item_stats %}
-          {% if w.effort_score %}<span>Effort {{ w.effort_score|floatformat:1 }}</span>{% endif %}
-          {% if w.calories %}<span>{{ w.calories|floatformat:0 }} cal</span>{% endif %}
-          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
-{% endblock %}
-
 {% block recent_section %}
     <!-- Recent strength workouts, populated by JS -->
     <div class="ui-panel" id="recentStrengthSidebar" style="display:none">
@@ -421,20 +417,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const arr = ["z1","z2","z3","z4","z5"].map(k => hrZonesDirect[k] || 0);
       if (arr.some(v => v > 0)) zoneSecs = arr;
     }
-    if (zoneSecs) {
-      const totalDur = zoneSecs.reduce((a, b) => a + b, 0);
-      let html = "";
-      zoneSecs.forEach((dur, i) => {
-        const pct = Math.round((dur / totalDur) * 100);
-        const col = ZONE_COLORS[i];
-        const timeStr = dur ? `${Math.floor(dur/60)}m ${String(dur%60).padStart(2,"0")}s` : "—";
-        html += `<div class="grid grid-cols-[7.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm">
-          <div class="flex items-center gap-2 font-medium"><span class="size-2 shrink-0 rounded-full" style="background:${col}" aria-hidden="true"></span>Z${i+1} ${zoneNames[i]}</div>
-          <div class="ui-bar"><div class="h-full rounded-full" style="width:${pct}%; background:${col}"></div></div>
-          <div class="text-right font-mono tabular-nums">${timeStr}</div>
-        </div>`;
-      });
-      zoneBreakdown.innerHTML = html;
+    if (zoneSecs && fpZoneBar(zoneBreakdown, zoneSecs.map((secs, i) => ({ label: `Z${i+1} ${zoneNames[i]}`, secs, color: ZONE_COLORS[i] })))) {
       zoneCard.style.display = "";
     }
   }

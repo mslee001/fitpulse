@@ -37,7 +37,11 @@
   {% if data.hidden_count %}Showing the {{ data.series|length }} most-tracked exercises &mdash; {{ data.hidden_count }} tracked less often {{ data.hidden_count|pluralize:"is,are" }} hidden.{% endif %}
 </p>
 {% else %}
-<div class="ui-empty">No tracked or hand-logged weights in this cycle yet.</div>
+<div class="ui-empty">
+  {% include "workouts/partials/icon.html" with name="chart" class="size-8 text-faint" %}
+  <p class="font-medium text-base-content">No weights yet</p>
+  <p class="text-sm">Tracked or hand-logged weights in this cycle will show up here.</p>
+</div>
 {% endif %}
 
 <script>

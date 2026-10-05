@@ -1,0 +1,3 @@
+{% comment %}"vs your average" chip under a detail stat tile: c = vs_avg.<metric> (views._vs_avg).
+Arrow + % always; green/red only when the metric has a better direction.{% endcomment %}
+{% if c %}<span class="badge badge-sm badge-ghost mt-1 self-start font-mono {% if c.better is True %}text-success{% elif c.better is False %}text-error{% endif %}"><span aria-hidden="true">{% if c.up %}↑{% else %}↓{% endif %} {{ c.pct }}%</span><span class="sr-only">{{ c.pct }}% {% if c.up %}above{% else %}below{% endif %} your average</span></span>{% endif %}

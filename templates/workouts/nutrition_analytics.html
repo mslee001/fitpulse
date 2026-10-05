@@ -169,7 +169,7 @@
   <div class="ui-panel-header">
     <h2 class="ui-panel-title">AI insights</h2>
     <div class="flex items-center gap-3">
-      {% if insights_generated_at %}<span class="text-xs text-muted">Generated {{ insights_generated_at|timesince }} ago</span>{% endif %}
+      {% if insights_generated_at %}<span class="text-xs text-muted">Generated {{ insights_generated_at|reltime }}</span>{% endif %}
       <button type="button" class="btn btn-sm"
               hx-post="{% url 'nutrition_insights_refresh' %}?range={{ range_param }}"
               hx-target="#insights-area"

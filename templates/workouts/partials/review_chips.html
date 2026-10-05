@@ -1,0 +1,6 @@
+{% comment %}Weekly Review week-over-week chips (week_summary.review_chips). Neutral except weight, which follows the user's goal.{% endcomment %}
+{% if chips %}
+<ul class="mb-4 flex flex-wrap gap-2" aria-label="Compared with the week before">
+  {% for c in chips %}<li class="badge badge-ghost font-mono {{ c.tone }}"><span aria-hidden="true">{{ c.text }}</span><span class="sr-only">{{ c.sr }}</span></li>{% endfor %}
+</ul>
+{% endif %}

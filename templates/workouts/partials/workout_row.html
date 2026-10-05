@@ -1,0 +1,65 @@
+{% load workout_filters %}
+{% comment %}
+One workout row: Today, Day view, and a detail page's Previous attempts. It adapts to
+its own width (ui-cq): from 440px it adds two stat chips; at 280px or less it drops the
+meta line and the time and shrinks the icon.
+Include with: w, plus optional row_title / row_when (override the title and the
+time), row_attempt (meta = this attempt's numbers, kept when narrow) and row_detailed
+(Day view: the full stats line under the row, instead of chips).
+{% endcomment %}
+{% with color=w.discipline|discipline_color %}
+<div class="ui-cq">
+  <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="ui-lift flex flex-col gap-2 rounded-xl bg-inset p-3 text-base-content hover:no-underline hover:bg-base-300">
+    <span class="flex items-center gap-3">
+      <span class="flex size-11 shrink-0 items-center justify-center rounded-xl text-xs font-semibold @max-[280px]:size-9" style="color: {{ color }}; background: color-mix(in oklab, {{ color }} 15%, transparent)" aria-hidden="true">{{ w.discipline|slice:":3"|upper }}</span>
+      <span class="min-w-0 flex-1">
+        <span class="flex min-w-0 items-center gap-2">
+          <span class="truncate font-semibold">{% if row_title %}{{ row_title }}{% else %}{{ w.title|default:"Workout" }}{% endif %}</span>
+          {% if w.is_pr %}<span class="badge badge-sm badge-primary badge-soft shrink-0">New PR</span>{% endif %}
+        </span>
+        {% if row_attempt %}
+        <span class="flex flex-wrap gap-x-3 font-mono text-xs text-muted">
+          {% if w.discipline == "cycling" %}
+            {% if w.output_watts %}<span>{{ w.output_watts|format_watts }}</span>{% endif %}
+            {% if w.avg_cadence %}<span>{{ w.avg_cadence|floatformat:0 }} rpm</span>{% endif %}
+          {% elif w.discipline == "running" or w.discipline == "walking" %}
+            {% if w.avg_pace_seconds %}<span>{{ w.avg_pace_display }}</span>{% endif %}
+            {% if w.distance_miles %}<span>{{ w.distance_miles|floatformat:2 }} mi</span>{% endif %}
+          {% else %}
+            {% if w.discipline == "strength" and w.effort_score %}<span>Effort {{ w.effort_score|floatformat:1 }}</span>{% endif %}
+            {% if w.calories %}<span>{{ w.calories|floatformat:0 }} cal</span>{% endif %}
+          {% endif %}
+          {% if w.heart_rate_avg_best %}<span>{{ w.heart_rate_avg_best|floatformat:0 }} bpm</span>{% endif %}
+        </span>
+        {% else %}
+        <span class="block truncate text-sm text-muted @max-[280px]:hidden">
+          {{ w.fitness_discipline_display|default:w.discipline|title }}{% if w.duration_minutes %} · {{ w.duration_minutes }} min{% endif %}{% if w.instructor_name %} · {{ w.instructor_name }}{% endif %}
+        </span>
+        {% endif %}
+      </span>
+      {% if not row_detailed %}
+      <span class="hidden shrink-0 gap-1.5 @[440px]:flex">
+        {% if w.distance_miles and w.avg_pace_seconds %}
+        <span class="badge badge-ghost font-mono text-xs">{{ w.distance_miles|floatformat:2 }} mi</span>
+        <span class="badge badge-ghost font-mono text-xs">{{ w.avg_pace_display }}</span>
+        {% else %}
+        {% if w.calories %}<span class="badge badge-ghost font-mono text-xs">{{ w.calories|floatformat:0 }} cal</span>{% endif %}
+        {% if w.heart_rate_avg_best %}<span class="badge badge-ghost font-mono text-xs">{{ w.heart_rate_avg_best|floatformat:0 }} bpm</span>{% endif %}
+        {% endif %}
+      </span>
+      {% endif %}
+      <span class="shrink-0 font-mono text-sm text-muted @max-[280px]:hidden">{% if row_when %}{{ row_when }}{% else %}{{ w.created_at|date:"g:i A" }}{% endif %}</span>
+    </span>
+    {% if row_detailed %}
+    <span class="flex flex-wrap gap-x-5 gap-y-1 pl-14 text-sm @max-[280px]:hidden">
+      {% if w.heart_rate_avg_best %}<span><span class="text-muted">Avg HR</span> <span class="font-mono">{{ w.heart_rate_avg_best|floatformat:0 }} bpm</span></span>{% endif %}
+      {% with effort=w.effort_points|default:w.average_effort_score %}{% if effort %}<span><span class="text-muted">Effort</span> <span class="font-mono">{{ effort|floatformat:1 }}</span></span>{% endif %}{% endwith %}
+      {% if w.calories %}<span><span class="text-muted">Calories</span> <span class="font-mono">{{ w.calories|floatformat:0 }}</span></span>{% endif %}
+      {% if w.avg_pace_display %}<span><span class="text-muted">Pace</span> <span class="font-mono">{{ w.avg_pace_display }}</span></span>{% endif %}
+      {% if w.output_watts %}<span><span class="text-muted">Output</span> <span class="font-mono">{{ w.output_watts|floatformat:0 }} W</span></span>{% endif %}
+      {% if w.avg_watts and not w.output_watts %}<span><span class="text-muted">Avg power</span> <span class="font-mono">{{ w.avg_watts|floatformat:0 }} W</span></span>{% endif %}
+    </span>
+    {% endif %}
+  </a>
+</div>
+{% endwith %}

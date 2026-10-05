@@ -13,17 +13,15 @@
     <h1 class="ui-page-title">Workout history</h1>
     <p class="ui-page-sub">{{ total }} workouts — filter, sort, and select to compare</p>
   </div>
+  <div class="ui-page-actions">
+    <div class="join" role="group" aria-label="Layout">
+      <button type="button" class="view-btn btn btn-sm join-item aria-pressed:btn-primary aria-pressed:btn-soft" data-view-btn="grid" aria-label="Grid view" aria-pressed="true" onclick="setWorkoutsView('grid', true)">{% include "workouts/partials/icon.html" with name="grid" class="size-4" %}</button>
+      <button type="button" class="view-btn btn btn-sm join-item aria-pressed:btn-primary aria-pressed:btn-soft" data-view-btn="list" aria-label="List view" aria-pressed="false" onclick="setWorkoutsView('list', true)">{% include "workouts/partials/icon.html" with name="list" class="size-4" %}</button>
+    </div>
+  </div>
 </div>
 
-<div class="mb-5 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
-  <button type="button" class="discipline-pill btn btn-sm rounded-full max-sm:h-11 shrink-0{% if not filters.discipline %} active btn-primary{% endif %}"
-          data-slug="" onclick="setDiscipline('')">All</button>
-  {% for slug, display, color in discipline_pills %}
-  <button type="button" class="discipline-pill btn btn-sm rounded-full max-sm:h-11 shrink-0{% if filters.discipline == slug %} active btn-primary{% endif %}"
-          data-slug="{{ slug }}"
-          onclick="setDiscipline('{{ slug }}')"><span class="size-2 rounded-full" style="background: {{ color }}" aria-hidden="true"></span>{{ display }}</button>
-  {% endfor %}
-</div>
+{% include "workouts/partials/discipline_pills.html" %}
 
 <div class="grid items-start gap-6 pb-20 lg:grid-cols-[260px_1fr]">
 
@@ -117,9 +115,26 @@
   </aside>
 
   <!-- Workout list -->
-  <div id="workout-list" class="min-w-0">
+  <div id="workout-list" class="min-w-0" data-view="grid">
     {% include "workouts/partials/workout_list.html" %}
   </div>
+  <script>
+    // Grid or list (data-view on #workout-list; both markups are rendered, so later
+    // scroll pages work in either). Remembered per browser; default list on phones.
+    function setWorkoutsView(view, save) {
+      document.getElementById('workout-list').dataset.view = view;
+      document.querySelectorAll('[data-view-btn]').forEach(function(b) {
+        b.setAttribute('aria-pressed', String(b.dataset.viewBtn === view));
+      });
+      if (save) { try { localStorage.setItem('workoutsView', view); } catch (e) {} }
+    }
+    (function() {
+      var v = null;
+      try { v = localStorage.getItem('workoutsView'); } catch (e) {}
+      if (v !== 'grid' && v !== 'list') v = window.matchMedia('(min-width: 48rem)').matches ? 'grid' : 'list';
+      setWorkoutsView(v, false);
+    })();
+  </script>
 
 </div>
 
@@ -186,6 +201,10 @@
     if (!e.target.matches('.workout-checkbox')) return;
     const id = e.target.dataset.id;
     e.target.checked ? selected.add(id) : selected.delete(id);
+    // The same workout has a checkbox in its card and in its list row: keep them in step.
+    document.querySelectorAll('.workout-checkbox').forEach(cb => {
+      if (cb.dataset.id === id) cb.checked = e.target.checked;
+    });
     compareCountEl.textContent = selected.size;
     selectionBar.hidden = selected.size === 0;
     compareBar.style.display = selected.size >= 2 ? 'block' : 'none';

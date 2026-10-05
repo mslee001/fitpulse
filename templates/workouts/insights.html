@@ -16,7 +16,7 @@
   </div>
   <div class="ui-page-actions">
     {% if generated_at %}
-    <span class="text-xs text-muted">Generated {{ generated_at|timesince }} ago</span>
+    <span class="text-xs text-muted">Generated {{ generated_at|reltime }}</span>
     {% endif %}
     <button type="button" class="btn btn-sm"
             hx-post="{% url 'pattern_insights_refresh' %}"
@@ -32,7 +32,7 @@
 
 <div class="flex flex-col gap-5">
   <div class="ui-panel">
-    <div id="insights-area">
+    <div id="insights-area" class="ui-prose">
       {% include "workouts/partials/pattern_insights.html" with pending=insights_pending %}
     </div>
   </div>

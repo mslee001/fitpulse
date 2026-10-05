@@ -1,0 +1,11 @@
+{% comment %}Workouts discipline pills. Counts are for the current filters except the discipline
+itself. Re-rendered out-of-band (pills_oob) when HTMX reloads page 1 of the list.{% endcomment %}
+<div id="discipline-pills" class="mb-5 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap"{% if pills_oob %} hx-swap-oob="true"{% endif %}>
+  <button type="button" class="discipline-pill btn btn-sm rounded-full max-sm:h-11 shrink-0{% if not filters.discipline %} active btn-primary{% endif %}"
+          data-slug="" onclick="setDiscipline('')">All <span class="font-mono text-xs opacity-70">{{ pill_total }}</span></button>
+  {% for slug, display, color, count in discipline_pills %}
+  <button type="button" class="discipline-pill btn btn-sm rounded-full max-sm:h-11 shrink-0{% if filters.discipline == slug %} active btn-primary{% endif %}"
+          data-slug="{{ slug }}"
+          onclick="setDiscipline('{{ slug }}')"><span class="size-2 rounded-full" style="background: {{ color }}" aria-hidden="true"></span>{{ display }} <span class="font-mono text-xs opacity-70">{{ count }}</span></button>
+  {% endfor %}
+</div>

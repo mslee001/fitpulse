@@ -12,8 +12,8 @@ import logging
 import urllib.parse
 
 from django.contrib import messages
-from django.db.models import Avg, Count, Max, Min, Q
-from django.db.models.functions import TruncWeek
+from django.db.models import Avg, Count, Max, Min, Q, Sum
+from django.db.models.functions import TruncMonth, TruncWeek
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -125,8 +125,6 @@ def history(request):
 
     if q:
         qs = qs.filter(title__icontains=q)
-    if discipline:
-        qs = qs.filter(discipline=discipline)
     if instructor:
         qs = qs.filter(instructor_name=instructor)
     if duration:
@@ -150,6 +148,12 @@ def history(request):
         except ValueError:
             date_to = ""
 
+    # Pill counts: the current filters except the discipline itself.
+    pill_counts = dict(qs.order_by().values_list("discipline").annotate(n=Count("pk")))
+    pill_total = sum(pill_counts.values())
+    if discipline:
+        qs = qs.filter(discipline=discipline)
+
     allowed_sorts = {
         "-created_at", "created_at",
         "-output_watts", "-avg_watts", "-avg_cadence",
@@ -168,6 +172,28 @@ def history(request):
     total    = qs.count()
     has_next = (offset + per_page) < total
 
+    # Month headers (date sorts only): counts cover the whole month under the current
+    # filters, not just this page. A month continuing from the previous scroll page
+    # (last_month=YYYY-MM) doesn't repeat its header.
+    last_month = request.GET.get("last_month", "") if page > 1 else ""
+    if sort in ("-created_at", "created_at"):
+        months = {
+            (timezone.localtime(r["m"]).year, timezone.localtime(r["m"]).month) if timezone.is_aware(r["m"])
+            else (r["m"].year, r["m"].month): (r["n"], r["secs"] or 0)
+            for r in qs.order_by().annotate(m=TruncMonth("created_at")).values("m")
+            .annotate(n=Count("pk"), secs=Sum("duration_seconds"))
+        }
+        prev = last_month
+        for w in workouts:
+            local = timezone.localtime(w.created_at)
+            key = f"{local:%Y-%m}"
+            w.month_head = None
+            if key != prev:
+                n, secs = months.get((local.year, local.month), (0, 0))
+                w.month_head = {"label": f"{local:%B %Y}", "count": n, "seconds": secs}
+            prev = key
+        last_month = prev
+
     disc_slugs = (
         CachedWorkout.objects.for_user(request.user)
         .values_list("discipline", flat=True)
@@ -178,7 +204,7 @@ def history(request):
         for slug in disc_slugs
     ]
     discipline_pills = [
-        (slug, display, DISCIPLINE_COLORS.get(slug, "#888888"))
+        (slug, display, DISCIPLINE_COLORS.get(slug, "#888888"), pill_counts.get(slug, 0))
         for slug, display in disciplines
     ]
     durations = sorted(set(
@@ -205,6 +231,9 @@ def history(request):
         "has_next": has_next,
         "page": page,
         "total": total,
+        "pill_total": pill_total,
+        "last_month": last_month,
+        "pills_oob": bool(request.htmx) and page == 1,
         "filters": {
             "discipline": discipline,
             "instructor": instructor,
@@ -386,6 +415,29 @@ def _manual_movement_context(workout):
     }
 
 
+def _vs_avg(type_stats, metrics):
+    """'vs your average' chips for a detail page's stat tiles.
+
+    metrics = {key: (this workout's value, the type average, direction)}, direction
+    "higher"/"lower" (which way is better, the same rules as Compare) or None (HR: no
+    better or worse). Returns {key: {"pct", "up", "better"}}; a metric is left out when
+    either value is missing or it's within 1%, and every chip when there are fewer
+    than 3 other workouts of the type.
+    """
+    if (type_stats.get("count") or 0) < 3:
+        return {}
+    out = {}
+    for key, (value, avg, direction) in metrics.items():
+        if not value or not avg:
+            continue
+        diff = (value - avg) / avg * 100
+        if abs(diff) < 1:
+            continue
+        better = None if direction is None else (diff > 0) == (direction == "higher")
+        out[key] = {"pct": round(abs(diff)), "up": diff > 0, "better": better}
+    return out
+
+
 def _run_detail(request, workout):
     client = _peloton_client_or_none(request.user)
     perf = _get_perf_dict(workout, client)
@@ -476,6 +528,12 @@ def _run_detail(request, workout):
         "class_history": _class_history_sidebar(workout),
         "garmin_activity_url": _garmin_activity_url(workout),
         "type_stats": type_stats,
+        "vs_avg": _vs_avg(type_stats, {
+            "pace": (workout.avg_pace_seconds, type_stats.get("avg_pace"), "lower"),
+            "distance": (workout.distance_miles, type_stats.get("avg_distance"), "higher"),
+            "hr": (workout.heart_rate_avg, type_stats.get("avg_hr"), None),
+            "calories": (workout.calories, type_stats.get("avg_calories"), "higher"),
+        }),
         "recent_runs": json.dumps(recent_runs),
         "workout_detail": _workout_detail_fields(workout),
         "run_form": run_form,
@@ -538,6 +596,12 @@ def _walking_detail(request, workout):
         "class_history": _class_history_sidebar(workout),
         "garmin_activity_url": _garmin_activity_url(workout),
         "type_stats": type_stats,
+        "vs_avg": _vs_avg(type_stats, {
+            "pace": (workout.avg_pace_seconds, type_stats.get("avg_pace"), "lower"),
+            "distance": (workout.distance_miles, type_stats.get("avg_distance"), "higher"),
+            "hr": (workout.heart_rate_avg, type_stats.get("avg_hr"), None),
+            "calories": (workout.calories, type_stats.get("avg_calories"), "higher"),
+        }),
         "recent_walks": json.dumps(recent_walks),
         "workout_detail": _workout_detail_fields(workout),
         "gh_hr_zones": gh_hr_zones,
@@ -595,6 +659,13 @@ def _cycling_detail(request, workout):
         "perf_avg_summaries": perf.get("average_summaries", {}),
         "class_history": _class_history_sidebar(workout),
         "type_stats": type_stats,
+        "vs_avg": _vs_avg(type_stats, {
+            "output": (workout.output_watts, type_stats.get("avg_output"), "higher"),
+            "watts": (workout.avg_watts, type_stats.get("avg_power"), "higher"),
+            "cadence": (workout.avg_cadence, type_stats.get("avg_cadence"), "higher"),
+            "hr": (workout.heart_rate_avg, type_stats.get("avg_hr"), None),
+            "calories": (workout.calories, type_stats.get("avg_calories"), "higher"),
+        }),
         "recent_rides": json.dumps(recent_rides),
         "workout_detail": detail_fields,
         "ftp": workout.ftp,
@@ -662,6 +733,10 @@ def _strength_detail(request, workout):
         "class_history": _class_history_sidebar(workout),
         "garmin_activity_url": _garmin_activity_url(workout),
         "type_stats": type_stats,
+        "vs_avg": _vs_avg(type_stats, {
+            "hr": (workout.heart_rate_avg, type_stats.get("avg_hr"), None),
+            "calories": (workout.calories, type_stats.get("avg_calories"), "higher"),
+        }),
         "recent_strength": json.dumps(recent_strength),
         "workout_detail": detail_fields,
         "exercise_sets": json.dumps(workout.exercise_sets_json or []),
@@ -1296,12 +1371,50 @@ def settings_page(request):
     })
 
 
+INTEGRATION_PROVIDES = {
+    "peloton": "Workouts, class details",
+    "withings": "Weight & body composition",
+    "google_health": "Sleep, HRV, steps, workouts",
+    "garmin": "Activities, wellness",
+}
+
+
+def _with_status(integration, peloton_auth=None, google_health_auth=None):
+    """Set the Integrations card's status on `integration`: status_label ("Connected" /
+    "Reconnect needed" / "Off" / "Not connected"), status_badge (whole daisyUI classes),
+    needs_action (a Connect/Reconnect is the next step) and provides."""
+    key = integration.key
+    if key == "peloton":
+        connected = bool(peloton_auth and peloton_auth.has_tokens)
+        stale = bool(peloton_auth and peloton_auth.needs_reconnect)
+    elif key == "google_health":
+        connected = bool(google_health_auth)
+        stale = bool(google_health_auth and (google_health_auth.days_since_connected or 0) >= 7)
+    else:
+        connected, stale = integration.is_authenticated, False
+    if not integration.is_enabled:
+        label, badge = "Off", "badge-ghost"
+    elif stale:
+        label, badge = "Reconnect needed", "badge-warning badge-soft"
+    elif connected:
+        label, badge = "Connected", "badge-success badge-soft"
+    else:
+        label, badge = "Not connected", "badge-ghost"
+    integration.status_label, integration.status_badge = label, badge
+    integration.needs_action = integration.is_enabled and (stale or not connected)
+    integration.provides = INTEGRATION_PROVIDES.get(key, "")
+    return integration
+
+
 def integrations_settings_page(request):
     from .models import GoogleHealthAuth, Integration, PelotonAuth, WebhookError
     Integration.ensure_for_user(request.user)
     integrations = Integration.objects.for_user(request.user)
     if not request.user.is_superuser:
         integrations = integrations.exclude(key="garmin")
+    peloton_auth = PelotonAuth.for_user(request.user)
+    google_health_auth = GoogleHealthAuth.for_user(request.user)
+    integrations = [_with_status(i, peloton_auth, google_health_auth) for i in integrations]
     catalog = catalog_job = None
     if request.user.is_superuser:
         from .background import latest_job
@@ -1313,11 +1426,11 @@ def integrations_settings_page(request):
         "catalog": catalog,
         "catalog_job": catalog_job,
         "integrations": integrations,
-        "peloton_auth": PelotonAuth.for_user(request.user),
+        "peloton_auth": peloton_auth,
         "now": timezone.now(),
         "webhook_error_count": _webhook_errors_for(request.user).count(),
         "webhook_retention_days": WebhookError.RETENTION_DAYS,
-        "google_health_auth": GoogleHealthAuth.for_user(request.user),
+        "google_health_auth": google_health_auth,
     })
 
 
@@ -1332,15 +1445,16 @@ def _webhook_errors_for(user):
 
 @require_POST
 def integration_toggle(request, key):
-    from .models import GoogleHealthAuth, Integration
+    from .models import GoogleHealthAuth, Integration, PelotonAuth
     if key == "garmin" and not request.user.is_superuser:
         return HttpResponseForbidden("Garmin is owner-only.")
     integration = get_object_or_404(Integration.objects.for_user(request.user), key=key)
     integration.is_enabled = not integration.is_enabled
     integration.save(update_fields=["is_enabled"])
+    google_health_auth = GoogleHealthAuth.for_user(request.user)
     return render(request, "workouts/partials/integration_row.html", {
-        "integration": integration,
-        "google_health_auth": GoogleHealthAuth.for_user(request.user),
+        "integration": _with_status(integration, PelotonAuth.for_user(request.user), google_health_auth),
+        "google_health_auth": google_health_auth,
     })
 
 
@@ -1743,6 +1857,12 @@ def calendar_view(request, year=None, month=None):
             all_ok = False
         return "green" if all_ok else "yellow"
 
+    # Heat mode: each day's training minutes in five steps (CLAUDE.md → Styling).
+    def _heat_pct(minutes):
+        if minutes <= 0:
+            return 0
+        return 15 if minutes < 30 else 30 if minutes < 60 else 50 if minutes < 90 else 70
+
     grid = []
     for week in _cal.monthcalendar(year, month):
         row = []
@@ -1752,7 +1872,10 @@ def calendar_view(request, year=None, month=None):
             else:
                 d = datetime.date(year, month, day_num)
                 s = stats_by_date.get(d)
+                minutes = round(sum(w["duration_seconds"] or 0 for w in workouts_by_date.get(d, [])) / 60)
                 row.append({
+                    "minutes": minutes,
+                    "heat_pct": _heat_pct(minutes),
                     "date": d,
                     "is_today": d == today,
                     "is_future": d > today,
@@ -1761,6 +1884,15 @@ def calendar_view(request, year=None, month=None):
                     "nutrition_status": _nutrition_status(s),
                 })
         grid.append(row)
+
+    # Month summary strip, from the data above (no new queries).
+    readiness = [st.readiness_score for st in stats_by_date.values() if st.readiness_score is not None]
+    month_summary = {
+        "workouts": sum(len(ws) for ws in workouts_by_date.values()),
+        "seconds": sum(w["duration_seconds"] or 0 for ws in workouts_by_date.values() for w in ws),
+        "active_days": len(workouts_by_date),
+        "avg_readiness": round(sum(readiness) / len(readiness)) if readiness else None,
+    }
 
     used_disciplines = {w["discipline"] for ws in workouts_by_date.values() for w in ws}
     legend_colors = {d: c for d, c in DISCIPLINE_COLORS.items() if d in used_disciplines}
@@ -1783,6 +1915,7 @@ def calendar_view(request, year=None, month=None):
         "discipline_colors": DISCIPLINE_COLORS,
         "legend_colors": legend_colors,
         "load_focus_rows": _load_focus_rows(today_stats),
+        "month_summary": month_summary,
     })
 
 
@@ -2063,6 +2196,42 @@ def _rolling_avg(values, window):
     return result
 
 
+def _body_change_chips(user, today, goal):
+    """30-day change chips for the Body stat tiles: the 7-day average ending today vs the
+    7-day average ending 30 days ago (single weigh-ins are too noisy). One query over the
+    last 37 days; a chip is left out when either window has fewer than 3 values."""
+    from .week_summary import goal_tone as _goal_tone
+    start = today - datetime.timedelta(days=36)
+    rows = list(DailyStats.objects.for_user(user).filter(date__gte=start, date__lte=today)
+                .values("date", "weight_lb", "fat_ratio_pct", "fat_free_mass_lb"))
+    now_from, then_to = today - datetime.timedelta(days=6), today - datetime.timedelta(days=30)
+    then_from = then_to - datetime.timedelta(days=6)
+
+    def avg(field, lo, hi):
+        vals = [r[field] for r in rows if lo <= r["date"] <= hi and r[field] is not None]
+        return sum(vals) / len(vals) if len(vals) >= 3 else None
+
+    specs = {  # key: (field, unit, spoken unit, up_good)
+        "weight": ("weight_lb", "lb", "pounds", None),
+        "fat_pct": ("fat_ratio_pct", "%", "percentage points", None),
+        "lean": ("fat_free_mass_lb", "lb", "pounds", True),
+    }
+    chips = {}
+    for key, (field, unit, spoken, up_good) in specs.items():
+        now, then = avg(field, now_from, today), avg(field, then_from, then_to)
+        if now is None or then is None:
+            continue
+        delta = round(now - then, 1)
+        sign = "+" if delta > 0 else "\u2212" if delta < 0 else "±"
+        chips[key] = {
+            "text": f"{sign}{abs(delta):.1f}{'' if unit == '%' else ' '}{unit} · 30d",
+            "tone": _goal_tone(delta, goal, up_good),
+            "sr": f"{'up' if delta > 0 else 'down' if delta < 0 else 'no change'}"
+                  f"{'' if not delta else f' {abs(delta):.1f} {spoken}'} over 30 days",
+        }
+    return chips
+
+
 def body_view(request):
     range_param = request.GET.get("range", "30d")
     range_days  = {"7d": 7, "30d": 30, "90d": 90, "1y": 365, "all": 3650}.get(range_param, 30)
@@ -2128,6 +2297,7 @@ def body_view(request):
     }
     interventions_json = json.dumps([
         {
+            "id":    iv.id,
             "date":  iv.start_date.isoformat(),
             "label": iv.name,
             "color": CAT_COLORS.get(iv.category, "#888"),
@@ -2148,6 +2318,7 @@ def body_view(request):
             start_date__lte=today,
         ).order_by("start_date"):
             dose_annotations.append({
+                "id":    iv.id,
                 "date":  dc.start_date.isoformat(),
                 "label": dc.dose,
                 "color": CAT_COLORS.get(iv.category, "#888"),
@@ -2173,6 +2344,10 @@ def body_view(request):
     month_ago_qs = [s for s in stats_qs if s.date <= cutoff_30d]
     prev_weight_30 = next((s.weight_lb for s in reversed(month_ago_qs) if s.weight_lb), None) if month_ago_qs else None
     delta_30d = round(current_weight - prev_weight_30, 1) if (current_weight and prev_weight_30) else None
+
+    from .week_summary import goal_tone as _goal_tone
+    body_goal = getattr(NutritionProfile.objects.filter(user=request.user).first(), "goal", None)
+    body_chips = _body_change_chips(request.user, today, body_goal)
 
     # Recent symptoms (last 3 days)
     three_days_ago = today - datetime.timedelta(days=2)
@@ -2229,6 +2404,9 @@ def body_view(request):
         "current_lean": current_lean,
         "delta_7d": delta_7d,
         "delta_30d": delta_30d,
+        "delta_7d_tone": _goal_tone(delta_7d, body_goal),
+        "delta_30d_tone": _goal_tone(delta_30d, body_goal),
+        "body_chips": body_chips,
         "commentary": commentary,
         "ai_unavailable_reason": ai_unavailable,
         "nutrition_targets": nutrition_targets,
@@ -2434,6 +2612,34 @@ def saved_analysis_delete(request, pk):
 # Nutrition views
 # ---------------------------------------------------------------------------
 
+MEAL_GROUP_LABELS = {"breakfast": "Breakfast", "lunch": "Lunch", "dinner": "Dinner", "snack": "Snacks", "": "Other"}
+
+
+def _meal_groups(entries):
+    """The day's entries as meal sections in FoodEntry.MEAL_CHOICES order (unassigned
+    last), each with its logged-time range and kcal/protein subtotals. Empty meals are
+    left out. Entries are in logged_at order."""
+    order = [k for k, _ in FoodEntry.MEAL_CHOICES] + [""]
+    groups = []
+    for meal in order:
+        rows = [e for e in entries if (e.meal or "") == meal]
+        if not rows:
+            continue
+        first, last = timezone.localtime(rows[0].logged_at), timezone.localtime(rows[-1].logged_at)
+        if first.strftime("%H:%M") == last.strftime("%H:%M"):
+            span = f"{first:%-I:%M %p}"
+        elif first.strftime("%p") == last.strftime("%p"):
+            span = f"{first:%-I:%M}\u2013{last:%-I:%M %p}"
+        else:
+            span = f"{first:%-I:%M %p}\u2013{last:%-I:%M %p}"
+        groups.append({
+            "meal": meal or "other", "label": MEAL_GROUP_LABELS[meal], "entries": rows, "span": span,
+            "kcal": round(sum(e.calories or 0 for e in rows)),
+            "protein": round(sum(e.protein_g or 0 for e in rows)),
+        })
+    return groups
+
+
 def nutrition_page(request):
     from django.db.models import Sum
     from .nutrition import compute_macro_targets, compute_streaks, get_weekly_stats, get_yesterday_recap, get_satisfying_meals
@@ -2448,7 +2654,8 @@ def nutrition_page(request):
     profile = NutritionProfile.objects.filter(user=request.user).first()
     targets = compute_macro_targets(request.user, profile) if profile else None
 
-    entries = list(FoodEntry.objects.for_user(request.user).filter(date=page_date))
+    entries = list(FoodEntry.objects.for_user(request.user).filter(date=page_date).order_by("logged_at"))
+    meal_groups = _meal_groups(entries)
     totals = FoodEntry.objects.for_user(request.user).filter(date=page_date).aggregate(
         cal=Sum("calories"),
         prot=Sum("protein_g"),
@@ -2494,6 +2701,7 @@ def nutrition_page(request):
         "targets": targets,
         "profile": profile,
         "entries": entries,
+        "meal_groups": meal_groups,
         "totals": totals,
         "remaining": remaining,
         "saved_meals": saved_meals,
@@ -3350,11 +3558,57 @@ def target_accept_api(request):
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
 
+# Today's wellness tiles: field per tile, for the 7-day mini bars.
+WELLNESS_SPARK_FIELDS = {
+    "hrv": "hrv_last_night", "sleep": "sleep_score", "body_battery": "body_battery_start",
+    "resting_hr": "resting_hr", "stress": "stress_avg", "steps": "steps",
+}
+
+
+def _wellness_spark(user, end_date):
+    """{tile: [7 × {"pct", "is_today"}]} for the 7 days ending on end_date, oldest first.
+
+    Each metric is scaled min→max within those 7 days onto 20–100% (so the lowest real
+    day stays visible next to a missing one, which is None and renders as a stub); a
+    flat week is 60% throughout. "note" is a screen-reader sentence when today is the
+    week's high or low.
+    """
+    dates = [end_date - datetime.timedelta(days=i) for i in range(6, -1, -1)]
+    rows = {
+        r["date"]: r
+        for r in DailyStats.objects.for_user(user)
+        .filter(date__gte=dates[0], date__lte=end_date)
+        .values("date", *WELLNESS_SPARK_FIELDS.values())
+    }
+    spark = {}
+    for key, field in WELLNESS_SPARK_FIELDS.items():
+        vals = [(rows.get(d) or {}).get(field) for d in dates]
+        present = [v for v in vals if v is not None]
+        lo, hi = (min(present), max(present)) if present else (0, 0)
+        bars = []
+        for d, v in zip(dates, vals):
+            if v is None:
+                pct = None
+            elif hi == lo:
+                pct = 60
+            else:
+                pct = round(20 + 80 * (v - lo) / (hi - lo))
+            bars.append({"pct": pct, "is_today": d == end_date})
+        today_v = vals[-1]
+        note = ""
+        if today_v is not None and len(present) > 1 and hi != lo:
+            note = ("Highest of the last 7 days" if today_v == hi
+                    else "Lowest of the last 7 days" if today_v == lo else "")
+        spark[key] = {"bars": bars, "note": note}
+    return spark
+
+
 def today_page(request):
     """Today page — single-glance morning check-in."""
     from django.db.models import Sum
     from .nutrition import compute_macro_targets
     from .ai import _get_or_generate_day_analysis
+    from .week_summary import week_summary
 
     today_date = datetime.date.today()
     yesterday = today_date - datetime.timedelta(days=1)
@@ -3400,6 +3654,18 @@ def today_page(request):
             t = v["target"]
             v["pct"] = min(round((v["now"] / t) * 100), 100) if t else 0
 
+    # Today's entries in the Nutrition panel: 4 shown, the 5th only decides "+N more"
+    todays_food = list(
+        FoodEntry.objects.for_user(request.user).filter(date=today_date).order_by("-logged_at")[:5]
+    )
+    todays_food_count = (
+        len(todays_food) if len(todays_food) < 5
+        else FoodEntry.objects.for_user(request.user).filter(date=today_date).count()
+    )
+    cal_left = None
+    if nutrition_progress and nutrition_progress["cal"]["target"]:
+        cal_left = round(nutrition_progress["cal"]["target"] - nutrition_progress["cal"]["now"])
+
     # Active interventions
     active_interventions = [i for i in Intervention.objects.for_user(request.user).all() if i.is_active]
 
@@ -3420,9 +3686,15 @@ def today_page(request):
         "today_date": today_date,
         "daily": daily,
         "wellness_is_yesterday": wellness_is_yesterday,
+        "wellness_spark": _wellness_spark(request.user, daily.date) if daily else {},
         "todays_workouts": todays_workouts,
         "nutrition_progress": nutrition_progress,
         "nutrition_targets": nutrition_targets,
+        "todays_food": todays_food[:4],
+        "todays_food_more": max(todays_food_count - 4, 0),
+        "cal_left": cal_left,
+        "cal_over": -cal_left if cal_left is not None and cal_left < 0 else None,
+        "week": week_summary(request.user, today_date, targets=nutrition_targets),
         "active_interventions": active_interventions,
         "next_workout_text": next_workout_text,
         "day_analysis_text": day_analysis_text,
@@ -3455,6 +3727,12 @@ def weekly_review_page(request):
         .exclude(content="")
         .order_by("-week_start")[:12]
     )
+
+    # Week-over-week chips for each review (review week vs the week before).
+    from .week_summary import review_chips
+    goal = getattr(NutritionProfile.objects.filter(user=request.user).first(), "goal", None)
+    for r in ([current_review] if current_review else []) + archive:
+        r.chips = review_chips(request.user, r.week_start, goal)
 
     return render(request, "workouts/review.html", {
         "current_review": current_review,

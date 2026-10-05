@@ -337,6 +337,30 @@ def garmin_emoji(discipline):
     return _GARMIN_EMOJI.get((discipline or "").lower(), "🏅")
 
 
+# Known AI section headers → icon.html names (lowercase header text). Add new section
+# names here; unknown headers get no icon.
+INSIGHT_HEADER_ICONS = {
+    "what's working": "sparkles", "what worked": "sparkles",
+    "where the friction is": "search", "where it slipped": "search",
+    "specific suggestions": "utensils",
+    "watch list": "chart", "to watch": "chart", "what to watch next": "chart",
+    "weight & body composition": "scale", "body composition": "scale",
+    "nutrition": "utensils",
+    "training": "dumbbell",
+    "hunger & symptoms": "pill",
+    "one thing going well": "trophy", "progression highlights": "trophy",
+    "one focus for next week": "calendar", "focus for next cycle": "calendar",
+}
+
+
+def _insight_header_icon(header):
+    from django.template.loader import render_to_string
+    name = INSIGHT_HEADER_ICONS.get(header.strip().lower())
+    if not name:
+        return ""
+    return render_to_string("workouts/partials/icon.html", {"name": name, "class": "size-5 text-muted"}).strip()
+
+
 @register.filter
 def format_nutrition_insights(text):
     """Render the structured nutrition insights (## headers + body) as styled HTML."""
@@ -360,7 +384,7 @@ def format_nutrition_insights(text):
         if not body_lines:
             return
         if header:
-            html += f'<div class="ni-section"><div class="ni-header">{escape(header)}</div>'
+            html += f'<div class="ni-section"><div class="ni-header">{_insight_header_icon(header)}{escape(header)}</div>'
 
         # Group consecutive non-blank lines into paragraphs; detect bullets
         paragraphs = []  # list of ('para' | 'bullet', text)
@@ -495,14 +519,19 @@ TONE_TEXT = {"green": "text-success", "yellow": "text-warning", "red": "text-err
 TONE_STROKE = {"green": "stroke-success", "yellow": "stroke-warning", "red": "stroke-error",
                "high": "stroke-success", "moderate": "stroke-warning", "low": "stroke-error",
                "balanced": "stroke-success", "unbalanced": "stroke-warning", "poor": "stroke-error"}
+TONE_BG = {"green": "bg-success", "yellow": "bg-warning", "red": "bg-error",
+           "high": "bg-success", "moderate": "bg-warning", "low": "bg-error",
+           "balanced": "bg-success", "unbalanced": "bg-warning", "poor": "bg-error"}
 
 
 @register.filter
 def tone(value, kind="text"):
     """'green'/'High'/'BALANCED' → a whole class: text-success, or with
-    kind="stroke", stroke-success. Unknown → text-muted / stroke-current."""
-    table = TONE_STROKE if kind == "stroke" else TONE_TEXT
-    return table.get(str(value or "").strip().lower(), "text-muted" if kind == "text" else "stroke-current")
+    kind="stroke" stroke-success, kind="bg" bg-success.
+    Unknown → text-muted / stroke-current / hidden."""
+    table, default = {"stroke": (TONE_STROKE, "stroke-current"),
+                      "bg": (TONE_BG, "hidden")}.get(kind, (TONE_TEXT, "text-muted"))
+    return table.get(str(value or "").strip().lower(), default)
 
 
 @register.filter
@@ -575,3 +604,40 @@ def metric_help(context, slug):
     title, text = METRIC_HELP[slug]
     return render_to_string("workouts/partials/metric_help.html",
                             {"uid": f"{slug.replace('_', '-')}-{n}", "title": title, "text": text})
+
+
+@register.filter
+def reltime(value, now=None):
+    """'just now' / '5 min ago' / '2 h ago' / 'yesterday' / '3 days ago' / 'Sep 14', as a
+    <time> with the full local timestamp on hover. For sync/renewal/generated stamps
+    only, never for when a workout, meal or symptom happened (those keep real dates).
+    Future times (clock skew) read 'just now'. `now` is for tests."""
+    import datetime as _dt
+    from django.utils import timezone
+    from django.utils.html import format_html
+    if not value:
+        return ""
+    if not isinstance(value, _dt.datetime):
+        value = _dt.datetime.combine(value, _dt.time())
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value)
+    now = now or timezone.now()
+    local, local_now = timezone.localtime(value), timezone.localtime(now)
+    secs = (now - value).total_seconds()
+    days = (local_now.date() - local.date()).days
+    if secs < 60:
+        text = "just now"
+    elif secs < 3600:
+        text = f"{int(secs // 60)} min ago"
+    elif days == 0 or secs < 6 * 3600:
+        text = f"{int(secs // 3600)} h ago"
+    elif days == 1:
+        text = "yesterday"
+    elif days < 7:
+        text = f"{days} days ago"
+    elif local.year == local_now.year:
+        text = f"{local:%b} {local.day}"
+    else:
+        text = f"{local:%b} {local.day}, {local.year}"
+    full = f"{local:%a, %b} {local.day}, {local.year}, {local:%I:%M %p}".replace(", 0", ", ")
+    return format_html('<time datetime="{}" title="{}">{}</time>', local.isoformat(), full, text)

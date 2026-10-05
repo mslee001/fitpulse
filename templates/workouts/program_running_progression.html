@@ -28,7 +28,11 @@
   Grouped by run type (intervals vs. tempo vs. steady/race-prep) rather than by exact class, since a well-formed plan's classes are rarely repeated week to week.
 </p>
 {% else %}
-<div class="ui-empty">No tracked running data in this cycle yet.</div>
+<div class="ui-empty">
+  {% include "workouts/partials/icon.html" with name="chart" class="size-8 text-faint" %}
+  <p class="font-medium text-base-content">No running data yet</p>
+  <p class="text-sm">Tracked runs in this cycle will show up here.</p>
+</div>
 {% endif %}
 
 <script>

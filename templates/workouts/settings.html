@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load workout_filters %}
 {% block title %}Settings — FitPulse{% endblock %}
 {% block nav_training %}active{% endblock %}
 
@@ -110,7 +111,7 @@
 
 <p class="mt-8 text-sm text-muted">
   {% if last_daily_sync_at %}
-  Last daily sync: <span class="font-mono">{{ last_daily_sync_at|date:"M j, Y g:i A" }}</span>
+  Last daily sync {{ last_daily_sync_at|reltime }}
   {% else %}
   Daily sync has not run yet.
   {% endif %}

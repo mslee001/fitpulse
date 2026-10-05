@@ -6,7 +6,12 @@
 {% with dcolor=workout.discipline|discipline_color %}
 <div class="mb-6 flex flex-col gap-4">
   <a href="{% url 'history' %}" class="text-sm">← History</a>
-  <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between" data-vt-target style="view-transition-name: fp-hero">
+  <div class="relative isolate flex flex-col gap-4 md:flex-row md:items-end md:justify-between{% if workout.class_image_url %} ui-panel overflow-hidden{% endif %}" data-vt-target style="view-transition-name: fp-hero">
+    {% if workout.class_image_url %}
+    {# Blurred class art behind the header; the scrim keeps text contrast in both themes. #}
+    <img src="{{ workout.class_image_url }}" alt="" aria-hidden="true" class="absolute inset-0 -z-10 size-full scale-110 object-cover opacity-25 blur-2xl dark:opacity-20">
+    <div class="absolute inset-0 -z-10 bg-base-100/60" aria-hidden="true"></div>
+    {% endif %}
     <div class="min-w-0">
       <span class="badge border-0 font-medium" style="color: {{ dcolor }}; background: color-mix(in oklab, {{ dcolor }} 15%, transparent)">{% block discipline_tag %}{{ workout.fitness_discipline_display|default:"Workout" }}{% endblock %}</span>
       <h1 class="ui-page-title mt-2">{% block page_title %}{{ workout.title|default:"Workout" }}{% endblock %}</h1>
@@ -29,11 +34,11 @@
   <div class="flex min-w-0 flex-col gap-5">
 
     {% if workout_detail.is_pr %}
-    <div role="status" class="alert alert-soft alert-success">
-      <svg class="size-6 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>
+    <div role="status" class="ui-panel ui-featured ui-enter flex items-center gap-4">
+      {% include "workouts/partials/icon.html" with name="trophy" class="size-6 text-primary" %}
       <div>
-        <div class="font-semibold">Personal record</div>
-        {% block pr_sub %}{% endblock %}
+        <div class="font-bold">Personal record</div>
+        <div class="text-sm text-muted">{% block pr_sub %}{% endblock %}</div>
       </div>
     </div>
     {% endif %}
@@ -93,15 +98,10 @@
     {% if class_history %}
     <div class="ui-panel">
       <h2 class="ui-panel-title mb-2">Previous attempts</h2>
-      <div class="max-h-96 overflow-y-auto">
+      <div class="flex max-h-96 flex-col gap-2 overflow-y-auto">
       {% for w in class_history %}
-      <div class="flex items-center gap-3 border-b border-subtle py-2 last:border-0">
-        <a href="{% url 'workout_detail' w.workout_id %}" data-vt-hero class="min-w-0 flex-1 text-base-content hover:no-underline">
-          <div class="text-sm font-medium">{{ w.created_at|date:"M j, Y" }}</div>
-          <div class="flex flex-wrap gap-x-3 font-mono text-xs text-muted">
-            {% block history_item_stats %}{% endblock %}
-          </div>
-        </a>
+      <div class="flex items-center gap-3">
+        <div class="min-w-0 flex-1">{% include "workouts/partials/workout_row.html" with w=w row_title=w.created_at|date:"M j, Y" row_attempt=True %}</div>
         <input type="checkbox" class="compare-check checkbox checkbox-sm checkbox-primary border-base-content/50" value="{{ w.workout_id }}" aria-label="Compare with {{ w.created_at|date:'M j, Y' }}">
       </div>
       {% endfor %}
@@ -139,6 +139,19 @@
 </div>
 
 <script>
+// Time in HR zones as one stacked bar + legend (the JS twin of partials/zone_bar.html).
+// zones: [{label, secs, color}]. Returns false (and renders nothing) when there's no time.
+window.fpZoneBar = function(el, zones) {
+  const total = zones.reduce((a, z) => a + (z.secs || 0), 0);
+  if (!el || !total) return false;
+  const fmt = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+  const used = zones.filter(z => z.secs > 0);
+  const bar = used.map(z => `<span class="h-full min-w-0.5" style="flex: ${z.secs} 1 0; background: ${z.color}" title="${z.label} · ${fmt(z.secs)}"></span>`).join("");
+  const legend = used.map(z => `<span class="${z.secs / total < 0.03 ? "sr-only" : "flex items-center gap-1.5"}"><span class="size-2 shrink-0 rounded-full" style="background: ${z.color}" aria-hidden="true"></span>${z.label} · ${fmt(z.secs)}</span>`).join("");
+  el.innerHTML = `<div class="flex flex-col gap-2.5"><div class="flex h-3 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">${bar}</div><div class="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs">${legend}</div></div>`;
+  return true;
+};
+
 // Previous-attempts checkboxes → "Compare →" bar. Shared by every detail page;
 // delegated so rows added later (e.g. walking's leaderboard list) work too.
 document.addEventListener("change", e => {

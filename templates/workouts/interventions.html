@@ -126,7 +126,11 @@
 {% endif %}
 
 {% if not active_interventions and not ended_interventions %}
-<div class="ui-empty">No interventions yet. Click <strong>+ Add intervention</strong> above.</div>
+<div class="ui-empty">
+  {% include "workouts/partials/icon.html" with name="pill" class="size-8 text-faint" %}
+  <p class="font-medium text-base-content">No interventions yet</p>
+  <p class="text-sm">Track a medication, supplement or habit with <strong>+ Add intervention</strong> above.</p>
+</div>
 {% endif %}
 
 </div>

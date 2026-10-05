@@ -19,6 +19,9 @@ ACTIVITY_MULTIPLIERS = {
 
 CALORIE_FLOOR = {"female": 1200, "male": 1500}
 
+# A day "hits" protein at 90% of the target (streaks, THIS WEEK, recaps, Today's This week).
+PROTEIN_HIT_PCT = 0.9
+
 
 def compute_macro_targets(user, profile=None):
     """
@@ -233,7 +236,7 @@ def compute_streaks(user, reference_date=None):
         d = start
         while d in logged_dates:
             prot = protein_map.get(d)
-            if prot is not None and prot >= protein_target * 0.9:
+            if prot is not None and prot >= protein_target * PROTEIN_HIT_PCT:
                 protein_streak += 1
                 d = d - timedelta(days=1)
             else:
@@ -288,7 +291,7 @@ def get_weekly_stats(user, end_date, targets=None):
             "fat_g": round(s.fat_g_total) if logged and s.fat_g_total else None,
             "fiber_g": fiber_v,
             "cal_ok": (cal_v >= cal_t * 0.9) if (cal_v and cal_t) else None,
-            "prot_ok": (prot_v >= prot_t * 0.9) if (prot_v and prot_t) else None,
+            "prot_ok": (prot_v >= prot_t * PROTEIN_HIT_PCT) if (prot_v and prot_t) else None,
             "fiber_ok": (fiber_v >= fiber_t * 0.85) if (fiber_v and fiber_t) else None,
         })
 
@@ -315,7 +318,7 @@ def get_weekly_stats(user, end_date, targets=None):
         "avg_protein_g": _avg("protein_g"),
         "avg_fiber_g": _avg("fiber_g"),
         "days_hit_cal": _days_hit("cal", cal_t),
-        "days_hit_protein": _days_hit("protein_g", prot_t),
+        "days_hit_protein": _days_hit("protein_g", prot_t, pct=PROTEIN_HIT_PCT),
         "days_hit_fiber": _days_hit("fiber_g", fiber_t, pct=0.85),
     }
 
@@ -356,7 +359,7 @@ def get_yesterday_recap(user, today, targets=None):
         "prot_target": prot_t,
         "fiber_target": fiber_t,
         "cal_ok": cal_t and stats.cal_total <= cal_t * 1.1,
-        "prot_ok": prot_t and (stats.protein_g_total or 0) >= prot_t * 0.9,
+        "prot_ok": prot_t and (stats.protein_g_total or 0) >= prot_t * PROTEIN_HIT_PCT,
         "fiber_ok": fiber_t and (stats.fiber_g_total or 0) >= fiber_t * 0.85,
         "top_protein_source": top_protein_source,
         "entry_count": len(entries),

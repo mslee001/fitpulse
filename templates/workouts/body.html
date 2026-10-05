@@ -27,25 +27,28 @@
   <div class="ui-stat ui-stat-hero">
     <div class="ui-stat-label">Current weight</div>
     <div class="ui-stat-value">{% if current_weight %}{{ current_weight|floatformat:1 }}<span class="ui-stat-unit">lb</span>{% else %}—{% endif %}</div>
+    {% include "workouts/partials/delta_chip.html" with c=body_chips.weight %}
   </div>
   <div class="ui-stat">
     <div class="ui-stat-label">Body fat {% metric_help "fat_ratio" %}</div>
     <div class="ui-stat-value">{% if current_fat_pct %}{{ current_fat_pct|floatformat:1 }}<span class="ui-stat-unit">%</span>{% else %}—{% endif %}</div>
+    {% include "workouts/partials/delta_chip.html" with c=body_chips.fat_pct %}
   </div>
   <div class="ui-stat">
     <div class="ui-stat-label">Lean mass</div>
     <div class="ui-stat-value">{% if current_lean %}{{ current_lean|floatformat:1 }}<span class="ui-stat-unit">lb</span>{% else %}—{% endif %}</div>
+    {% include "workouts/partials/delta_chip.html" with c=body_chips.lean %}
   </div>
   <div class="ui-stat">
     <div class="ui-stat-label">7-day change</div>
     <div class="ui-stat-value">
-      {% if delta_7d != None %}<span class="{% if delta_7d < 0 %}text-error{% elif delta_7d > 0 %}text-success{% else %}text-muted{% endif %}">{% if delta_7d > 0 %}+{% endif %}{{ delta_7d|floatformat:1 }}</span><span class="ui-stat-unit">lb</span>{% else %}—{% endif %}
+      {% if delta_7d != None %}<span class="{{ delta_7d_tone }}">{% if delta_7d > 0 %}+{% endif %}{{ delta_7d|floatformat:1 }}</span><span class="ui-stat-unit">lb</span>{% else %}—{% endif %}
     </div>
   </div>
   <div class="ui-stat">
     <div class="ui-stat-label">30-day change</div>
     <div class="ui-stat-value">
-      {% if delta_30d != None %}<span class="{% if delta_30d < 0 %}text-error{% elif delta_30d > 0 %}text-success{% else %}text-muted{% endif %}">{% if delta_30d > 0 %}+{% endif %}{{ delta_30d|floatformat:1 }}</span><span class="ui-stat-unit">lb</span>{% else %}—{% endif %}
+      {% if delta_30d != None %}<span class="{{ delta_30d_tone }}">{% if delta_30d > 0 %}+{% endif %}{{ delta_30d|floatformat:1 }}</span><span class="ui-stat-unit">lb</span>{% else %}—{% endif %}
     </div>
   </div>
 </div>
@@ -146,7 +149,7 @@
   </div>
   <div class="flex flex-col">
     {% for iv in active_ivs %}
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-subtle py-2 last:border-0">
+    <div class="-mx-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border-b border-subtle px-2 py-2 last:border-0 hover:bg-inset focus-visible:bg-inset" data-intervention-id="{{ iv.id }}" tabindex="0" title="Highlight on the weight chart">
       <span class="font-semibold">{{ iv.name }}</span>
       {% include "workouts/partials/cat_badge.html" with category=iv.category %}
       {% with cd=iv.current_dose %}{% if cd %}<span class="font-mono text-sm">{{ cd.dose }}</span>{% endif %}{% endwith %}
@@ -197,6 +200,8 @@ const weightData         = {{ weight_data_json|safe }};
 const recoveryData       = {{ recovery_data_json|safe }};
 const interventionAnnot  = {{ interventions_json|safe }};
 const doseAnnot          = {{ dose_annotations_json|safe }};
+// Hover/focus an Active interventions row → its chart markers stand out, the rest dim.
+let highlightIv = null;
 
 // ── Chart annotation plugin ───────────────────────────────────────────────
 const interventionLinesPlugin = {
@@ -219,18 +224,18 @@ const interventionLinesPlugin = {
       ctx.restore();
     }
 
-    function drawPill(boxX, boxY, boxW, boxH, label, color, fontSize) {
+    function drawPill(boxX, boxY, boxW, boxH, label, color, fontSize, hot) {
       ctx.save();
       // Reference marks, not series: theme surface pill + theme text, category color
-      // only as the pill outline.
+      // only as the pill outline. A highlighted marker flips to a primary pill.
       ctx.font = `bold ${fontSize}px ${fpChart.fontSans}`;
-      ctx.fillStyle = fpChart.surface;
-      ctx.strokeStyle = color;
+      ctx.fillStyle = hot ? fpChart.primary : fpChart.surface;
+      ctx.strokeStyle = hot ? fpChart.primary : color;
       ctx.lineWidth = 1;
       ctx.setLineDash([]);
       ctx.fillRect(boxX, boxY, boxW, boxH);
       ctx.strokeRect(boxX, boxY, boxW, boxH);
-      ctx.fillStyle = fpChart.text;
+      ctx.fillStyle = hot ? fpChart.surface : fpChart.text;
       ctx.fillText(label, boxX + 5, boxY + boxH - 4);
       ctx.restore();
     }
@@ -251,7 +256,7 @@ const interventionLinesPlugin = {
       const label = ann.label.length > 18 ? ann.label.slice(0, 17) + '…' : ann.label;
       ctx.font = 'bold 10px ' + fpChart.fontSans;
       const boxW = ctx.measureText(label).width + PILL_PAD * 2;
-      items.push({ xVal, color, lineColor: fpChart.muted, label, fontSize: 10, boxW, boxH: 16, isDose: false,
+      items.push({ id: ann.id, xVal, color, lineColor: fpChart.muted, label, fontSize: 10, boxW, boxH: 16, isDose: false,
                    lineFrom: yScale.top, lineTo: yScale.bottom, lineDash: [5, 4], lineW: 1.5 });
     });
 
@@ -262,7 +267,7 @@ const interventionLinesPlugin = {
       const pillColor = (ann.color || '#888') + 'cc';
       ctx.font = 'bold 9px ' + fpChart.fontSans;
       const boxW = ctx.measureText(ann.label).width + PILL_PAD * 2;
-      items.push({ xVal, color: pillColor, lineColor, label: ann.label, fontSize: 9, boxW, boxH: 15, isDose: true,
+      items.push({ id: ann.id, xVal, color: pillColor, lineColor, label: ann.label, fontSize: 9, boxW, boxH: 15, isDose: true,
                    lineFrom: yScale.top, lineTo: midY, lineDash: [2, 4], lineW: 1 });
     });
 
@@ -281,13 +286,25 @@ const interventionLinesPlugin = {
       item.boxX  = boxX;
     });
 
-    // Draw lines first so pills render on top
-    items.forEach(item => drawLine(item.xVal, item.lineFrom, item.lineTo, item.lineColor, item.lineDash, item.lineW));
+    // Draw lines first so pills render on top. With a highlighted intervention, its
+    // markers get a thick primary line + primary pill and everything else dims to 40%.
+    const hot = item => highlightIv !== null && item.id === highlightIv;
+    const dim = item => highlightIv !== null && item.id !== highlightIv;
+    items.forEach(item => {
+      ctx.save();
+      if (dim(item)) ctx.globalAlpha = 0.4;
+      drawLine(item.xVal, item.lineFrom, item.lineTo, hot(item) ? fpChart.primary : item.lineColor,
+               item.lineDash, hot(item) ? 3 : item.lineW);
+      ctx.restore();
+    });
 
     // Draw pills
     items.forEach(item => {
       const boxY = yScale.top + 4 + item.level * LEVEL_H;
-      drawPill(item.boxX, boxY, item.boxW, item.boxH, item.label, item.color, item.fontSize);
+      ctx.save();
+      if (dim(item)) ctx.globalAlpha = 0.4;
+      drawPill(item.boxX, boxY, item.boxW, item.boxH, item.label, item.color, item.fontSize, hot(item));
+      ctx.restore();
     });
   }
 };
@@ -380,6 +397,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   }));
+
+  document.querySelectorAll('[data-intervention-id]').forEach(el => {
+    const on = () => { highlightIv = Number(el.dataset.interventionId); weightChart.update('none'); };
+    const off = () => { highlightIv = null; weightChart.update('none'); };
+    el.addEventListener('mouseenter', on);
+    el.addEventListener('focusin', on);
+    el.addEventListener('mouseleave', off);
+    el.addEventListener('focusout', off);
+  });
 
   // Rolling avg toggle buttons
   function wireRollToggle(id, idx) {

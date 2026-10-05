@@ -84,15 +84,7 @@
         <h2 class="ui-panel-title">Heart rate zones</h2>
         <span class="text-sm text-muted">from Google Health &middot; session totals, not a time series</span>
       </div>
-      <div class="flex flex-col gap-2">
-        {% for zone in gh_hr_zones %}
-        <div class="grid grid-cols-[7.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm">
-          <div class="flex items-center gap-2 font-medium"><span class="size-2 shrink-0 rounded-full" style="background:{{ zone.color }}" aria-hidden="true"></span>{{ zone.label }}</div>
-          <div class="ui-bar"><div class="h-full rounded-full" style="width:{{ zone.pct }}%;background:{{ zone.color }}"></div></div>
-          <div class="text-right font-mono tabular-nums">{{ zone.time_str }}</div>
-        </div>
-        {% endfor %}
-      </div>
+      {% include "workouts/partials/zone_bar.html" with zones=gh_hr_zones %}
     </div>
     {% endif %}
 
@@ -145,11 +137,6 @@
       </div>
     </div>
     {% endif %}
-{% endblock %}
-
-{% block history_item_stats %}
-          {% if w.calories %}<span>{{ w.calories|floatformat:0 }} cal</span>{% endif %}
-          {% if w.heart_rate_avg %}<span>{{ w.heart_rate_avg|floatformat:0 }} bpm</span>{% endif %}
 {% endblock %}
 
 {% block detail_scripts %}
@@ -326,23 +313,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return null;
   })();
   if (zoneSecs) {
-    const total = zoneSecs.reduce((a, b) => a + b, 0);
-    document.getElementById("hrZoneCard").style.display = "";
-    const container = document.getElementById("hrZoneBreakdown");
-    zoneSecs.forEach((secs, i) => {
-      const pct = total > 0 ? ((secs / total) * 100).toFixed(1) : 0;
-      const m = Math.floor(secs / 60), s = secs % 60;
-      const row = document.createElement("div");
-      row.className = "grid grid-cols-[7.5rem_minmax(0,1fr)_3.5rem_3.5rem] items-center gap-3 text-sm";
-      row.innerHTML = `
-        <div class="flex items-center gap-2 font-medium"><span class="size-2 shrink-0 rounded-full" style="background:${ZONE_COLORS[i]}" aria-hidden="true"></span>${ZONE_NAMES[i]}</div>
-        <div class="ui-bar">
-          <div class="h-full rounded-full" style="width:${pct}%;background:${ZONE_COLORS[i]}"></div>
-        </div>
-        <div class="text-right font-mono tabular-nums">${m}:${String(s).padStart(2,"0")}</div>
-        <div class="text-right font-mono tabular-nums text-muted">${pct}%</div>`;
-      container.appendChild(row);
-    });
+    const zones = zoneSecs.map((secs, i) => ({ label: ZONE_NAMES[i], secs, color: ZONE_COLORS[i] }));
+    if (fpZoneBar(document.getElementById("hrZoneBreakdown"), zones)) document.getElementById("hrZoneCard").style.display = "";
   }
 });
 </script>

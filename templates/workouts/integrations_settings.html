@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load workout_filters %}
 {% block title %}Integrations — FitPulse{% endblock %}
 
 {% block content %}
@@ -16,9 +17,11 @@
   <section class="ui-panel" aria-labelledby="sources-title">
     <div class="ui-panel-header"><h2 class="ui-panel-title" id="sources-title">Data sources</h2></div>
 
-    {% for integration in integrations %}
-    {% include "workouts/partials/integration_row.html" %}
-    {% endfor %}
+    <div class="grid gap-4 md:grid-cols-2">
+      {% for integration in integrations %}
+      {% include "workouts/partials/integration_row.html" %}
+      {% endfor %}
+    </div>
 
     <p class="mt-4 text-xs text-muted">
       Disabling an integration only controls whether it appears in the UI and whether its sync functions run — it does not revoke tokens or stop external scheduled jobs (e.g. Garmin's local sync).
@@ -47,10 +50,10 @@
         <div><dt>Access token renews</dt><dd class="text-muted">{% if peloton_auth.access_expires_at > now %}in {{ peloton_auth.access_expires_at|timeuntil }}{% else %}on next sync{% endif %}</dd></div>
         {% endif %}
         {% if peloton_auth.refresh_rotated_at %}
-        <div><dt>Last renewed</dt><dd class="text-muted">{{ peloton_auth.refresh_rotated_at|date:"M j, Y g:i A" }}</dd></div>
+        <div><dt>Last renewed</dt><dd class="text-muted">{{ peloton_auth.refresh_rotated_at|reltime }}</dd></div>
         {% endif %}
         {% if peloton_auth.connected_at %}
-        <div><dt>Connected since</dt><dd class="text-muted">{{ peloton_auth.connected_at|date:"M j, Y" }}</dd></div>
+        <div><dt>Connected since</dt><dd class="text-muted">{{ peloton_auth.connected_at|reltime }}</dd></div>
         {% endif %}
       </dl>
       {% if peloton_auth.needs_reconnect and peloton_auth.auth_error %}
@@ -60,7 +63,7 @@
       <p class="mb-4 text-sm text-muted">Not connected yet.</p>
       {% endif %}
 
-      <details class="collapse collapse-arrow border border-subtle bg-base-100"{% if peloton_auth.needs_reconnect or not peloton_auth %} open{% endif %}>
+      <details id="peloton-connect" class="collapse collapse-arrow scroll-mt-24 border border-subtle bg-base-100"{% if peloton_auth.needs_reconnect or not peloton_auth %} open{% endif %}>
         <summary class="collapse-title min-h-11 text-sm font-semibold">{% if peloton_auth %}Reconnect{% else %}Connect{% endif %}</summary>
         <div class="collapse-content">
           {% include "workouts/partials/peloton_token_help.html" %}
@@ -81,7 +84,7 @@
       <div class="mt-5 border-t border-subtle pt-4 text-sm">
         <div class="flex flex-wrap items-center gap-3">
           <span class="font-medium">Class catalog</span>
-          <span class="text-muted">{% if catalog.total %}<span class="font-mono">{{ catalog.total }}</span> classes{% if catalog.last_synced %} · last synced {{ catalog.last_synced|date:"M j" }}{% endif %}{% else %}empty{% endif %}</span>
+          <span class="text-muted">{% if catalog.total %}<span class="font-mono">{{ catalog.total }}</span> classes{% if catalog.last_synced %} · last synced {{ catalog.last_synced|reltime }}{% endif %}{% else %}empty{% endif %}</span>
           <form hx-post="{% url 'catalog_sync_start' %}" hx-target="#catalog-status" hx-swap="innerHTML" class="ml-auto">
             {% csrf_token %}
             <button type="submit" class="btn btn-sm btn-outline">Refresh catalog</button>

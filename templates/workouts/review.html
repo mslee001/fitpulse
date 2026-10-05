@@ -24,18 +24,21 @@
         <div>
           <h2 class="ui-panel-title">Week of {{ current_review.week_start|date:"M j" }} – {{ current_review.week_end|date:"M j, Y" }}</h2>
           {% if not current_review.batch_id %}
-          <div class="text-xs text-muted">Generated {{ current_review.generated_at|date:"M j, Y g:i A" }}</div>
+          <div class="text-xs text-muted">Generated {{ current_review.generated_at|reltime }}</div>
           {% endif %}
         </div>
         {% if not current_review.batch_id %}
         <a href="{% url 'weekly_review' %}?refresh=1" class="btn btn-ghost btn-sm">↺ Regenerate</a>
         {% endif %}
       </div>
+      {% include "workouts/partials/review_chips.html" with chips=current_review.chips %}
+      <div class="ui-prose">
       {% if current_review.batch_id %}
         {% include "workouts/partials/weekly_review_content.html" with pending=True week_start=current_review.week_start %}
       {% else %}
         {% include "workouts/partials/weekly_review_content.html" with review=current_review %}
       {% endif %}
+      </div>
     </div>
     {% elif ai_unavailable_reason %}
     <div class="ui-panel">
@@ -59,7 +62,8 @@
             <span class="text-xs font-normal text-muted">{{ review.generated_at|date:"M j" }}</span>
           </summary>
           <div class="collapse-content">
-            {{ review.content|format_nutrition_insights }}
+            {% include "workouts/partials/review_chips.html" with chips=review.chips %}
+            <div class="ui-prose">{{ review.content|format_nutrition_insights }}</div>
           </div>
         </details>
         {% endfor %}

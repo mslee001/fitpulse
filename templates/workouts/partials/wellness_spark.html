@@ -1,0 +1,7 @@
+{% comment %}Today wellness tile: 7-day mini bars (oldest → today), shown only when the tile is wide enough. spark = wellness_spark.<tile> from today_page.{% endcomment %}
+{% if spark %}
+<span class="hidden h-[26px] shrink-0 items-end gap-0.5 @[125px]:flex" aria-hidden="true">
+  {% for b in spark.bars %}<span class="w-1 rounded-sm {% if b.is_today %}bg-primary{% else %}bg-base-300{% endif %} {% if b.pct is None %}h-0.5{% endif %}"{% if b.pct is not None %} style="height: {{ b.pct }}%"{% endif %}></span>{% endfor %}
+</span>
+{% if spark.note %}<span class="sr-only">{{ spark.note }}</span>{% endif %}
+{% endif %}

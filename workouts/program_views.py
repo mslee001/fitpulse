@@ -581,6 +581,65 @@ def program_detail(request, slug):
                   {"program": program, "runs": runs})
 
 
+def _run_progress(run, rows, overview=None):
+    """The run page's progress strip. Plans: one segment per program week, "Week 3 of 6 ·
+    9 of 14 sessions done" (required slots; a week's latest pass counts). Splits and
+    collections have no fixed length: the current pass only. None when there's nothing
+    to show."""
+    def counts(row):
+        req = [c for c in row["cells"] if not c["slot"].optional]
+        return sum(1 for c in req if c["entry"]), len(req)
+
+    if not rows:
+        return None
+    if run.program.kind != "plan":
+        row = max(rows, key=lambda r: r["run_week"].sequence)
+        done, total = counts(row)
+        if not total:
+            return None
+        return {"open": True, "pass": row["run_week"].sequence, "done": done, "total": total,
+                "pct": round(done / total * 100)}
+
+    latest = {}
+    for r in rows:
+        n = r["run_week"].program_week.number
+        if n not in latest or r["run_week"].sequence > latest[n]["run_week"].sequence:
+            latest[n] = r
+    weeks = list(run.program.weeks.order_by("number").prefetch_related("slots"))
+    if not weeks:
+        return None
+    numbers = [w.number for w in weeks]
+    # Current week: a dated plan's week containing today; otherwise the latest week with
+    # a completion, or the one after it once that week is complete.
+    current = numbers[0]
+    if overview and overview.get("weeks"):
+        today = date.today()
+        for n in numbers:
+            info = overview["weeks"].get(n)
+            if info and info["start"] <= today:
+                current = n
+    else:
+        started = [n for n in numbers if n in latest and latest[n]["has_done"]]
+        if started:
+            current = started[-1]
+            done, total = counts(latest[current])
+            if total and done >= total and current != numbers[-1]:
+                current = numbers[numbers.index(current) + 1]
+    segments, done_all, total_all = [], 0, 0
+    for w in weeks:
+        if w.number in latest:
+            done, total = counts(latest[w.number])
+        else:
+            done, total = 0, sum(1 for sl in w.slots.all() if not sl.optional)
+        done_all += done
+        total_all += total
+        state = "done" if w.number < current else "current" if w.number == current else "future"
+        segments.append({"number": w.number, "state": state, "done": done, "total": total,
+                         "pct": round(done / total * 100) if total else 0})
+    return {"open": False, "current": current, "weeks": len(weeks), "segments": segments,
+            "done": done_all, "total": total_all}
+
+
 def program_run(request, pk):
     run = get_object_or_404(ProgramRun.objects.filter(program__user=request.user).select_related("program"), pk=pk)
     rows, totals = _run_grid(run)
@@ -615,6 +674,7 @@ def program_run(request, pk):
         "reassess": reassess,
         "program": run.program, "run": run,
         "rows": rows, "totals": totals,
+        "progress": _run_progress(run, rows, totals.get("overview")),
         "other_runs": run.program.runs.exclude(pk=run.pk),
         "retro_text": retro_text,
     })

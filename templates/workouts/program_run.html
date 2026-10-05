@@ -72,6 +72,24 @@
 
 <div class="flex flex-col gap-5">
 
+{% if progress %}
+<div class="ui-panel !py-4">
+  {% if progress.open %}
+  <div class="mb-2 text-sm">Pass <span class="font-mono">{{ progress.pass }}</span> · <span class="font-mono">{{ progress.done }}</span> of <span class="font-mono">{{ progress.total }}</span> sessions this pass</div>
+  <div class="h-2 overflow-hidden rounded-full bg-primary/40" aria-hidden="true"><div class="h-full rounded-full bg-primary" style="width: {{ progress.pct }}%"></div></div>
+  {% else %}
+  <div class="mb-2 text-sm">Week <span class="font-mono">{{ progress.current }}</span> of <span class="font-mono">{{ progress.weeks }}</span> · <span class="font-mono">{{ progress.done }}</span> of <span class="font-mono">{{ progress.total }}</span> sessions done</div>
+  <div class="flex gap-1" aria-hidden="true">
+    {% for seg in progress.segments %}
+    {% if seg.state == "done" %}<div class="h-2 flex-1 rounded-full bg-primary" title="Week {{ seg.number }} · {{ seg.done }}/{{ seg.total }}"></div>
+    {% elif seg.state == "current" %}<div class="h-2 flex-1 overflow-hidden rounded-full bg-primary/40" title="Week {{ seg.number }} · {{ seg.done }}/{{ seg.total }}"><div class="h-full rounded-full bg-primary" style="width: {{ seg.pct }}%"></div></div>
+    {% else %}<div class="h-2 flex-1 rounded-full bg-base-300" title="Week {{ seg.number }}"></div>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if run.is_current %}
 <div class="ui-stat-grid">
   <div class="ui-stat ui-stat-hero">
@@ -191,7 +209,7 @@
         {% if cell.entry %}
           <a class="flex flex-col gap-0.5 rounded-xl bg-primary/10 p-3 text-base-content ring-1 ring-primary/40 hover:no-underline hover:bg-primary/20" href="{% url 'workout_detail' cell.entry.workout.workout_id %}">
             {% if cell.day_label %}<span class="text-xs font-medium text-muted">{{ cell.day_label }}</span>{% endif %}
-            <span class="font-medium"><span class="text-primary" aria-hidden="true">&check;</span><span class="sr-only">Done:</span> {{ cell.slot.title }}</span>
+            <span class="font-medium"><span class="ui-check text-primary" aria-hidden="true">&check;</span><span class="sr-only">Done:</span> {{ cell.slot.title }}</span>
             <span class="font-mono text-xs text-muted">
               {{ cell.entry.workout.created_at|date:"M j, Y" }}
               {% if cell.entry.workout.effort_points %} &middot; {{ cell.entry.workout.effort_points }} pts{% if cell.entry.workout.effort_per_min %} ({{ cell.entry.workout.effort_per_min }}/min){% endif %}{% endif %}
@@ -208,14 +226,18 @@
       {% endfor %}
       {% for e in row.loose %}
         <a class="flex flex-col gap-0.5 rounded-xl border border-dashed border-subtle bg-primary/5 p-3 text-base-content hover:no-underline hover:bg-primary/10" href="{% url 'workout_detail' e.workout.workout_id %}">
-          <span class="font-medium"><span class="text-primary" aria-hidden="true">&check;</span><span class="sr-only">Done (unslotted):</span> {{ e.workout.title|default:"Workout" }}</span>
+          <span class="font-medium"><span class="ui-check text-primary" aria-hidden="true">&check;</span><span class="sr-only">Done (unslotted):</span> {{ e.workout.title|default:"Workout" }}</span>
           <span class="font-mono text-xs text-muted">{{ e.workout.created_at|date:"M j, Y" }}</span>
         </a>
       {% endfor %}
     </div>
   </section>
   {% empty %}
-  <div class="ui-empty">No weeks yet — take a class in this program and sync.</div>
+  <div class="ui-empty">
+    {% include "workouts/partials/icon.html" with name="calendar" class="size-8 text-faint" %}
+    <p class="font-medium text-base-content">No weeks yet</p>
+    <p class="text-sm">Take a class in this program and sync.</p>
+  </div>
   {% endfor %}
 </div>
 

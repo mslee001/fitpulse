@@ -17,12 +17,16 @@
 
 {% if text %}
 <div class="ui-panel">
-  {{ text|format_nutrition_insights }}
+  <div class="ui-prose">{{ text|format_nutrition_insights }}</div>
 </div>
 {% if run.retrospective_generated_at %}
-<p class="mt-3 text-sm text-muted">Generated {{ run.retrospective_generated_at|date:"M j, Y g:i A" }}</p>
+<p class="mt-3 text-sm text-muted">Generated {{ run.retrospective_generated_at|reltime }}</p>
 {% endif %}
 {% else %}
-<div class="ui-empty">Couldn't generate a retrospective right now &mdash; try Regenerate.</div>
+<div class="ui-empty">
+  {% include "workouts/partials/icon.html" with name="sparkles" class="size-8 text-faint" %}
+  <p class="font-medium text-base-content">Couldn't generate a retrospective right now</p>
+  <p class="text-sm">Try Regenerate.</p>
+</div>
 {% endif %}
 {% endblock %}
