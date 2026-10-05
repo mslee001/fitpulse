@@ -214,6 +214,13 @@
   .ni-section       { @apply mt-6 first:mt-0; }
   .ni-header        { @apply mb-2 text-base font-semibold; }
   .ni-para          { @apply mb-3 text-sm leading-relaxed text-muted last:mb-0; }
+  /* Reading layout for long AI text (Insights, Weekly review, saved analysis, program
+     retrospective): a 68ch column, larger paragraphs; bullet cards keep their style. */
+  .ui-prose                 { @apply mx-auto max-w-[68ch] text-[1.0625rem] leading-relaxed; }
+  .ui-prose .ni-section     { @apply mt-8 first:mt-0; }
+  .ui-prose .ni-header      { @apply text-lg; }
+  .ui-prose .ni-para        { @apply text-[1.0625rem] leading-relaxed; }
+  .ni-header                { @apply flex items-center gap-2; }   /* + an optional icon from the filter */
   .nw-intensity     { @apply mb-1 text-sm font-semibold; }  /* + a tone class: text-error/-warning/-success/-info/-primary */
   .nw-activity      { @apply mb-2 text-xl font-bold leading-snug; }
   .nw-reason        { @apply m-0 text-sm leading-relaxed text-muted; }
@@ -289,7 +296,10 @@
   .ui-glass { @apply bg-base-100/80 backdrop-blur-md; }
 
   /* Phone: a stat grid becomes a horizontal snap row (Today + Day view only). */
-  .ui-stat-swipe { @apply max-sm:-mx-4 max-sm:flex max-sm:snap-x max-sm:snap-mandatory max-sm:overflow-x-auto max-sm:px-4 max-sm:pb-2 max-sm:scroll-px-4; scrollbar-width: none; }
+  /* Phone: a wrapping row becomes a horizontal snap row (saved meals). ui-stat-swipe is
+     the same for stat grids, with fixed 44% tiles. */
+  .ui-swipe-row, .ui-stat-swipe { @apply max-sm:-mx-4 max-sm:flex max-sm:flex-nowrap max-sm:snap-x max-sm:snap-mandatory max-sm:overflow-x-auto max-sm:px-4 max-sm:pb-2 max-sm:scroll-px-4; scrollbar-width: none; }
+  .ui-swipe-row > * { @apply max-sm:shrink-0 max-sm:snap-start; }
   .ui-stat-swipe > * { @apply max-sm:shrink-0 max-sm:basis-[44%] max-sm:snap-start; }
 
   /* Metric help popovers ({% metric_help %}): under their "i" button where anchor

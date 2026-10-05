@@ -1,40 +1,28 @@
-<div id="integration-row-{{ integration.key }}" class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle py-3.5 last:border-b-0">
-  <div class="flex min-w-0 flex-col gap-1">
-    <span class="font-semibold">{{ integration.display_name }}</span>
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-      {% if integration.is_authenticated %}
-      <span class="inline-flex items-center gap-1.5 whitespace-nowrap text-success"><span class="size-2 rounded-full bg-success" aria-hidden="true"></span>Connected</span>
-      {% else %}
-      <span class="inline-flex items-center gap-1.5 whitespace-nowrap text-muted"><span class="size-2 rounded-full border border-current" aria-hidden="true"></span>Not connected</span>
-      {% endif %}
-      <span class="whitespace-nowrap text-muted">
-        {% if integration.last_synced_at %}Last synced <span class="font-mono">{{ integration.last_synced_at|date:"M j, Y g:i A" }}</span>{% else %}Never synced{% endif %}
-      </span>
-    </div>
+{% load workout_filters %}
+{% comment %}
+One data source as a status card (Integrations). Also the HTMX swap target of its
+enable toggle (integration_toggle). Status comes from views._with_status: the badge
+always carries text; Connect/Reconnect is primary only when it's the next step.
+{% endcomment %}
+<div id="integration-row-{{ integration.key }}" class="flex flex-col gap-3 rounded-box border border-subtle bg-base-100 p-4">
+  <div class="flex items-center gap-2">
+    {% include "workouts/partials/icon.html" with name="link" class="size-5 text-muted" %}
+    <h3 class="font-semibold">{{ integration.display_name }}</h3>
+    <span class="badge badge-sm ml-auto whitespace-nowrap {{ integration.status_badge }}">{{ integration.status_label }}</span>
+  </div>
+
+  <div class="flex flex-col gap-1 text-sm">
+    <span>{% if integration.last_synced_at %}Synced {{ integration.last_synced_at|reltime }}{% else %}<span class="text-muted">Never synced</span>{% endif %}</span>
+    {% if integration.provides %}<span class="text-muted">{{ integration.provides }}</span>{% endif %}
     {% if integration.key == 'google_health' and google_health_auth %}
-    <span class="badge badge-sm badge-soft {% if google_health_auth.days_since_connected >= 5 %}badge-error{% else %}badge-success{% endif %}"
+    <span class="badge badge-sm badge-soft self-start {% if google_health_auth.days_since_connected >= 5 %}badge-error{% else %}badge-success{% endif %}"
           title="Refresh token expires ~7 days after connecting, while the Google Cloud OAuth consent screen is in Testing status">
-      Connected {{ google_health_auth.days_since_connected }} day{{ google_health_auth.days_since_connected|pluralize }} ago{% if google_health_auth.days_since_connected >= 5 %} · reconnect soon{% endif %}
+      Connected {% if google_health_auth.connected_at %}{{ google_health_auth.connected_at|reltime }}{% else %}{{ google_health_auth.days_since_connected }} day{{ google_health_auth.days_since_connected|pluralize }} ago{% endif %}{% if google_health_auth.days_since_connected >= 5 %} · reconnect soon{% endif %}
     </span>
     {% endif %}
   </div>
 
-  <div class="flex flex-wrap items-center gap-2">
-    {% if integration.key == 'google_health' %}
-    <a href="{% url 'google_health_oauth_connect' %}" class="btn btn-sm btn-outline">{% if google_health_auth %}Reconnect{% else %}Connect{% endif %}</a>
-    {% elif integration.key == 'withings' %}
-    <form method="post" action="{% url 'withings_oauth_connect' %}">
-      {% csrf_token %}
-      <input type="hidden" name="next" value="{% url 'integrations_settings' %}">
-      <button type="submit" class="btn btn-sm btn-outline">{% if integration.is_authenticated %}Reconnect{% else %}Connect Withings{% endif %}</button>
-    </form>
-    {% endif %}
-    {% if integration.is_enabled and integration.sync_all_url_name %}
-    <a href="{% url integration.sync_all_url_name %}" target="_blank"
-       class="btn btn-sm btn-ghost" title="Full backfill — slow">
-      Sync All
-    </a>
-    {% endif %}
+  <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-subtle pt-3">
     <form hx-post="{% url 'integration_toggle' integration.key %}" hx-trigger="change"
           hx-target="#integration-row-{{ integration.key }}" hx-swap="outerHTML transition:true">
       {% csrf_token %}
@@ -43,5 +31,21 @@
         <span class="w-16">{% if integration.is_enabled %}Enabled{% else %}Disabled{% endif %}</span>
       </label>
     </form>
+    <div class="ml-auto flex flex-wrap items-center gap-2">
+      {% if integration.is_enabled and integration.sync_all_url_name %}
+      <a href="{% url integration.sync_all_url_name %}" target="_blank" class="btn btn-sm" title="Full backfill — slow">Sync all</a>
+      {% endif %}
+      {% if integration.key == 'google_health' %}
+      <a href="{% url 'google_health_oauth_connect' %}" class="btn btn-sm{% if integration.needs_action %} btn-primary{% endif %}">{% if google_health_auth %}Reconnect{% else %}Connect{% endif %}</a>
+      {% elif integration.key == 'withings' %}
+      <form method="post" action="{% url 'withings_oauth_connect' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'integrations_settings' %}">
+        <button type="submit" class="btn btn-sm{% if integration.needs_action %} btn-primary{% endif %}">{% if integration.is_authenticated %}Reconnect{% else %}Connect{% endif %}</button>
+      </form>
+      {% elif integration.key == 'peloton' and integration.needs_action %}
+      <a href="#peloton-connect" class="btn btn-sm btn-primary">{% if integration.status_label == "Reconnect needed" %}Reconnect{% else %}Connect{% endif %}</a>
+      {% endif %}
+    </div>
   </div>
 </div>

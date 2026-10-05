@@ -57,10 +57,14 @@
                 onclick="document.getElementById('label-image-input').click()">Upload photo</button>
         <span class="basis-full text-xs">Optional — a nutrition label or your plate</span>
       </div>
-      <div id="label-preview-row" class="flex flex-wrap items-start gap-4 text-left" hidden>
-        <div class="relative shrink-0">
-          <img id="label-preview-img" src="" alt="Photo preview" class="max-h-32 max-w-40 rounded-xl border border-subtle object-contain">
-          <button type="button" onclick="clearLabelImage()" class="btn btn-error btn-xs btn-circle absolute -right-2 -top-2" aria-label="Remove photo">✕</button>
+      <div id="label-preview-row" class="flex flex-col gap-3 text-left" hidden>
+        <div class="flex min-w-0 items-center gap-3 self-start rounded-xl bg-inset p-1.5 pr-2">
+          <img id="label-preview-img" src="" alt="Photo to read" class="size-16 shrink-0 rounded-xl object-cover">
+          <div class="min-w-0">
+            <div id="label-preview-name" class="max-w-48 truncate text-sm font-medium text-base-content"></div>
+            <div id="label-preview-size" class="font-mono text-xs text-muted"></div>
+          </div>
+          <button type="button" onclick="clearLabelImage()" class="btn btn-ghost btn-xs btn-circle" aria-label="Remove photo">{% include "workouts/partials/icon_x.html" %}</button>
         </div>
         <div class="min-w-44 flex-1">
           <label class="fieldset py-0"><span class="fieldset-legend">Portion notes <span class="font-normal text-muted">(optional)</span></span>
@@ -140,16 +144,33 @@ async function setFoodImage(file) {
   }
 }
 
-function showLabelPreview(file) {
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    document.getElementById('label-preview-img').src = e.target.result;
-    document.getElementById('label-preview-row').hidden = false;
-    document.getElementById('label-upload-btn-row').hidden = true;
-    document.getElementById('food-textarea').placeholder = 'Optional: anything the photo doesn\'t show — brand, how it was cooked, what you left';
-  };
-  reader.readAsDataURL(file);
+// The photo stays in the browser: an object URL for the thumbnails (input row and parse
+// result), revoked when it's removed or the entry is saved. It's sent only with the parse
+// request and never stored.
+let photoURL = null;
+function revokePhotoURL() {
+  if (photoURL) { URL.revokeObjectURL(photoURL); photoURL = null; }
 }
+
+function showLabelPreview(file) {
+  revokePhotoURL();
+  photoURL = URL.createObjectURL(file);
+  const kb = file.size / 1024;
+  document.getElementById('label-preview-img').src = photoURL;
+  document.getElementById('label-preview-name').textContent = file.name || 'Photo';
+  document.getElementById('label-preview-size').textContent = kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : Math.round(kb) + ' KB';
+  document.getElementById('label-preview-row').hidden = false;
+  document.getElementById('label-upload-btn-row').hidden = true;
+  document.getElementById('food-textarea').placeholder = 'Optional: anything the photo doesn\'t show — brand, how it was cooked, what you left';
+}
+
+// Parse result: show the same thumbnail next to its source badge; saving the entry
+// (a normal form post) is done with the photo, so drop the object URL then.
+document.getElementById('parse-result').addEventListener('htmx:afterSwap', function() {
+  const thumb = this.querySelector('[data-photo-thumb]');
+  if (thumb && photoURL) { thumb.src = photoURL; thumb.hidden = false; }
+});
+document.getElementById('parse-result').addEventListener('submit', revokePhotoURL);
 
 if (window.matchMedia('(pointer: coarse)').matches) {
   document.getElementById('take-photo-btn').hidden = false;
@@ -178,6 +199,8 @@ document.getElementById('food-textarea').addEventListener('paste', function(e) {
 });
 
 function clearLabelImage() {
+  revokePhotoURL();
+  document.getElementById('label-preview-img').removeAttribute('src');
   const inp = document.getElementById('label-image-input');
   inp.value = '';
   document.getElementById('photo-capture-input').value = '';
@@ -217,11 +240,22 @@ function setServingNote(text) {
           <th class="w-20"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
+      {% for g in meal_groups %}
       <tbody class="max-md:block">
-        {% for entry in entries %}
+        <tr class="max-md:block" id="meal-head-{{ g.meal }}">
+          <th colspan="9" class="bg-inset max-md:block max-md:rounded-lg max-md:px-3 max-md:py-2 {% if not forloop.first %}border-t-8 border-base-100{% endif %}">
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 font-normal">
+              <span class="font-semibold text-base-content">{{ g.label }}</span>
+              <span class="font-mono text-xs text-muted">{{ g.span }}</span>
+              <span class="ml-auto font-mono text-sm text-base-content">{{ g.kcal }} kcal · {{ g.protein }}g protein</span>
+            </div>
+          </th>
+        </tr>
+        {% for entry in g.entries %}
         {% include "workouts/partials/nutrition_entry_row.html" with entry=entry %}
         {% endfor %}
       </tbody>
+      {% endfor %}
     </table>
   </div>
 </div>
@@ -373,7 +407,7 @@ function setServingNote(text) {
 {% if saved_meals %}
 <div class="ui-panel max-lg:order-6">
   <h2 class="ui-panel-title mb-3">Quick re-log</h2>
-  <div class="flex flex-wrap gap-2">
+  <div class="ui-swipe-row flex gap-2 sm:flex-wrap">
     {% for sm in saved_meals %}
     <div class="flex items-center">
       <form method="post" action="{% url 'nutrition_relog' sm.pk %}">
@@ -384,9 +418,9 @@ function setServingNote(text) {
           <span class="font-mono text-xs text-muted">{{ sm.protein_g|floatformat:0 }}g P</span>
         </button>
       </form>
-      <details class="dropdown dropdown-end">
-        <summary class="btn btn-sm rounded-none border-l border-subtle px-2 [&::-webkit-details-marker]:hidden list-none" title="Log a different serving size" aria-label="Log a different serving of {{ sm.name }}">%</summary>
-        <div class="dropdown-content z-30 mt-1 w-56 rounded-box border border-subtle ui-glass p-3 shadow-lg">
+      {# A popover (top layer), so the phone swipe row can't clip it. #}
+      <button type="button" class="btn btn-sm rounded-none border-l border-subtle px-2" popovertarget="portion-{{ sm.pk }}" style="anchor-name: --portion-{{ sm.pk }}" title="Log a different serving size" aria-label="Log a different serving of {{ sm.name }}">%</button>
+        <div id="portion-{{ sm.pk }}" popover class="ui-enter m-0 w-56 rounded-box border border-subtle bg-base-100 p-3 text-base-content shadow-lg" style="position-anchor: --portion-{{ sm.pk }}">
           <form method="post" action="{% url 'nutrition_relog' sm.pk %}" class="flex flex-col gap-2">
             {% csrf_token %}
             <input type="hidden" name="date" value="{{ page_date|date:'Y-m-d' }}">
@@ -403,7 +437,6 @@ function setServingNote(text) {
             </div>
           </form>
         </div>
-      </details>
       <form method="post" action="{% url 'nutrition_delete_meal' sm.pk %}">
         {% csrf_token %}
         <button type="submit" class="btn btn-sm rounded-l-none rounded-r-full border-l border-subtle px-2 hover:text-error" aria-label="Remove saved meal {{ sm.name }}" title="Remove saved meal">×</button>

@@ -1,0 +1,3 @@
+{% comment %}Body stat tile change chip: c = body_chips.<metric> (views._body_change_chips).
+Colored only when the user's goal says which way is good.{% endcomment %}
+{% if c %}<span class="badge badge-sm badge-ghost mt-1 self-start font-mono {{ c.tone }}"><span aria-hidden="true">{{ c.text }}</span><span class="sr-only">{{ c.sr }}</span></span>{% endif %}

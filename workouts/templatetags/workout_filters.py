@@ -337,6 +337,30 @@ def garmin_emoji(discipline):
     return _GARMIN_EMOJI.get((discipline or "").lower(), "🏅")
 
 
+# Known AI section headers → icon.html names (lowercase header text). Add new section
+# names here; unknown headers get no icon.
+INSIGHT_HEADER_ICONS = {
+    "what's working": "sparkles", "what worked": "sparkles",
+    "where the friction is": "search", "where it slipped": "search",
+    "specific suggestions": "utensils",
+    "watch list": "chart", "to watch": "chart", "what to watch next": "chart",
+    "weight & body composition": "scale", "body composition": "scale",
+    "nutrition": "utensils",
+    "training": "dumbbell",
+    "hunger & symptoms": "pill",
+    "one thing going well": "trophy", "progression highlights": "trophy",
+    "one focus for next week": "calendar", "focus for next cycle": "calendar",
+}
+
+
+def _insight_header_icon(header):
+    from django.template.loader import render_to_string
+    name = INSIGHT_HEADER_ICONS.get(header.strip().lower())
+    if not name:
+        return ""
+    return render_to_string("workouts/partials/icon.html", {"name": name, "class": "size-5 text-muted"}).strip()
+
+
 @register.filter
 def format_nutrition_insights(text):
     """Render the structured nutrition insights (## headers + body) as styled HTML."""
@@ -360,7 +384,7 @@ def format_nutrition_insights(text):
         if not body_lines:
             return
         if header:
-            html += f'<div class="ni-section"><div class="ni-header">{escape(header)}</div>'
+            html += f'<div class="ni-section"><div class="ni-header">{_insight_header_icon(header)}{escape(header)}</div>'
 
         # Group consecutive non-blank lines into paragraphs; detect bullets
         paragraphs = []  # list of ('para' | 'bullet', text)

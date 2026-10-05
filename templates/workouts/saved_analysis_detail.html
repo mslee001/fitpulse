@@ -45,7 +45,7 @@
     <h2 class="ui-panel-title">AI interpretation</h2>
     <span class="text-xs text-muted">{{ sa.ai_model }}</span>
   </div>
-  {{ sa.ai_interpretation|format_nutrition_insights }}
+  <div class="ui-prose">{{ sa.ai_interpretation|format_nutrition_insights }}</div>
 </div>
 {% endif %}
 
