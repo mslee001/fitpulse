@@ -383,17 +383,19 @@ def _manual_movement_context(workout):
     every plan exercise not yet logged (blank numbers, ready to fill in). Plan
     order is kept for the unlogged ones; saved rows come first so entered data
     doesn't jump around."""
-    from .strength import EFFORT_CHOICES, exercise_key, recommendations
+    from .strength import (
+        EFFORT_CHOICES, dumbbells, exercise_history, exercise_key, format_rep_range, recommend, rep_range,
+    )
 
     saved = workout.manual_log_rows
     saved_names = {(r.get("name") or "").strip().lower() for r in saved}
-    rows = list(saved)
+    rows = [{**r, "rep_range": format_rep_range(r.get("rep_min"), r.get("rep_max"))} for r in saved]
     for seg in workout.class_plan_json or []:
         for ex in seg.get("exercises", []):
             if ex["name"].strip().lower() not in saved_names:
                 saved_names.add(ex["name"].strip().lower())
                 rows.append({"name": ex["name"], "sets": None, "reps": None, "weight_lb": None,
-                             "notes": "", "effort": ""})
+                             "notes": "", "effort": "", "rep_range": None})
     # Peloton's Movement Tracker data, when present, is the better record — this
     # card is for classes it didn't track (e.g. circuit classes).
     show = not workout.movements and bool(
@@ -403,8 +405,13 @@ def _manual_movement_context(workout):
     if show:
         # History up to this workout: on a logged row that's "next time", on an
         # unlogged plan row it's the suggestion for today.
-        recs = recommendations(workout.user, until=workout.created_at)
-        rows = [{**r, "rec": recs.get(exercise_key(r.get("name")))} for r in rows]
+        history = exercise_history(workout.user, until=workout.created_at)
+        rack = dumbbells(workout.user)
+        for r in rows:
+            sessions = history.get(exercise_key(r.get("name")), {}).get("sessions", [])
+            r["rec"] = recommend(sessions, rack) if sessions else None
+            if r["rep_range"] is None:   # unlogged plan row: carry the exercise's last range forward
+                r["rep_range"] = format_rep_range(*(rep_range(sessions) or (None, None)))
     return {
         "class_plan": workout.class_plan_json or [],
         "manual_rows": rows,
@@ -1590,7 +1597,7 @@ def save_manual_movements(request, workout_id):
     name but no numbers and no notes are dropped — the plan's pre-filled but
     untouched exercises shouldn't be stored as if they were logged. Submitting
     an empty log clears it."""
-    from .strength import EFFORT_LABELS
+    from .strength import EFFORT_LABELS, parse_rep_range
 
     workout = get_object_or_404(CachedWorkout.objects.for_user(request.user), workout_id=workout_id)
     names = request.POST.getlist("name")
@@ -1599,8 +1606,10 @@ def save_manual_movements(request, workout_id):
     weights = request.POST.getlist("weight_lb")
     notes = request.POST.getlist("notes")
     efforts = request.POST.getlist("effort")
+    ranges = request.POST.getlist("rep_range")
 
     rows = []
+    unreadable = []
     for i, name in enumerate(names):
         name = name.strip()[:120]
         row = {
@@ -1613,6 +1622,14 @@ def save_manual_movements(request, workout_id):
         effort = efforts[i] if i < len(efforts) else ""
         if effort in EFFORT_LABELS:
             row["effort"] = effort
+        try:
+            rng = parse_rep_range(ranges[i] if i < len(ranges) else "")
+        except ValueError:
+            rng = None
+            unreadable.append(name or ranges[i])
+        if rng:
+            row["rep_min"], row["rep_max"] = rng
+        # a rep range alone isn't a log entry (plan rows arrive pre-filled with one)
         if name and (row["sets"] is not None or row["reps"] is not None
                      or row["weight_lb"] is not None or row["notes"] or row.get("effort")):
             rows.append(row)
@@ -1625,13 +1642,15 @@ def save_manual_movements(request, workout_id):
         messages.success(request, f"{msg} · {volume:,} lb total volume." if volume else f"{msg}.")
     else:
         messages.success(request, "Exercise log cleared.")
+    if unreadable:
+        messages.warning(request, f"Couldn't read the rep range for {', '.join(unreadable)} — use e.g. 6-8.")
     return redirect("workout_detail", workout_id=workout.workout_id)
 
 
 def strength_trends(request):
     """Per-exercise weight trends + next-weight recommendations from the manual
     exercise log, plus total logged volume per workout."""
-    from .strength import EFFORT_LABELS, dumbbells, exercise_history, recommend
+    from .strength import EFFORT_LABELS, dumbbells, exercise_history, format_rep_range, recommend, rep_range
 
     rack = dumbbells(request.user)
     history = exercise_history(request.user)
@@ -1644,6 +1663,7 @@ def strength_trends(request):
             "key": key,
             "name": e["name"],
             "rec": recommend(sessions, rack),
+            "rep_range": format_rep_range(*(rep_range(sessions) or (None, None))),
             "last_date": last["date"],
             "count": len(sessions),
             "first_lb": loaded[0]["weight_lb"] if loaded else None,

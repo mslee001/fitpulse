@@ -31,6 +31,7 @@
   Recommendations step through your dumbbells ({% for d in dumbbells %}{{ d|floatformat:"-1" }}{% if not forloop.last %}, {% endif %}{% endfor %}&nbsp;lb &middot; <a href="{% url 'settings' %}">edit</a>):
   <strong class="text-base-content">Easy</strong> &rarr; next one up &middot; <strong class="text-base-content">Just right</strong> twice in a row &rarr; up &middot;
   <strong class="text-base-content">Hard</strong> &rarr; stay &middot; <strong class="text-base-content">Couldn't finish</strong> &rarr; one down.
+  With a rep range (set it in the Range column when you log), add reps at the same weight until you reach the top of the range, then move up.
 </p>
 
 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -42,12 +43,13 @@
         <div class="text-sm text-muted">
           {{ x.count }} session{{ x.count|pluralize }}
           {% if x.first_lb != x.current_lb %}&middot; {{ x.first_lb|floatformat:"-1" }} &rarr; {{ x.current_lb|floatformat:"-1" }} lb{% else %}&middot; {{ x.current_lb|floatformat:"-1" }} lb{% endif %}
+          {% if x.rep_range %}&middot; {{ x.rep_range }}{% if x.rec.timed %} s{% else %} reps{% endif %}{% endif %}
         </div>
       </div>
       {% if x.rec %}
-      <span class="badge shrink-0 gap-1 {% if x.rec.action == 'up' %}badge-success{% elif x.rec.action == 'down' %}badge-warning{% elif x.rec.action == 'max' %}badge-info{% else %}badge-ghost{% endif %}" title="{{ x.rec.reason }}">
-        {% if x.rec.action == "up" %}Move up{% elif x.rec.action == "down" %}Drop{% elif x.rec.action == "max" %}Maxed{% else %}Stay{% endif %}
-        <span class="font-mono">{{ x.rec.weight|floatformat:"-1" }} lb</span>
+      <span class="badge shrink-0 gap-1 {% if x.rec.action == 'up' %}badge-success{% elif x.rec.action == 'down' %}badge-warning{% elif x.rec.action == 'max' or x.rec.action == 'reps' %}badge-info{% else %}badge-ghost{% endif %}" title="{{ x.rec.reason }}">
+        {% if x.rec.action == "up" %}Move up{% elif x.rec.action == "down" %}Drop{% elif x.rec.action == "max" %}Maxed{% elif x.rec.action == "reps" %}Add reps{% else %}Stay{% endif %}
+        <span class="font-mono">{{ x.rec.weight|floatformat:"-1" }} lb{% if x.rec.reps %} &times; {{ x.rec.reps }}{% if x.rec.timed %}s{% endif %}{% endif %}</span>
       </span>
       {% endif %}
     </div>
