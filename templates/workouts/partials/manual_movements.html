@@ -42,6 +42,7 @@
             <th class="min-w-40">Exercise</th>
             <th class="w-16">Sets</th>
             <th class="w-16">Reps</th>
+            <th class="w-20" title="Double progression: add reps at the same weight until the top of the range, then move up">Range</th>
             <th class="w-20">Weight</th>
             <th class="min-w-32">Notes</th>
             <th class="w-32">Effort</th>
@@ -53,7 +54,8 @@
           <tr>
             <td><input type="text" name="name" aria-label="Exercise" class="input input-xs w-full" value="{{ r.name }}" maxlength="120" placeholder="Exercise"></td>
             <td><input type="number" name="sets" aria-label="Sets" class="input input-xs w-full" value="{{ r.sets|default_if_none:'' }}" min="0" step="1" inputmode="numeric"></td>
-            <td><input type="number" name="reps" aria-label="Reps" class="input input-xs w-full" value="{{ r.reps|default_if_none:'' }}" min="0" step="1" inputmode="numeric"></td>
+            <td><input type="number" name="reps" aria-label="Reps" class="input input-xs w-full"{% if r.rec.reps and r.reps is None %} placeholder="{{ r.rec.reps }}"{% endif %} value="{{ r.reps|default_if_none:'' }}" min="0" step="1" inputmode="numeric"></td>
+            <td><input type="text" name="rep_range" aria-label="Rep range" class="input input-xs w-full" value="{{ r.rep_range|default_if_none:'' }}" maxlength="12" placeholder="6-8"></td>
             <td><input type="number" name="weight_lb" aria-label="Weight (lb)" class="input input-xs w-full" placeholder="{% if r.rec and r.weight_lb is None %}{{ r.rec.weight|floatformat:"-1" }}{% else %}lb{% endif %}" value="{{ r.weight_lb|floatformat:"-1" }}" min="0" step="any" inputmode="decimal"></td>
             <td><input type="text" name="notes" aria-label="Notes" class="input input-xs w-full" value="{{ r.notes }}" maxlength="200" placeholder="e.g. per side"></td>
             <td>
@@ -68,10 +70,10 @@
               {% elif r.timed %}<span class="text-muted">timed</span>
               {% else %}<span class="text-muted">&mdash;</span>{% endif %}
               {% if r.rec %}
-                <div class="badge badge-sm mt-1 font-sans {% if r.rec.action == 'up' %}badge-success{% elif r.rec.action == 'down' %}badge-warning{% else %}badge-ghost{% endif %}" title="{{ r.rec.reason }}">
+                <div class="badge badge-sm mt-1 font-sans {% if r.rec.action == 'up' %}badge-success{% elif r.rec.action == 'down' %}badge-warning{% elif r.rec.action == 'reps' %}badge-info{% else %}badge-ghost{% endif %}" title="{{ r.rec.reason }}">
                   {% if r.weight_lb is None %}Try{% else %}Next{% endif %}
                   {% if r.rec.action == "up" %}&uarr;{% elif r.rec.action == "down" %}&darr;{% else %}={% endif %}
-                  {{ r.rec.weight|floatformat:"-1" }} lb
+                  {{ r.rec.weight|floatformat:"-1" }} lb{% if r.rec.reps %} &times; {{ r.rec.reps }}{% if r.rec.timed %}s{% endif %}{% endif %}
                 </div>
               {% endif %}
             </td>
@@ -81,7 +83,7 @@
         {% if manual_volume_lb %}
         <tfoot>
           <tr>
-            <td colspan="6" class="border-t border-subtle text-right font-semibold">Total volume</td>
+            <td colspan="7" class="border-t border-subtle text-right font-semibold">Total volume</td>
             <td class="whitespace-nowrap border-t border-subtle text-right font-mono font-semibold tabular-nums">{{ manual_volume_lb|floatformat:"0g" }} lb</td>
           </tr>
         </tfoot>
@@ -91,7 +93,7 @@
     <div class="mt-4 flex flex-wrap items-center gap-3">
       <button type="submit" class="btn btn-sm btn-primary">Save log</button>
       <button type="button" class="btn btn-sm btn-ghost" id="addManualRowBtn">+ Add exercise</button>
-      <span class="text-xs text-muted">Exercises with no numbers, notes or effort aren't saved. Rate effort to get weight recommendations &middot; <a href="{% url 'strength_trends' %}">Strength trends &rarr;</a></span>
+      <span class="text-xs text-muted">Exercises with no numbers, notes or effort aren't saved. Rate effort to get weight recommendations; with a rep range (e.g. 6-8) you'll build reps before weight &middot; <a href="{% url 'strength_trends' %}">Strength trends &rarr;</a></span>
     </div>
   </form>
 
@@ -100,6 +102,7 @@
       <td><input type="text" name="name" aria-label="Exercise" class="input input-xs w-full" maxlength="120" placeholder="Exercise"></td>
       <td><input type="number" name="sets" aria-label="Sets" class="input input-xs w-full" min="0" step="1" inputmode="numeric"></td>
       <td><input type="number" name="reps" aria-label="Reps" class="input input-xs w-full" min="0" step="1" inputmode="numeric"></td>
+      <td><input type="text" name="rep_range" aria-label="Rep range" class="input input-xs w-full" maxlength="12" placeholder="6-8"></td>
       <td><input type="number" name="weight_lb" aria-label="Weight (lb)" class="input input-xs w-full" placeholder="lb" min="0" step="any" inputmode="decimal"></td>
       <td><input type="text" name="notes" aria-label="Notes" class="input input-xs w-full" maxlength="200" placeholder="e.g. per side"></td>
       <td>

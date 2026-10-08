@@ -9,7 +9,7 @@ from django.urls import reverse
 from workouts.models import DEFAULT_DUMBBELLS_LB, CachedWorkout, UserSettings
 from workouts.programs import _workout_exercise_loads
 from workouts.strength import (
-    dumbbells, exercise_history, next_dumbbell, prev_dumbbell, recommend, recommendations,
+    dumbbells, exercise_history, next_dumbbell, parse_rep_range, prev_dumbbell, recommend, recommendations,
 )
 
 BASE = datetime(2026, 9, 1, 17, 0, tzinfo=dt_tz.utc)
@@ -22,8 +22,9 @@ def owner():
         username="owner", defaults={"is_superuser": True, "is_staff": True})[0]
 
 
-def session(weight, effort="", timed=False):
-    return {"weight_lb": weight, "effort": effort, "timed": timed}
+def session(weight, effort="", timed=False, reps=None, rng=None):
+    lo, hi = rng or (None, None)
+    return {"weight_lb": weight, "effort": effort, "timed": timed, "reps": reps, "rep_min": lo, "rep_max": hi}
 
 
 def logged(day, *rows, discipline="circuit"):
@@ -35,10 +36,12 @@ def logged(day, *rows, discipline="circuit"):
     )
 
 
-def row(name, weight, effort="", sets=3, reps=8, notes=""):
+def row(name, weight, effort="", sets=3, reps=8, notes="", rng=None):
     r = {"name": name, "sets": sets, "reps": reps, "weight_lb": weight, "notes": notes}
     if effort:
         r["effort"] = effort
+    if rng:
+        r["rep_min"], r["rep_max"] = rng
     return r
 
 
@@ -80,7 +83,7 @@ class SetDumbbellsTests(TestCase):
 class RecommendTests(TestCase):
     def test_easy_moves_up_one_dumbbell(self):
         self.assertEqual(recommend([session(12, "easy")], RACK), {
-            "action": "up", "weight": 15, "current": 12, "reason": "Felt easy"})
+            "action": "up", "weight": 15, "current": 12, "reps": None, "timed": False, "reason": "Felt easy"})
 
     def test_just_right_needs_two_in_a_row_at_the_same_weight(self):
         self.assertEqual(recommend([session(30, "right")], RACK)["action"], "hold")
@@ -104,6 +107,55 @@ class RecommendTests(TestCase):
     def test_bodyweight_gets_nothing_but_weighted_timed_work_does(self):
         self.assertIsNone(recommend([session(0, "easy")], RACK))
         self.assertEqual(recommend([session(35, "easy", timed=True)], RACK)["weight"], 40)
+
+
+class RepRangeTests(TestCase):
+    def test_parse(self):
+        self.assertEqual(parse_rep_range("6-8"), (6, 8))
+        self.assertEqual(parse_rep_range(" 6 – 8 reps"), (6, 8))
+        self.assertEqual(parse_rep_range("8 to 6"), (6, 8))
+        self.assertEqual(parse_rep_range("10"), (10, 10))
+        self.assertEqual(parse_rep_range("30-45s"), (30, 45))
+        self.assertIsNone(parse_rep_range(""))
+        for bad in ("six", "0", "6-8-10"):
+            with self.assertRaises(ValueError):
+                parse_rep_range(bad)
+
+    def test_just_right_below_the_top_adds_a_rep_instead_of_weight(self):
+        # 6 reps of a 6–8 range, just right two weeks running → stay at 20, go for 7
+        rec = recommend([session(20, "right", reps=6, rng=(6, 8)), session(20, "right", reps=6, rng=(6, 8))], RACK)
+        self.assertEqual((rec["action"], rec["weight"], rec["reps"]), ("reps", 20, 7))
+
+    def test_top_of_the_range_moves_up_and_restarts_at_the_bottom(self):
+        rec = recommend([session(20, "right", reps=8, rng=(6, 8))], RACK)
+        self.assertEqual((rec["action"], rec["weight"], rec["reps"]), ("up", 25, 6))
+        self.assertEqual(recommend([session(20, reps=9, rng=(6, 8))], RACK)["action"], "up")   # unrated, past the top
+
+    def test_easy_below_the_top_jumps_to_the_top_reps(self):
+        rec = recommend([session(20, "easy", reps=6, rng=(6, 8))], RACK)
+        self.assertEqual((rec["action"], rec["weight"], rec["reps"]), ("reps", 20, 8))
+
+    def test_below_the_bottom_aims_for_the_bottom(self):
+        self.assertEqual(recommend([session(20, "right", reps=4, rng=(6, 8))], RACK)["reps"], 6)
+
+    def test_hard_and_fail_with_a_range(self):
+        rec = recommend([session(20, "hard", reps=7, rng=(6, 8))], RACK)
+        self.assertEqual((rec["action"], rec["weight"], rec["reps"]), ("hold", 20, 7))
+        rec = recommend([session(20, "fail", reps=5, rng=(6, 8))], RACK)
+        self.assertEqual((rec["action"], rec["weight"], rec["reps"]), ("down", 15, 6))
+
+    def test_one_number_range_keeps_the_two_session_rule(self):
+        self.assertEqual(recommend([session(20, "right", reps=8, rng=(8, 8))], RACK)["action"], "hold")
+        rec = recommend([session(20, "right", reps=8, rng=(8, 8))] * 2, RACK)
+        self.assertEqual((rec["action"], rec["weight"]), ("up", 25))
+
+    def test_timed_rows_step_five_seconds(self):
+        rec = recommend([session(35, "right", timed=True, reps=30, rng=(30, 45))], RACK)
+        self.assertEqual((rec["action"], rec["reps"]), ("reps", 35))
+
+    def test_range_carries_from_the_latest_session_that_has_one(self):
+        rec = recommend([session(20, "right", reps=6, rng=(6, 8)), session(20, "right", reps=6)], RACK)
+        self.assertEqual((rec["action"], rec["reps"]), ("reps", 7))
 
 
 class HistoryTests(TestCase):
@@ -132,6 +184,29 @@ class CardAndSaveTests(TestCase):
         w.refresh_from_db()
         self.assertEqual([(r["name"], r.get("effort")) for r in w.manual_movements_json],
                          [("Reverse Fly", "easy"), ("Bear Crawl", "hard")])
+
+    def test_save_stores_the_rep_range_but_a_range_alone_is_not_a_log(self):
+        from workouts.views import save_manual_movements
+        w = logged(0)
+        req = RequestFactory().post(reverse("save_manual_movements", args=[w.workout_id]), {
+            "name": ["Split Squat", "Woodchop", "Farmer Carry"], "sets": ["3", "", "2"], "reps": ["6", "", "60"],
+            "weight_lb": ["20", "", "35"], "notes": ["", "", "seconds"], "effort": ["right", "", "hard"],
+            "rep_range": ["6–8", "8-10", "nope"],
+        })
+        req.user, req.session, req._messages = self.user, {}, _NoMessages()
+        save_manual_movements(req, w.workout_id)
+        w.refresh_from_db()
+        self.assertEqual([(r["name"], r.get("rep_min"), r.get("rep_max")) for r in w.manual_movements_json],
+                         [("Split Squat", 6, 8), ("Farmer Carry", None, None)])
+
+    def test_card_carries_the_rep_range_onto_unlogged_plan_rows(self):
+        from workouts.views import _manual_movement_context
+        logged(0, row("Split Squat", 20, "right", reps=6, rng=(6, 8)))
+        w = logged(7)
+        w.class_plan_json = [{"name": "Lower", "exercises": [{"name": "Split Squat", "appearances": 3}]}]
+        r = _manual_movement_context(w)["manual_rows"][0]
+        self.assertEqual(r["rep_range"], "6–8")
+        self.assertEqual((r["rec"]["action"], r["rec"]["weight"], r["rec"]["reps"]), ("reps", 20, 7))
 
     def test_card_shows_next_for_logged_rows_and_try_for_unlogged_plan_rows(self):
         from workouts.views import _manual_movement_context
