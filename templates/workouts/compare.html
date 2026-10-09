@@ -331,6 +331,21 @@ function buildStatsTable() {
         return v ? { d: v.toFixed(1), r: v } : { d: "—", r: null };
       })},
     ];
+    // "+ Run" classes: the Tread portion — measured, or estimated from the class's pace targets
+    if (workoutIds.some(id => workoutStats[id]?.run)) {
+      const run = (id, key, fmt) => {
+        const r = workoutStats[id]?.run;
+        if (!r?.[key]) return { d: "—", r: null };
+        return r.estimated && key !== "seconds"
+          ? { d: `~${fmt(r[key])} <span class="font-sans text-xs text-muted">est.</span>`, r: r[key] }
+          : { d: fmt(r[key]), r: r[key] };
+      };
+      rows.push(
+        { label: "Run Time", dir: null, vals: workoutIds.map(id => run(id, "seconds", v => `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`)) },
+        { label: "Run Distance", dir: "higher", vals: workoutIds.map(id => run(id, "miles", v => `${v.toFixed(2)} mi`)) },
+        { label: "Run Pace", dir: "lower", vals: workoutIds.map(id => run(id, "pace_s", fmtPace)) },
+      );
+    }
     if (hasExerciseSets) {
       rows.push(
         { label: "Total Sets", dir: "higher", vals: workoutIds.map(id => {

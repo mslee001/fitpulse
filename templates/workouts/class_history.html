@@ -213,8 +213,8 @@
           <td><input type="checkbox" class="compare-check checkbox checkbox-sm checkbox-primary border-base-content/50" value="{{ w.workout_id }}" aria-label="Select {{ w.created_at|date:'M j, Y' }} to compare"></td>
           <td class="whitespace-nowrap">{{ w.created_at|date:"M j, Y" }}</td>
           {% if discipline == "running" %}
-            <td class="whitespace-nowrap font-mono tabular-nums">{{ row.avg_pace_display|default:"—" }}</td>
-            <td class="whitespace-nowrap font-mono tabular-nums">{% if row.distance_miles %}{{ row.distance_miles|floatformat:2 }} mi{% else %}—{% endif %}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{% if row.run_estimated and row.avg_pace_display %}~{% endif %}{{ row.avg_pace_display|default:"—" }}{% if row.run_estimated and row.avg_pace_display %} <span class="font-sans text-xs text-muted">est.</span>{% endif %}</td>
+            <td class="whitespace-nowrap font-mono tabular-nums">{% if row.distance_miles %}{% if row.run_estimated %}~{% endif %}{{ row.distance_miles|floatformat:2 }} mi{% if row.run_estimated %} <span class="font-sans text-xs text-muted">est.</span>{% endif %}{% else %}—{% endif %}</td>
             <td class="whitespace-nowrap font-mono tabular-nums">{% if row.heart_rate_avg %}{{ row.heart_rate_avg|floatformat:0 }} bpm{% else %}—{% endif %}</td>
             {% if has_leaderboard %}<td class="whitespace-nowrap font-mono tabular-nums">{% if row.leaderboard_pct %}Beat {{ row.leaderboard_pct }}%{% else %}—{% endif %}</td>{% endif %}
             {% if has_form_data %}

@@ -25,13 +25,13 @@ from django.views.decorators.http import require_http_methods, require_POST
 from . import programs as _programs
 from .models import BodyMeasurement, CachedWorkout, DailyStats, Integration, UserSettings, WebhookError
 from .services.garmin_client import GarminClient
-from .services.peloton_client import PelotonClient
+from .services.peloton_client import PelotonClient, parse_class_plan, parse_run_targets
 from .services.withings_client import WithingsClient
 
 logger = logging.getLogger(__name__)
 
 # Disciplines that have a Peloton performance graph worth fetching.
-_PERF_DISCS = {"cycling", "bike_bootcamp", "running", "outdoor_running", "strength", "walking"}
+_PERF_DISCS = {"cycling", "bike_bootcamp", "running", "outdoor_running", "strength", "walking", "circuit"}
 
 
 def _associate_program_safe(workout):
@@ -116,18 +116,20 @@ _CLASS_PLAN_DISCS = {"strength", "circuit"}
 
 def _fetch_and_store_details(user, workout_ids, client):
     """Fetch /api/workout/:id for each ID and persist detail fields to the DB.
-    Also fetches the class exercise plan for strength/circuit workouts, cached
-    per ride_id within this call so repeat takes of a class cost one request."""
-    plan_cache = {}
+    Also fetches the class details for strength/circuit workouts (exercise plan
+    + Tread running targets), cached per ride_id within this call so repeat
+    takes of a class cost one request."""
+    ride_cache = {}
     for wid in workout_ids:
         try:
             detail = client.get_parsed_workout_detail(wid)
             w = CachedWorkout.objects.for_user(user).get(workout_id=wid)
             if w.discipline in _CLASS_PLAN_DISCS and w.ride_id:
                 try:
-                    if w.ride_id not in plan_cache:
-                        plan_cache[w.ride_id] = client.get_class_plan(w.ride_id)
-                    detail["class_plan"] = plan_cache[w.ride_id]
+                    if w.ride_id not in ride_cache:
+                        ride = client.get_ride_details(w.ride_id)
+                        ride_cache[w.ride_id] = (parse_class_plan(ride), parse_run_targets(ride))
+                    detail["class_plan"], detail["run_targets"] = ride_cache[w.ride_id]
                 except Exception as e:
                     logger.warning("class plan fetch failed for %s: %s", wid, e)
             w.apply_detail(detail)
