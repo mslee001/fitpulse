@@ -53,6 +53,12 @@ def _run_grid(run):
     ranker = DifficultyRanker()
     planned = ranker.for_rides(ProgramSlot.objects.filter(week__program=run.program)
                                .exclude(peloton_ride_id="").values_list("peloton_ride_id", flat=True))
+    taken = ranker.for_rides(e.workout.ride_id for e in entries)   # the classes actually done
+    def local_day(e):
+        return timezone.localtime(e.workout.created_at).date()
+
+    today = timezone.localdate()
+    last_done_day = max((local_day(e) for e in entries), default=None)
     rows = []
     total_workouts = 0
     total_effort = 0.0
@@ -79,15 +85,24 @@ def _run_grid(run):
                     recovery_seconds += sum(r.workout.duration_seconds or 0 for r in recoveries)
             elif slot.optional and not is_open_pass:
                 continue   # never-filled optional slot in a closed pass — hide it
+            # A completed session shows the day it was actually done; one still to do
+            # shows its planned day (with the planned date in a dated plan) — in an
+            # open split/collection pass that's projected forward below.
             day_label = ""
-            if slot.day:
+            if e:
+                d = local_day(e)
+                day_label = f"{d:%a} · {d:%b} {d.day}" if overview else f"{d:%a}"
+            elif slot.day:
                 day_label = DAY_NAMES.get(slot.day, "")
                 if overview and rw.program_week.number in overview["weeks"]:
                     d = overview["weeks"][rw.program_week.number]["start"] + timedelta(days=slot.day - 1)
                     day_label = f"{day_label} · {d:%b} {d.day}"
             cells.append({"slot": slot, "entry": e, "recoveries": recoveries, "day_label": day_label,
                           "swappable": run.end_date is None and slot_swappable(slot, e),
-                          "difficulty": None if e else ranker.rank(planned.get(slot.peloton_ride_id))})
+                          "cls": None if e else planned.get(slot.peloton_ride_id),
+                          # done: the class actually taken (any-class slots vary); to do: the planned one
+                          "difficulty": (ranker.rank(taken.get(e.workout.ride_id), e.workout.difficulty_estimate)
+                                         if e else ranker.rank(planned.get(slot.peloton_ride_id)))})
         if overview:
             # A dated plan reads best in calendar order.
             cells.sort(key=lambda c: (c["slot"].day or 8, c["slot"].order))
@@ -95,6 +110,17 @@ def _run_grid(run):
             # Completed classes in the order actually taken; still-empty slots trail at
             # the end (they have no date to sort by) in their defined slot order.
             cells.sort(key=lambda c: (c["entry"] is None, c["entry"] and c["entry"].workout.created_at))
+            if is_open_pass:
+                # Sessions still to do follow on from the last one done in this pass (or
+                # in the run, before the pass has any): one a day from the day after it,
+                # never before today, in slot order.
+                done = [local_day(e) for e in entries if e.run_week_id == rw.id]
+                anchor = max(done) if done else last_done_day
+                day = max(anchor + timedelta(days=1), today) if anchor else today
+                for c in cells:
+                    if not c["entry"]:
+                        c["day_label"] = f"{day:%a}"
+                        day += timedelta(days=1)
         # entries in this run-week with no slot (matched week, not a specific class)
         loose = sorted(
             (e for e in entries if e.run_week_id == rw.id and e.slot_id is None),

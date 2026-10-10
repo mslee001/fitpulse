@@ -504,6 +504,11 @@ class GenerateAndCreateTests(PlanTestCase):
         slot.refresh_from_db()
         self.assertNotEqual(slot.peloton_ride_id, old)
         self.assertEqual(slot.alt_ride_ids, [])
+        # the new cell says which class it is now — swaps often keep the same title
+        new = PelotonClass.objects.get(pk=slot.peloton_ride_id)
+        html = resp.content.decode()
+        self.assertIn("Swapped to a different class.", html)
+        self.assertIn(new.instructor_name, html)
         used = set(ProgramSlot.objects.filter(week__program=program).exclude(pk=slot.pk)
                    .values_list("peloton_ride_id", flat=True))
         self.assertNotIn(slot.peloton_ride_id, used)

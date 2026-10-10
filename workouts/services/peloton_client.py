@@ -47,6 +47,68 @@ _NON_EXERCISE_MOVEMENTS = {
 }
 
 
+def zone_pace_minutes(value):
+    """A pace from Peloton's zone tables (pace_intensities_mapping fast_pace /
+    slow_pace) is minutes.seconds — 15.47 is 15:47/mi — unlike the `pace`
+    metric and avg_pace summary, which are decimal minutes (15.75 is 15:45).
+    Returns decimal minutes per mile, the unit everything else uses."""
+    if value is None:
+        return None
+    minutes = int(value)
+    return minutes + round((value - minutes) * 100) / 60
+
+
+# Recovery's slow edge is 60:00/mi; cap it so it doesn't stretch the chart.
+_RECOVERY_CAP_MIN = {"running": 20.0, "walking": 35.0}
+
+
+def _pace_zone_table(tmc: dict) -> tuple:
+    """The user's pace zones from target_metrics_compliance, in decimal min/mi:
+    (level display name, {intensity value: {"name", "fast", "slow"}}).
+    Recovery's slow edge is capped. Walking zones (Recovery/Easy/Brisk/Power/Max)
+    get a looser cap than running ones."""
+    level = (tmc or {}).get("workout_pace_level")
+    if not level:
+        return None, {}
+    entries = tmc.get("pace_intensities_mapping") or []
+    walking = any(e.get("display_name") in ("Brisk", "Power") for e in entries)
+    cap = _RECOVERY_CAP_MIN["walking" if walking else "running"]
+    display, zones = None, {}
+    for entry in entries:
+        for pl in entry.get("pace_levels") or []:
+            if pl.get("slug") != level:
+                continue
+            display = display or pl.get("display_name")
+            fast, slow = zone_pace_minutes(pl.get("fast_pace")), zone_pace_minutes(pl.get("slow_pace"))
+            if fast and slow and entry.get("value") is not None:
+                if entry.get("display_name") == "Recovery":
+                    slow = max(min(slow, cap), fast)
+                zones[entry["value"]] = {"name": entry.get("display_name"), "fast": fast, "slow": slow}
+            break
+    return display, zones
+
+
+def parse_run_targets(ride_details: dict) -> list:
+    """The Tread running portion of a class, from /api/ride/{id}/details
+    target_metrics_data: [{"start", "end", "lower", "upper"}] — class-clock
+    seconds (they include the 60 s pre-show) and the pace-intensity zone,
+    0 = Recovery … 6 = Max on the Tread running scale. Class-level: what the
+    instructor programmed, not what any one member ran. [] when the class
+    has no running targets."""
+    targets = []
+    data = (ride_details or {}).get("target_metrics_data") or {}
+    for seg in data.get("target_metrics") or []:
+        if seg.get("segment_type") != "running":
+            continue
+        pace = next((m for m in seg.get("metrics") or [] if m.get("name") == "pace_intensity"), None)
+        offsets = seg.get("offsets") or {}
+        if pace is None or pace.get("upper") is None or offsets.get("start") is None or offsets.get("end") is None:
+            continue
+        lower = pace.get("lower") if pace.get("lower") is not None else pace["upper"]
+        targets.append({"start": offsets["start"], "end": offsets["end"], "lower": lower, "upper": pace["upper"]})
+    return targets
+
+
 def parse_class_plan(ride_details: dict) -> list:
     """Flatten /api/ride/{id}/details into the class's exercise plan.
 
@@ -391,35 +453,9 @@ class PelotonClient:
     def _parse_target_pace(tmc: dict, tmpd: dict, metrics_list: list, seconds_array: list) -> list:
         if not tmc or not tmpd:
             return []
-        user_level = tmc.get("workout_pace_level")
-        if not user_level:
-            return []
-
-        # Detect walking by checking if recovery zone's fast_pace is > 25 min/mi
-        # (running recovery never goes that slow, so this is a reliable heuristic)
-        recovery_fast = next(
-            (pl.get("fast_pace", 0)
-             for entry in tmc.get("pace_intensities_mapping", []) if entry.get("value") == 0
-             for pl in entry.get("pace_levels", []) if pl.get("slug") == user_level),
-            0
-        )
-        recovery_cap = 35.0 if recovery_fast > 25.0 else 20.0
-
-        # Build intensity-value → target pace
-        intensity_map: dict = {}
-        for entry in tmc.get("pace_intensities_mapping", []):
-            intensity = entry.get("value")
-            if intensity is None:
-                continue
-            for pl in entry.get("pace_levels", []):
-                if pl.get("slug") == user_level:
-                    fast = pl.get("fast_pace")
-                    slow = pl.get("slow_pace")
-                    if fast and slow:
-                        capped_slow = min(slow, recovery_cap) if intensity == 0 else slow
-                        intensity_map[intensity] = (fast + capped_slow) / 2
-                    break
-
+        # Intensity value → midpoint of the zone, decimal min/mi
+        _, zones = _pace_zone_table(tmc)
+        intensity_map = {value: (z["fast"] + z["slow"]) / 2 for value, z in zones.items()}
         if not intensity_map:
             return []
 
@@ -583,37 +619,10 @@ class PelotonClient:
                 "zones": None,
             }
 
-            # --- EXTRACT PACE ZONES FOR GRAPH BACKGROUND ---
-        pace_zones = []
-        pace_level_display = None
-        target_compliance = raw.get("target_metrics_compliance") or {}
-        user_level = target_compliance.get("workout_pace_level")
-        recovery_fast = next(
-            (pl.get("fast_pace", 0)
-             for entry in target_compliance.get("pace_intensities_mapping", []) if entry.get("value") == 0
-             for pl in entry.get("pace_levels", []) if pl.get("slug") == user_level),
-            0
-        )
-        recovery_cap = 35.0 if recovery_fast > 25.0 else 20.0
-
-        if user_level:
-            for entry in target_compliance.get("pace_intensities_mapping", []):
-                name = entry.get("display_name")
-                intensity_val = entry.get("value")
-                for pl in entry.get("pace_levels", []):
-                    if pl.get("slug") == user_level:
-                        if pace_level_display is None:
-                            pace_level_display = pl.get("display_name")
-                        fast = pl.get("fast_pace")
-                        slow = recovery_cap if intensity_val == 0 else pl.get("slow_pace")
-                        if fast and slow:
-                            pace_zones.append({
-                                "name": name,
-                                "fast_pace": fast,
-                                "slow_pace": slow
-                            })
-                        break
-        # -----------------------------------------------
+        # Pace zones for the graph background (decimal min/mi, Recovery capped)
+        pace_level_display, zone_table = _pace_zone_table(raw.get("target_metrics_compliance") or {})
+        pace_zones = [{"name": z["name"], "fast_pace": z["fast"], "slow_pace": z["slow"]}
+                      for _, z in sorted(zone_table.items())]
 
         # Extract power zone segments and time distribution (cycling)
         power_zones = []
@@ -647,6 +656,9 @@ class PelotonClient:
             "duration": raw.get("duration"),
             "target_pace": target_pace,
             "pace_zones": pace_zones,
+            # pace_zones / target_pace are decimal min/mi (rows parsed before
+            # migration 0042 had raw minutes.seconds values) — see zone_pace_minutes
+            "pace_zone_unit": "decimal_min",
             "pace_level": pace_level_display,
             "power_zones": power_zones,
             "power_zone_distribution": power_zone_distribution,

@@ -752,6 +752,23 @@ def _strength_detail(request, workout):
     })
 
 
+def _run_card_context(workout, perf):
+    """The "Run" card for a class with a Tread portion (e.g. "45 min Lower Body
+    + Run"): run_summary plus the chart data — the class's target pace steps and,
+    when Peloton recorded the run, the measured pace over the same stretch
+    (seconds into the workout → seconds/mile)."""
+    run = workout.run_summary
+    if not run:
+        return {"run": None}
+    targets = run["plan"]["segments"]
+    start, end = targets[0]["start"], targets[-1]["end"]
+    every_n = perf.get("every_n") or 5
+    pace = ((perf.get("metrics_by_slug") or {}).get("pace") or {}).get("values") or []
+    actual = [[i * every_n, round(v * 60)] for i, v in enumerate(pace)
+              if v and start <= i * every_n <= end]     # pace values are decimal min/mi; 0 = stopped
+    return {"run": run, "run_chart": json.dumps({"targets": targets, "actual": actual})}
+
+
 def _generic_detail(request, workout):
     perf = _get_perf_dict(workout, _peloton_client_or_none(request.user))
     gh_hr_zones = _google_health_hr_zones(workout)
@@ -781,6 +798,7 @@ def _generic_detail(request, workout):
         "hr_zones_direct": json.dumps(hr_zones_direct),
         "gh_hr_zones": gh_hr_zones,
         **_manual_movement_context(workout),
+        **_run_card_context(workout, perf),
     })
 
 
@@ -846,12 +864,19 @@ def class_history(request, ride_id):
         m = (pg.get("metrics_by_slug") or {}).get(slug)
         return m.get("average_value") if isinstance(m, dict) else None
 
+    # A class with a Tread portion ("+ Run") lists its run like a running class:
+    # measured distance/pace, or the estimate from the class's pace targets.
+    has_run = discipline != "running" and any(w.run_summary for w in workouts)
+
     enriched_rows = []
     for w in workouts:
         pg = w.performance_graph_json or {}
         pace_min = _pg_avg_summary(pg, "avg_pace")
         pace_sec = w.avg_pace_seconds or (round(pace_min * 60) if pace_min else None)
         dist = w.distance_miles or _pg_summary(pg, "distance")
+        run = w.run_summary if has_run else None
+        if run:
+            pace_sec, dist = run["pace_s"], run["miles"]
         calories = w.calories or _pg_summary(pg, "calories")
         hr = w.heart_rate_avg or _pg_metric_avg(pg, "heart_rate")
         enriched_rows.append({
@@ -867,6 +892,7 @@ def class_history(request, ride_id):
             "run_cadence_avg": w.run_cadence_avg,
             "vertical_oscillation_avg": w.vertical_oscillation_avg,
             "ground_contact_time_avg": w.ground_contact_time_avg,
+            "run_estimated": bool(run and run["estimated"]),
         })
 
     def _avg(vals): return sum(vals) / len(vals) if vals else None
@@ -876,9 +902,11 @@ def class_history(request, ride_id):
     has_form_data = any(r["run_cadence_avg"] for r in enriched_rows)
     has_leaderboard = any(r["leaderboard_pct"] for r in enriched_rows)
 
-    if discipline == "running":
-        paces = [r["avg_pace_seconds"] for r in enriched_rows if r["avg_pace_seconds"]]
-        dists = [r["distance_miles"] for r in enriched_rows if r["distance_miles"]]
+    if discipline == "running" or has_run:
+        # Estimates are listed but never become the best or the average
+        measured = [r for r in enriched_rows if not r["run_estimated"]]
+        paces = [r["avg_pace_seconds"] for r in measured if r["avg_pace_seconds"]]
+        dists = [r["distance_miles"] for r in measured if r["distance_miles"]]
         hrs   = [r["heart_rate_avg"] for r in enriched_rows if r["heart_rate_avg"]]
         cads  = [r["run_cadence_avg"] for r in enriched_rows if r["run_cadence_avg"]]
         vos   = [r["vertical_oscillation_avg"] for r in enriched_rows if r["vertical_oscillation_avg"]]
@@ -940,7 +968,8 @@ def class_history(request, ride_id):
         "trend_data": json.dumps(trend_data),
         "ride_id": ride_id,
         "class_title": workouts[0].title,
-        "discipline": discipline,
+        # "+ Run" classes use the running layout (pace/distance/HR), like Garmin walks
+        "discipline": "running" if has_run else discipline,
         "has_form_data": has_form_data,
         "has_leaderboard": has_leaderboard,
         "workout_ids_json": json.dumps([w.workout_id for w in workouts]),
@@ -1001,12 +1030,19 @@ def garmin_activity_history(request, discipline):
         m = (pg.get("metrics_by_slug") or {}).get(slug)
         return m.get("average_value") if isinstance(m, dict) else None
 
+    # A class with a Tread portion ("+ Run") lists its run like a running class:
+    # measured distance/pace, or the estimate from the class's pace targets.
+    has_run = discipline != "running" and any(w.run_summary for w in workouts)
+
     enriched_rows = []
     for w in workouts:
         pg = w.performance_graph_json or {}
         pace_min = _pg_avg_summary(pg, "avg_pace")
         pace_sec = w.avg_pace_seconds or (round(pace_min * 60) if pace_min else None)
         dist = w.distance_miles or _pg_summary(pg, "distance")
+        run = w.run_summary if has_run else None
+        if run:
+            pace_sec, dist = run["pace_s"], run["miles"]
         calories = w.calories or _pg_summary(pg, "calories")
         hr = w.heart_rate_avg or _pg_metric_avg(pg, "heart_rate")
         enriched_rows.append({
@@ -1022,6 +1058,7 @@ def garmin_activity_history(request, discipline):
             "run_cadence_avg": w.run_cadence_avg,
             "vertical_oscillation_avg": w.vertical_oscillation_avg,
             "ground_contact_time_avg": w.ground_contact_time_avg,
+            "run_estimated": bool(run and run["estimated"]),
         })
 
     def _avg(vals): return sum(vals) / len(vals) if vals else None
@@ -1101,10 +1138,27 @@ def garmin_activity_history(request, discipline):
 # Compare
 # ---------------------------------------------------------------------------
 
+def _run_compare(workout):
+    """Run time / distance / pace for Compare's Run rows: a "+ Run" class's Tread
+    portion (measured or estimated, see run_summary) or a plain run's own numbers."""
+    if workout.discipline == "running":
+        if not (workout.distance_miles or workout.avg_pace_seconds):
+            return None
+        return {"seconds": workout.duration_seconds,
+                "miles": round(workout.distance_miles, 2) if workout.distance_miles else None,
+                "pace_s": workout.avg_pace_seconds, "estimated": False, "level": None}
+    run = workout.run_summary
+    if not run:
+        return None
+    return {k: run[k] for k in ("seconds", "miles", "pace_s", "estimated", "level")}
+
+
 def compare(request):
     ids_param  = request.GET.get("ids", "")
     workout_ids = [i.strip() for i in ids_param.split(",") if i.strip()][:4]
-    workouts   = list(CachedWorkout.objects.for_user(request.user).filter(workout_id__in=workout_ids))
+    # Oldest on the left, newest on the right (W1 = the earliest)
+    workouts   = list(CachedWorkout.objects.for_user(request.user).filter(workout_id__in=workout_ids)
+                      .order_by("created_at"))
 
     perf_data = {}
     client = _peloton_client_or_none(request.user)
@@ -1122,7 +1176,9 @@ def compare(request):
     disciplines = {w.discipline for w in workouts}
     if disciplines == {"running"}:
         compare_mode = "run"
-    elif disciplines <= {"strength", "circuit"}:
+    elif disciplines <= {"strength", "circuit"} or ("circuit" in disciplines
+                                                  and disciplines <= {"strength", "circuit", "running"}):
+        # a "+ Run" circuit next to runs compares on calories/HR/effort + the Run rows
         compare_mode = "strength"
     elif disciplines <= {"cycling", "bike_bootcamp"}:
         compare_mode = "cycling"
@@ -1187,6 +1243,7 @@ def compare(request):
             "total_sets": len([s for s in (w.exercise_sets_json or []) if s.get("reps") is not None or s.get("duration_seconds")]),
             "unique_exercises": len({s.get("exercise") for s in (w.exercise_sets_json or []) if s.get("exercise")}),
             "manual_log": w.manual_log_summary,
+            "run": _run_compare(w),
         }
         for w in workouts
     }

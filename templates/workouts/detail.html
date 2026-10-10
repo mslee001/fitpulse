@@ -59,6 +59,52 @@
       {% endif %}
     </div>
 
+    <!-- The class's Tread run ("+ Run" classes): measured, or estimated from its pace targets -->
+    {% if run %}
+    <div class="ui-panel">
+      <div class="ui-panel-header">
+        <h2 class="ui-panel-title">Run</h2>
+        <span class="text-sm text-muted">{% if run.estimated %}Estimated from the class's pace targets{% else %}Measured on the Tread{% endif %}{% if run.level %} &middot; Level {{ run.level }}{% endif %}</span>
+      </div>
+      <div class="ui-stat-grid">
+        <div class="ui-stat">
+          <div class="ui-stat-label">Run time</div>
+          <div class="ui-stat-value">{{ run.seconds|format_duration }}</div>
+        </div>
+        {% if run.miles %}
+        <div class="ui-stat">
+          <div class="ui-stat-label">Distance{% if run.estimated %} (est.){% endif %}</div>
+          <div class="ui-stat-value">{% if run.estimated %}~{% endif %}{{ run.miles|floatformat:2 }}<span class="ui-stat-unit">mi</span></div>
+        </div>
+        <div class="ui-stat">
+          <div class="ui-stat-label">Avg pace{% if run.estimated %} (est.){% endif %}</div>
+          <div class="ui-stat-value">{% if run.estimated %}~{% endif %}{{ run.pace_s|format_pace }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% if run.level %}<canvas id="runChart" height="90" class="mt-4" role="img" aria-label="Target pace{% if not run.estimated %} and your pace{% endif %} over the run"></canvas>{% endif %}
+      <div class="mt-4 overflow-x-auto">
+        <table class="table table-sm">
+          <thead><tr><th>Target zone</th><th>Time</th><th>Target pace</th></tr></thead>
+          <tbody>
+            {% for z in run.plan.zones %}
+            <tr>
+              <td>{{ z.name }}</td>
+              <td class="font-mono tabular-nums">{{ z.seconds|format_duration }}</td>
+              <td class="font-mono tabular-nums">{{ z.pace_s|format_pace }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-xs text-muted">
+        Target pace is the middle of each zone at {% if run.level %}Level {{ run.level }}{% else %}your pace level{% endif %} on Peloton's pace chart (Recovery at its fast edge, Max at its slow edge).
+        {% if run.estimated %}Peloton didn't record this run, so distance and pace assume you held those targets.{% endif %}
+        {% if not run.level %}No pace level found yet &mdash; sync a Tread run to see target paces.{% endif %}
+      </p>
+    </div>
+    {% endif %}
+
     <!-- Performance chart -->
     <div class="ui-panel" id="perfChartCard">
       <div class="ui-panel-header">
@@ -164,7 +210,7 @@ const metricConfigs = [
   { slug: "output",     label: "Output",   get color() { return metricColor("output"); }, fmt: v => v != null ? Math.round(v) + " W" : "—" },
   { slug: "cadence",    label: "Cadence",  get color() { return metricColor("cadence"); }, fmt: v => v != null ? Math.round(v) + " rpm" : "—" },
   { slug: "speed",      label: "Speed",    get color() { return metricColor("speed"); }, fmt: v => v != null ? v.toFixed(1) + " mph" : "—" },
-  { slug: "pace",       label: "Pace",     get color() { return metricColor("pace"); }, fmt: v => { if (v == null) return "—"; const m = Math.floor(v/60); return m + ":" + String(Math.round(v%60)).padStart(2,"0") + "/mi"; } },
+  { slug: "pace",       label: "Pace",     get color() { return metricColor("pace"); }, fmt: v => { if (v == null) return "—"; const s = Math.round(v * 60); return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0") + "/mi"; } },  // decimal min/mi
   { slug: "resistance", label: "Resistance",   get color() { return metricColor("resistance"); }, fmt: v => v != null ? Math.round(v) + "%" : "—" },
   isGarminElevation
     ? { slug: "incline", label: "Elevation", get color() { return metricColor("incline"); }, fmt: v => v != null ? Math.round(v) + " ft" : "—" }
@@ -205,6 +251,58 @@ function getHrZoneColor(bpm) {
   for (const t of hrThresholds) { if (bpm >= t.min && bpm <= t.max) return t.color; }
   return ZONE_COLORS[ZONE_COLORS.length - 1];
 }
+
+{% if run and run.level %}
+// Run card: the class's target pace (steps) and, when Peloton recorded it, your pace.
+// x = seconds into the workout, y = seconds/mile (faster at the top).
+const runChart = {{ run_chart|safe }};
+const fmtClock = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+document.addEventListener("DOMContentLoaded", () => {
+  const steps = runChart.targets.flatMap(t => t.pace_s ? [{ x: t.start, y: t.pace_s }, { x: t.end, y: t.pace_s }] : []);
+  let chart = null;
+  function build() {
+    const { gridColor, tickColor, mainLineWidth } = window.chartTheme;
+    const datasets = [{
+      label: "Target", data: steps, borderColor: fpChart.warning, backgroundColor: "transparent",
+      borderWidth: mainLineWidth, pointRadius: 0, fill: false,
+    }];
+    if (runChart.actual.length) {
+      datasets.unshift({
+        label: "Your pace", data: runChart.actual.map(([x, y]) => ({ x, y })), borderColor: metricColor("pace"),
+        backgroundColor: "transparent", borderWidth: mainLineWidth, pointRadius: 0, tension: 0.3, fill: false,
+      });
+    }
+    // Axes on whole minutes: pace 1 min apart (2 when the range is wide), time every 2 min
+    const ys = datasets.flatMap(d => d.data.map(p => p.y));
+    const yLo = Math.max(0, Math.min(...ys) - 30), yHi = Math.min(Math.max(...ys) + 30, 1500);
+    const yStep = yHi - yLo > 480 ? 120 : 60;
+    const yMin = Math.floor(yLo / yStep) * yStep, yMax = Math.ceil(yHi / yStep) * yStep;
+    const xMin = Math.floor(runChart.targets[0].start / 120) * 120;
+    const xMax = Math.ceil(runChart.targets[runChart.targets.length - 1].end / 120) * 120;
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById("runChart"), {
+      type: "line",
+      data: { datasets },
+      options: {
+        responsive: true, parsing: true,
+        interaction: { mode: "nearest", axis: "x", intersect: false },
+        plugins: {
+          legend: { display: datasets.length > 1, labels: { color: tickColor, boxWidth: 12 } },
+          tooltip: { callbacks: { title: items => fmtClock(items[0].parsed.x), label: ctx => ` ${ctx.dataset.label}: ${fmtClock(ctx.parsed.y)}/mi` } },
+        },
+        scales: {
+          x: { type: "linear", min: xMin, max: xMax,
+               grid: { color: gridColor }, ticks: { color: tickColor, stepSize: 120, callback: fmtClock, font: { family: fpChart.fontMono, size: 10 } } },
+          y: { reverse: true, min: yMin, max: yMax,
+               grid: { color: gridColor }, ticks: { color: tickColor, stepSize: yStep, callback: fmtClock, font: { family: fpChart.fontMono, size: 10 } } },
+        },
+      },
+    });
+  }
+  build();
+  document.addEventListener("cadence:themechange", build);
+});
+{% endif %}
 
 document.addEventListener("DOMContentLoaded", () => {
   const { gridColor, tickColor, mainLineWidth } = window.chartTheme;

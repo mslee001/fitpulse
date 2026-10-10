@@ -219,6 +219,24 @@ function fmtPace(secPerMile) {
   return `${m}:${s.toString().padStart(2, "0")}/mi`;
 }
 
+// Run Time / Distance / Pace: a "+ Run" class's Tread portion (measured, or estimated
+// from the class's pace targets — marked, and never the best) or a plain run's numbers.
+function runRows() {
+  if (!workoutIds.some(id => workoutStats[id]?.run)) return [];
+  const run = (id, key, fmt) => {
+    const r = workoutStats[id]?.run;
+    if (!r?.[key]) return { d: "—", r: null };
+    return r.estimated && key !== "seconds"
+      ? { d: `~${fmt(r[key])} <span class="font-sans text-xs text-muted">est.</span>`, r: r[key], est: true }
+      : { d: fmt(r[key]), r: r[key] };
+  };
+  return [
+    { label: "Run Time", dir: null, vals: workoutIds.map(id => run(id, "seconds", v => `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`)) },
+    { label: "Run Distance", dir: "higher", vals: workoutIds.map(id => run(id, "miles", v => `${v.toFixed(2)} mi`)) },
+    { label: "Run Pace", dir: "lower", vals: workoutIds.map(id => run(id, "pace_s", fmtPace)) },
+  ];
+}
+
 function buildStatsTable() {
   const container = document.getElementById("statsTableContainer");
   if (!container) return;
@@ -331,6 +349,7 @@ function buildStatsTable() {
         return v ? { d: v.toFixed(1), r: v } : { d: "—", r: null };
       })},
     ];
+    rows.push(...runRows());
     if (hasExerciseSets) {
       rows.push(
         { label: "Total Sets", dir: "higher", vals: workoutIds.map(id => {
@@ -438,6 +457,7 @@ function buildStatsTable() {
         return { d: "—", r: null };
       })},
     ];
+    rows.push(...runRows());
   }
 
   const headerCells = workoutIds.map((id, i) => statsHead(i)).join("");
@@ -446,13 +466,14 @@ function buildStatsTable() {
     const raws = row.vals.map(v => v.r);
     const validRaws = raws.filter(v => v !== null && !isNaN(v));
     let bestRaw = null;
-    if (row.dir && validRaws.length >= 2) {
-      bestRaw = row.dir === "lower" ? Math.min(...validRaws) : Math.max(...validRaws);
+    const measuredRaws = row.vals.filter(v => !v.est && v.r !== null && !isNaN(v.r)).map(v => v.r);
+    if (row.dir && validRaws.length >= 2 && measuredRaws.length) {
+      bestRaw = row.dir === "lower" ? Math.min(...measuredRaws) : Math.max(...measuredRaws);
     }
     const maxRaw = validRaws.length >= 2 ? Math.max(...validRaws) : null;
     const minRaw = validRaws.length >= 2 ? Math.min(...validRaws) : null;
     const cells = row.vals.map((v, i) => {
-      const isBest = bestRaw !== null && v.r !== null && v.r === bestRaw;
+      const isBest = bestRaw !== null && !v.est && v.r !== null && v.r === bestRaw;
       const mark = isBest ? BEST_MARK(row.dir === "lower" ? "↓" : "↑") : "";
       let bar = "";
       if (maxRaw > 0 && v.r !== null && !isNaN(v.r) && v.r > 0) {

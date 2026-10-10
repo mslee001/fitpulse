@@ -633,6 +633,12 @@ class CachedWorkout(models.Model):
     # doesn't record anything. Same for everyone who takes the class — see
     # peloton_client.parse_class_plan for the shape.
     class_plan_json = models.JSONField(default=list, blank=True)
+    # The class's Tread running targets, fetched with the class plan:
+    # {"segments": [{"start", "end", "lower", "upper"}] (see
+    # peloton_client.parse_run_targets), "level": pace level at the time}.
+    # None = not fetched yet; {"segments": []} = the class has no run.
+    # Read through run_summary (run_targets.py).
+    run_targets_json = models.JSONField(null=True, blank=True)
     # Hand-entered sets/reps/weight per exercise: [{"name", "sets", "reps",
     # "weight_lb", "notes"}]. Deliberately NOT in DETAIL_FIELDS/apply_detail —
     # detail syncs overwrite `movements` wholesale, and this must survive them.
@@ -658,7 +664,7 @@ class CachedWorkout(models.Model):
         "strava_id", "leaderboard_rank", "total_leaderboard_users",
         "leaderboard_distance_rank", "total_leaderboard_distance_users",
         "achievements", "movements", "movement_summary", "movement_tracker_tier",
-        "class_plan_json",
+        "class_plan_json", "run_targets_json",
         "hr_z1_seconds", "hr_z2_seconds", "hr_z3_seconds", "hr_z4_seconds", "hr_z5_seconds",
         "detail_synced_at",
     ]
@@ -763,6 +769,13 @@ class CachedWorkout(models.Model):
         }
 
     @property
+    def run_summary(self):
+        """Run time / distance / pace of a class's Tread portion (measured, or
+        estimated from the class's pace targets) — see run_targets.run_summary."""
+        from .run_targets import run_summary
+        return run_summary(self)
+
+    @property
     def leaderboard_pct(self):
         if self.leaderboard_rank and self.total_leaderboard_users:
             return round((1 - self.leaderboard_rank / self.total_leaderboard_users) * 100, 1)
@@ -821,6 +834,11 @@ class CachedWorkout(models.Model):
         # never do, and an empty default must not clobber a stored one.
         if detail.get("class_plan"):
             self.class_plan_json = detail["class_plan"]
+        if detail.get("run_targets") is not None:
+            from .run_targets import pace_level_at
+            segments = detail["run_targets"]
+            self.run_targets_json = {"segments": segments,
+                                     "level": pace_level_at(self.user, self.created_at) if segments else None}
         # HR zone durations are more reliably populated from the detail endpoint
         hr_zones = detail.get("hr_zones") or {}
         if hr_zones and not self.user_corrected:

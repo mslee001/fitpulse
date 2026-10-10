@@ -308,6 +308,7 @@ def program_slot_swap(request, pk):
     d = plan_slot_date(slot)
     return render(request, "workouts/partials/program_plan_cell.html", {
         "cell": {"slot": slot, "entry": None, "swappable": True, "difficulty": DifficultyRanker().rank(new),
-                 "day_label": f"{tp.DAY_NAMES.get(slot.day, '')} · {d:%b} {d.day}" if d else ""},
-        "swap_note": "" if new else "No other matching class right now.",
+                 "cls": new, "day_label": f"{tp.DAY_NAMES.get(slot.day, '')} · {d:%b} {d.day}" if d else ""},
+        # Swaps often land on a same-titled class, so say it happened
+        "swap_note": "Swapped to a different class." if new else "No other matching class right now.",
     })
