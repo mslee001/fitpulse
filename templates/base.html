@@ -92,6 +92,7 @@
     <div class="mx-auto max-w-[1400px] px-4 lg:px-8 h-16 flex items-center gap-4">
       <a href="{% url 'today' %}" class="text-xl font-bold tracking-tight text-base-content hover:no-underline">FitPulse</a>
 
+      {% if user.is_authenticated %}{# signed out: just the name and the theme toggle — every page needs a login #}
       <div id="nav-pills" class="hidden lg:flex items-center gap-1 rounded-full bg-base-100 p-1 shadow-sm">
         <a href="{% url 'today' %}" data-nav-group="today" class="rounded-full px-4 py-1.5 text-sm font-medium text-muted hover:text-base-content hover:no-underline [&.active]:bg-primary [&.active]:text-primary-content [&.active]:ui-glow {% block nav_today %}{% endblock %}">Today</a>
 
@@ -131,8 +132,10 @@
         </details>
         {% endif %}
       </div>
+      {% endif %}
 
       <div class="ml-auto flex items-center gap-2">
+        {% if user.is_authenticated %}
         <details class="dropdown dropdown-end sync-menu">
           <summary class="list-none [&::-webkit-details-marker]:hidden btn btn-sm btn-primary rounded-full"><span class="inline-block [.syncing_&]:animate-spin" aria-hidden="true">↻</span> Sync</summary>
           <ul class="dropdown-content menu z-50 mt-2 w-80 max-sm:fixed max-sm:inset-x-4 max-sm:top-16 max-sm:w-auto max-h-[calc(100vh-5rem)] flex-nowrap overflow-y-auto rounded-box ui-glass p-2 shadow-lg border border-subtle">
@@ -202,6 +205,7 @@
             {% endif %}
           </ul>
         </details>
+        {% endif %}
 
         <button type="button" id="theme-toggle" class="btn btn-sm btn-ghost btn-circle" aria-label="Toggle light or dark theme">
           <svg class="size-5 [[data-theme=light]_&]:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -213,15 +217,16 @@
           {% csrf_token %}
           <button type="submit" class="btn btn-sm btn-ghost">Sign out</button>
         </form>
-        {% endif %}
 
         <button type="button" id="nav-burger" class="group btn btn-ghost btn-circle lg:hidden" aria-label="Open menu" aria-expanded="false" aria-controls="nav-mobile">
           <svg class="size-6 group-aria-expanded:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
           <svg class="size-6 hidden group-aria-expanded:block" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
+        {% endif %}
       </div>
     </div>
 
+    {% if user.is_authenticated %}
     <div id="nav-mobile" class="hidden [.nav-open_&]:block lg:hidden border-t border-subtle max-h-[calc(100vh-4rem)] overflow-y-auto">
       <ul class="menu menu-lg w-full [&_a]:min-h-11 [&_summary]:min-h-11">
         <li><a href="{% url 'today' %}" data-nav-group="today" class="[&.active]:bg-primary [&.active]:text-primary-content">Today</a></li>
@@ -253,6 +258,7 @@
       </form>
       {% endif %}
     </div>
+    {% endif %}
   </nav>
 
   <main class="mx-auto w-full max-w-[1400px] px-4 lg:px-8 py-6 lg:py-8">

@@ -16,6 +16,22 @@ ONBOARDING_ALLOWED = {
     "google_health_oauth_connect", "google_health_oauth_callback",
 }
 
+# The sign-in page's short tour of the app (icon names from partials/icon.html)
+LOGIN_TOUR = [
+    {"icon": "dumbbell", "title": "Training",
+     "text": "Every Peloton class and watch workout, side-by-side compares and training plans that pick your classes."},
+    {"icon": "heart", "title": "Recovery",
+     "text": "Sleep, HRV and resting heart rate, rolled into a daily readiness score."},
+    {"icon": "scale", "title": "Body",
+     "text": "Weigh-ins and body composition, with meds and supplements right on the timeline."},
+    {"icon": "utensils", "title": "Nutrition",
+     "text": "Log a meal by typing it or snapping a photo. The macros add up for you."},
+    {"icon": "sparkles", "title": "Insights",
+     "text": "A weekly review and the patterns you'd miss, written by AI."},
+    {"icon": "link", "title": "Hands-off syncing",
+     "text": "Peloton, Withings and Google Health come in on their own, twice a day."},
+]
+
 DATA_SOURCES = ("peloton", "withings", "google_health")
 NUTRITION_PROFILE_FIELDS = ("height_cm", "age", "biological_sex", "activity_level", "goal")
 

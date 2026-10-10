@@ -1,21 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Sign in — FitPulse{% endblock %}
 {% block content %}
-<div class="ui-panel mx-auto mt-16 w-full max-w-sm">
-  <div class="mb-1 text-2xl font-bold tracking-tight">FitPulse</div>
-  <h1 class="mb-5 text-sm text-muted">Sign in to your account</h1>
-  <form method="post" class="flex flex-col gap-3">
-    {% csrf_token %}
-    {% if form.errors %}
-      <div role="alert" class="alert alert-soft alert-error">Invalid username or password.</div>
-    {% endif %}
-    <label class="fieldset py-0" for="id_username"><span class="fieldset-legend">Username</span>
-      <input type="text" class="input w-full" name="username" id="id_username" autocomplete="username" autofocus required>
-    </label>
-    <label class="fieldset py-0" for="id_password"><span class="fieldset-legend">Password</span>
-      <input type="password" class="input w-full" name="password" id="id_password" autocomplete="current-password" required>
-    </label>
-    <button type="submit" class="btn btn-primary ui-glow mt-2 w-full">Sign in</button>
-  </form>
+{# Phones: greeting, then the form, then the tour. Desktop: greeting + tour on the left, form on the right. #}
+<div class="mx-auto grid w-full max-w-5xl grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:gap-x-14 lg:gap-y-8 lg:pt-10">
+  <header class="ui-enter flex flex-col gap-3 lg:col-start-1">
+    <div class="flex items-center gap-2 text-primary">
+      <svg class="h-6 w-16" viewBox="0 0 64 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 13h14l3-6 5 13 4-16 4 12 3-3h29"/></svg>
+      <span class="font-mono text-xs font-medium uppercase tracking-widest">FitPulse</span>
+    </div>
+    <h1 class="text-3xl font-bold tracking-tight sm:text-4xl"><span id="login-greeting">Welcome back</span>! Ready to see how you're doing?</h1>
+    <p class="max-w-prose text-base text-muted">Your workouts, recovery, body and meals in one place, so you can see how they all connect.</p>
+  </header>
+
+  <div class="ui-panel ui-enter w-full self-start lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-2">
+    <h2 class="text-xl font-semibold tracking-tight">Sign in</h2>
+    <p class="mb-5 text-sm text-muted">Pick up where you left off.</p>
+    <form method="post" class="flex flex-col gap-3">
+      {% csrf_token %}
+      {% if form.errors %}
+        <div role="alert" class="alert alert-soft alert-error">Invalid username or password.</div>
+      {% endif %}
+      <label class="fieldset py-0" for="id_username"><span class="fieldset-legend">Username</span>
+        <input type="text" class="input w-full" name="username" id="id_username" autocomplete="username" autofocus required>
+      </label>
+      <label class="fieldset py-0" for="id_password"><span class="fieldset-legend">Password</span>
+        <input type="password" class="input w-full" name="password" id="id_password" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="btn btn-primary ui-glow mt-2 w-full">Sign in</button>
+    </form>
+    <p class="mt-5 border-t border-subtle pt-4 text-sm text-muted">FitPulse is invite-only. New here? Use the link in your welcome email to choose a password.</p>
+  </div>
+
+  <section class="ui-enter lg:col-start-1" aria-label="What FitPulse does">
+    <ul class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {% for tile in tour %}
+      <li class="flex gap-3 rounded-box bg-base-100 p-4 shadow-sm">
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% include "workouts/partials/icon.html" with name=tile.icon class="size-5" %}</span>
+        <div class="min-w-0">
+          <h3 class="font-medium">{{ tile.title }}</h3>
+          <p class="text-sm text-muted">{{ tile.text }}</p>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
 </div>
+<script>
+  // Greeting from the visitor's own clock; "Welcome back" stays if this can't run
+  (function () {
+    var h = new Date().getHours();
+    var el = document.getElementById('login-greeting');
+    if (el) el.textContent = h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  })();
+</script>
 {% endblock %}
