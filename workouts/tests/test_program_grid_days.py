@@ -1,5 +1,6 @@
 """Run-grid cells show the day a session was actually done, not just its planned day."""
 from datetime import date, datetime, timezone as dt_tz
+from unittest.mock import patch
 
 from django.test import TestCase
 
@@ -22,14 +23,32 @@ class GridDayLabelTests(TestCase):
                                          source="peloton", created_at=datetime(2026, 9, 17, 17, 35, tzinfo=dt_tz.utc))
         ProgramWorkout.objects.create(run_week=rw, slot=self.pilates, workout=w)
 
-    def test_done_cell_shows_actual_weekday_and_open_cell_its_planned_day(self):
-        rows, _ = _run_grid(self.run)
-        labels = {c["slot"].pk: c["day_label"] for c in rows[0]["cells"]}
-        self.assertEqual(labels[self.pilates.pk], "Thu")
-        self.assertEqual(labels[self.yoga.pk], "Sat")
+    def labels(self, today):
+        with patch("workouts.program_views.timezone.localdate", return_value=today):
+            rows, _ = _run_grid(self.run)
+        return {c["slot"].pk: c["day_label"] for c in rows[0]["cells"]}
+
+    def test_done_cell_shows_actual_weekday(self):
+        self.assertEqual(self.labels(date(2026, 9, 17))[self.pilates.pk], "Thu")
+
+    def test_open_sessions_follow_the_last_one_done(self):
+        # Pilates done Thu 17 → Yoga projected to Fri 18 (planned Sat)
+        self.assertEqual(self.labels(date(2026, 9, 17))[self.yoga.pk], "Fri")
+
+    def test_projection_never_lands_in_the_past(self):
+        self.assertEqual(self.labels(date(2026, 9, 20))[self.yoga.pk], "Sun")
+
+    def test_each_open_session_takes_the_next_day(self):
+        extra = ProgramSlot.objects.create(week=self.pilates.week, title="Run", day=7)
+        labels = self.labels(date(2026, 9, 17))
+        self.assertEqual((labels[self.yoga.pk], labels[extra.pk]), ("Fri", "Sat"))
+
+    def test_closed_pass_keeps_planned_days(self):
+        self.run.end_date = date(2026, 9, 20)
+        self.run.save()
+        self.assertEqual(self.labels(date(2026, 9, 25))[self.yoga.pk], "Sat")
 
     def test_actual_day_uses_local_time(self):
         # 03:00 UTC Sep 21 is still Sunday evening Sep 20 in Los Angeles
         CachedWorkout.objects.filter(workout_id="p1").update(created_at=datetime(2026, 9, 21, 3, 0, tzinfo=dt_tz.utc))
-        rows, _ = _run_grid(self.run)
-        self.assertEqual({c["slot"].pk: c["day_label"] for c in rows[0]["cells"]}[self.pilates.pk], "Sun")
+        self.assertEqual(self.labels(date(2026, 9, 21))[self.pilates.pk], "Sun")

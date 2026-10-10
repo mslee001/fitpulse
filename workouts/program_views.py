@@ -53,6 +53,11 @@ def _run_grid(run):
     ranker = DifficultyRanker()
     planned = ranker.for_rides(ProgramSlot.objects.filter(week__program=run.program)
                                .exclude(peloton_ride_id="").values_list("peloton_ride_id", flat=True))
+    def local_day(e):
+        return timezone.localtime(e.workout.created_at).date()
+
+    today = timezone.localdate()
+    last_done_day = max((local_day(e) for e in entries), default=None)
     rows = []
     total_workouts = 0
     total_effort = 0.0
@@ -80,10 +85,11 @@ def _run_grid(run):
             elif slot.optional and not is_open_pass:
                 continue   # never-filled optional slot in a closed pass — hide it
             # A completed session shows the day it was actually done; one still to do
-            # shows its planned day (with the planned date in a dated plan).
+            # shows its planned day (with the planned date in a dated plan) — in an
+            # open split/collection pass that's projected forward below.
             day_label = ""
             if e:
-                d = timezone.localtime(e.workout.created_at).date()
+                d = local_day(e)
                 day_label = f"{d:%a} · {d:%b} {d.day}" if overview else f"{d:%a}"
             elif slot.day:
                 day_label = DAY_NAMES.get(slot.day, "")
@@ -100,6 +106,17 @@ def _run_grid(run):
             # Completed classes in the order actually taken; still-empty slots trail at
             # the end (they have no date to sort by) in their defined slot order.
             cells.sort(key=lambda c: (c["entry"] is None, c["entry"] and c["entry"].workout.created_at))
+            if is_open_pass:
+                # Sessions still to do follow on from the last one done in this pass (or
+                # in the run, before the pass has any): one a day from the day after it,
+                # never before today, in slot order.
+                done = [local_day(e) for e in entries if e.run_week_id == rw.id]
+                anchor = max(done) if done else last_done_day
+                day = max(anchor + timedelta(days=1), today) if anchor else today
+                for c in cells:
+                    if not c["entry"]:
+                        c["day_label"] = f"{day:%a}"
+                        day += timedelta(days=1)
         # entries in this run-week with no slot (matched week, not a specific class)
         loose = sorted(
             (e for e in entries if e.run_week_id == rw.id and e.slot_id is None),
