@@ -98,6 +98,7 @@ def _run_grid(run):
                     day_label = f"{day_label} · {d:%b} {d.day}"
             cells.append({"slot": slot, "entry": e, "recoveries": recoveries, "day_label": day_label,
                           "swappable": run.end_date is None and slot_swappable(slot, e),
+                          "cls": None if e else planned.get(slot.peloton_ride_id),
                           "difficulty": None if e else ranker.rank(planned.get(slot.peloton_ride_id))})
         if overview:
             # A dated plan reads best in calendar order.
