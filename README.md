@@ -162,14 +162,26 @@ Refresh tokens expire after 7 days while the project is in Testing status, so **
 
 ## Demo Mode
 
-A seed command generates a populated demo account with 90 days of realistic fake data — no Peloton/Garmin/Withings account needed.
+**Public read-only demo.** The sign-in page has an **Explore the demo** button that signs visitors in as the seeded `demo` user — sample data, no account needed. Nothing a visitor does is saved: the demo user can only view pages (every change is refused with a "read-only demo" note, and every page view runs in a database transaction that's rolled back), syncs and account connections are off, and no AI runs live. Every AI card shows text generated once, ahead of time. `sync_daily` re-seeds the demo twice a day so its dates stay current. Turn the button off with `DEMO_ENABLED=0`.
+
+A seed command generates the populated demo account, with ~13 weeks of realistic fake data — no Peloton/Garmin/Withings account needed.
 
 **What's included:**
-- 44 workouts across cycling, running, strength, and yoga with realistic metrics, HR zones, and running form data
-- 91 days of wellness data (weight trending down, HRV, sleep, body battery, stress, training readiness)
-- 2 interventions: Semaglutide with a 3-step dose escalation history, and Creatine
-- 30 days of food log entries with macro breakdowns, 5 saved meals, hunger checks, and symptom logs
-- Pre-loaded AI insights, body commentary, nutrition insights, pattern insights, and a weekly review
+- Varied workouts across cycling, running, strength, and yoga with realistic metrics, HR zones, and running form data
+- A "Strength & Ride Split" program with five weeks of passes, and an AI-built 5K plan alongside it (three weeks done, rated) with its run grid
+- 13 weeks of wellness data (weight trending down, HRV, sleep, body battery, stress, training readiness)
+- 2 interventions: Semaglutide with a 3-step dose escalation history (plus a saved Trends analysis of the last step), and Creatine
+- 4 weeks of food log entries with macro breakdowns, 5 saved meals, hunger checks, and symptom logs
+- Saved AI text for analytics, pattern and nutrition insights, body commentary, three weekly reviews, the past week's day analyses, the next-workout card (one per weekday), the Trends interpretation and the training plan
+
+**Saved AI examples.** The AI text lives in `workouts/demo/ai_examples.json`, made once against the demo data with the app's real prompts:
+
+```bash
+venv/bin/python3 manage.py seed_demo --no-input      # the demo user (production DB: the plan needs the class catalog)
+venv/bin/python3 manage.py generate_demo_ai          # ~$0.50 of API usage; --skip-plan keeps the saved plan
+```
+
+Commit the JSON file afterwards. The demo's timeline is anchored to the current week's Monday, so weekday references in the saved text stay true as the weeks move.
 
 **Create a separate demo database and seed it:**
 

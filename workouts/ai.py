@@ -61,6 +61,8 @@ AI_UNAVAILABLE = (llm.AIBudgetExceeded, llm.AIFeatureDenied)
 
 
 def ai_unavailable_reason(exc):
+    if isinstance(exc, llm.AIDemoOff):
+        return "AI is turned off in the demo. The AI text you see elsewhere was generated ahead of time."
     if isinstance(exc, llm.AIBudgetExceeded):
         return "You've reached this month's AI limit. It resets on the 1st."
     return "This AI feature isn't turned on for your account."

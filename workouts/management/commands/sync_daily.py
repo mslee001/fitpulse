@@ -77,8 +77,28 @@ class Command(BaseCommand):
                 self._out(user, self.style.ERROR(f"✗ unexpected failure: {e}"))
                 logger.exception("sync_daily failed for user %s", user.pk)
 
+        if not opts.get("user"):
+            self._reseed_demo()
+
         if any_failed:
             raise SystemExit(1)
+
+    def _reseed_demo(self):
+        """Keep the read-only demo current: seed_demo dates its data back from the day it runs."""
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from workouts.demo import demo_user
+        user = demo_user()
+        if user is None:
+            return
+        try:
+            call_command("seed_demo", user=user.username, no_input=True, stdout=StringIO())
+            self._out(user, self.style.SUCCESS("Demo re-seeded ✓"))
+        except Exception as e:   # never fails the household's sync
+            self._out(user, self.style.ERROR(f"✗ demo re-seed failed: {e}"))
+            logger.exception("Demo re-seed failed")
 
     def _out(self, user, msg):
         self.stdout.write(f"[sync_daily] [{user.username}] {msg}")

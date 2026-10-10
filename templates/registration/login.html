@@ -28,6 +28,14 @@
       </label>
       <button type="submit" class="btn btn-primary ui-glow mt-2 w-full">Sign in</button>
     </form>
+    {% if demo_available %}
+    <div class="my-4 flex items-center gap-3 text-xs text-muted" aria-hidden="true"><span class="h-px flex-1 bg-base-300"></span>or<span class="h-px flex-1 bg-base-300"></span></div>
+    <form method="post" action="{% url 'demo_login' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline w-full">Explore the demo</button>
+    </form>
+    <p class="mt-2 text-center text-xs text-muted">Sample data, read-only. No account needed.</p>
+    {% endif %}
     <p class="mt-5 border-t border-subtle pt-4 text-sm text-muted">FitPulse is invite-only. New here? Use the link in your welcome email to choose a password.</p>
   </div>
 

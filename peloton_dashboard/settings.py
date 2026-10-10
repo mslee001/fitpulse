@@ -31,8 +31,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",   # before the access checks: the demo's refusals add a message
     "workouts.middleware.LoginRequiredMiddleware",
-    "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
 ]
@@ -109,6 +109,11 @@ GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD", "")
 # Temporary: store the first few real Google Health webhook payloads (as
 # WebhookError rows) to learn whether a notification identifies its user.
 GOOGLE_HEALTH_CAPTURE_PAYLOADS = os.environ.get("GOOGLE_HEALTH_CAPTURE_PAYLOADS", "1") == "1"
+
+# Read-only demo (workouts/demo.py): "Explore the demo" on the sign-in page signs
+# visitors in as this seeded, non-superuser account. DEMO_ENABLED=0 hides it.
+DEMO_ENABLED = os.environ.get("DEMO_ENABLED", "1") == "1"
+DEMO_USERNAME = os.environ.get("DEMO_USERNAME", "demo")
 
 # Email — welcome emails for new household members. Sent from a Gmail account
 # over SMTP with a Google app password; without credentials, emails print to

@@ -1,0 +1,805 @@
+{
+ "body_commentary": "## Body Composition\n\nOver the past week, weight dropped **0.5 lb** while fat mass fell **1.3 lb** and lean mass rose **0.8 lb** — a composition shift consistent with a caloric deficit. Over 30 days, weight is down **1.4 lb** with fat mass down **1.8 lb** and lean mass essentially flat at **+0.4 lb**, indicating the deficit has been sustained but modest in total magnitude.\n\n## Recovery\n\nResting heart rate averaged **56.4 bpm** and HRV held at **48.0 ms** over the past week. Sleep score came in at **70.0**, and body battery high reached **92.5** — all within typical ranges for your recent pattern.\n\n## To Watch\n\nWeekly calorie intake averaged **1,420**, sitting **230 below target** at 1,650, which aligns with the observed fat loss over both the 7- and 30-day windows. The weekly protein intake of **133 g** falls just short of the **140 g target**, a gap worth closing to better support the lean mass stabilization; the **+0.8 lb** lean gain last week and near-flat 30-day lean trend suggest adequate but not surplus amino acid availability, and bringing protein to target may help preserve or incrementally build lean tissue as the deficit continues.",
+ "day_analysis": {
+  "-1": "HEADLINE: HRV dropped to 53 ms despite high body battery drain of 72 points, the largest single-day drain of the week alongside a run that hit 168 bpm average HR at a 13:49/mi pace.\n\n• Body battery drained from 89 to 17 (a 72-point drop), the steepest depletion in the last 7 days, while the 20-minute run logged an average HR of 168 bpm and effort score of 42.0 — high intensity relative to the easy pace.\n• Readiness sits at 84 today despite HRV of 53 ms, continuing a pattern of HRV staying in the 41-57 range for all 7 of the last 7 days (41, 50, 57, 47, 41, 44, 46, now 53) without a clear upward or downward trend.\n• Protein intake of 146g exceeded the 140g target and calories landed at 1645 against a 1650 target, with fiber at 23.8g just under the 25g goal — a tightly-managed nutrition day during week 5 of the 1mg semaglutide dose.",
+  "-2": "HEADLINE: Readiness dropped to 77 after yesterday's 56 low, but today's yoga session was light relative to the 61-point body battery drain already logged.\n\n• Readiness has oscillated rather than trended over the past week — 92, 67, 69, 82, 68, 79, 56, 77 — with no stretch of 3+ consecutive days moving the same direction, making today's rebound to 77 a one-day change off Friday's low.\n• Today's only logged activity was 20 min of yoga at avg HR 98 bpm, a lighter session than the strength and running work logged on 5 of the prior 7 days, despite body battery draining from 88 to 27 (a 61-point drop) — a decline not explained by this session's intensity.\n• Protein intake (167g) exceeded the 140g target by 27g for the second straight notable day of high protein logging, while fiber (23.5g) came in just under the 25g target and calories (1676) landed close to the 1650 target.",
+  "-3": "HEADLINE: Lower Body strength was repeated today at 144 bpm avg HR despite readiness dropping to 56/100, the lowest of the last 7 days.\n\n• Readiness has been mostly moderate-to-high over the past week (72, 92, 67, 69, 82, 68, 79) before falling to 56 today, with HRV at 44ms sitting below the 7-day average (46, 51, 41, 50, 57, 47, 41) and body battery draining 57 points (89→32).\n• Today's 30 min Lower Body session carries an effort score of 28.5 at 144 bpm avg HR, the same workout type as last Saturday's lower body session, now landing on a day with the week's lowest readiness.\n• Protein intake is 170g against a 140g target (21% over) while fiber sits at 17.5g of a 25g target, consistent with a pattern of protein-forward meals seen across the logged days (eggs, grilled chicken, baked chicken thighs, protein shake).",
+  "-4": "HEADLINE: Today's 20-minute run repeats a title and distance from last Thursday's \"20 min Beginner Run,\" but at a far higher cost — avg HR 160 bpm and effort 34.0 against today's Unproductive training status.\n\n• Body battery dropped from 96 to 18 (a 78-point drain) on a day with only a 20-minute run logged, a sharper depletion than the moderate efforts seen earlier in the week like Wednesday's 45-minute cycling session.\n• Readiness has oscillated rather than trended over the past week — 76, 72, 92, 67, 69, 82, 68 — with today's 79 landing mid-range after Wednesday's 68, not part of a sustained climb or decline.\n• Protein intake (148g) exceeded the 140g target and calories (1659) landed close to the 1650 target, alongside creatine now at day 53/week 8 of daily use, though no single day's intake can confirm a supplement effect.",
+  "-5": "HEADLINE: A high-effort cycling session (72.0 effort, 483W avg, 160 bpm) followed a day-over-day readiness jump from 69 to 82, despite today's own readiness sitting at a moderate 68.\n\n• Readiness has bounced rather than trended over the past week — 59, 76, 72, 92, 67, 69, 82, 68 — with today's 68 landing mid-range after yesterday's 82 peak, so this session came on the back of a one-day drop, not sustained high readiness.\n• HRV at 47 ms today matches last Wednesday's 47 ms and sits within the 41-57 band seen all week, indicating no clear directional shift despite the readiness swings.\n• Body battery drained 47 points (81 → 34) during a 45-minute ride with average HR 160 bpm, a larger single-session drain than the moderate 68/100 readiness score might suggest was being targeted.",
+  "-7": "HEADLINE: Today's strength session ran at 144 bpm avg HR on moderate 69/100 readiness, following a high-readiness weekend (92) that dropped to 67 yesterday.\n\n• Readiness has swung widely over the last three days — 92 (Sat) → 67 (Sun) → 69 (today) — with today's score landing in the moderate range after Sunday's 30-min run, rather than continuing a decline.\n• Body battery drained 46 points (70 → 24) during a day that included only the one strength session, a steeper drop than the HR/effort data alone (144 bpm avg, effort 28.5) would suggest.\n• Protein came in at 137g against a 140g target and calories at 1539 vs. 1650, a modest deficit on a day that included a 30-min strength workout; creatine (day 50, week 8) continues at maintenance dosing with no new effects expected.",
+  "1": "HEADLINE: A double-session day (running + strength) followed last night's lowest sleep score of the week (38) but came on a readiness rebound to 84.\n\n• Readiness jumped from 71 to 84 day-over-day despite sleep score dropping to 38 (5h 11m) the night before — body battery also shows a full drain from 109 to 34 (-75) after today's combined 50 minutes of training.\n• Effort scores were high for both sessions (19.0 running, 27.8 strength) with average HR of 145 and 143 bpm respectively, a heavier combined load than any single session in the past week.\n• Calories came in at 1471 against a 1650 target (179 short) while protein hit 144g against a 140g target — fiber was 20.7g versus 25g, with the deficit occurring on a day with two training sessions.",
+  "2": "HEADLINE: A 45-minute climb ride at 152 bpm avg and 391W output was logged on the lowest-readiness day (66) and poorest-HRV night (46 ms) of the past week.\n\n• HRV sat at 46 ms, below every value from the prior six days (47, 41, 44, 46, 53, 43, 44) except Thursday's 41 — marking a second day-over-day dip after Tuesday's 44, not a sustained decline.\n• Resting HR has climbed across the last four logged days — 52, 57, 60, 61 bpm (Sun–Wed) — while sleep scores over the same span were 83, 38, 77, 71, a mixed pattern rather than a clean trend.\n• Effort score of 57.6 at 391W followed yesterday's combined running + full-body strength session, meaning today's cycling output came on the back of two consecutive training days before this one.",
+  "3": "HEADLINE: A 20-minute \"recovery\" run produced a 163 bpm average heart rate on the lowest-readiness day of the past week.\n\n• Readiness dropped to 55 today against a prior-7-day range of 56-84, and body battery drained 51 points (81→30) alongside a 67 sleep score — the combination coincides with today's run showing an elevated average HR of 163 bpm for a run labeled \"Recovery.\"\n• This is the fourth straight day of training following Sunday's run, Tuesday's run+strength, and Wednesday's 45-min cycling ride, with no rest day since Monday — training status reads \"Unproductive\" and acute load sits at 414.\n• Calories (1765) and protein (150g) both exceeded targets (1650/140g), continuing a pattern of protein-target-or-above intake that's been consistent with the semaglutide course now in week 5.",
+  "4": "HEADLINE: Lower body strength was performed at HR 142 / effort 27 despite readiness bottoming out at 56, the second-lowest reading in the last 7 days.\n\n• Readiness has been moderate-to-low across the week — 56, 77, 84, 71, 84, 55, 56 — with today tying Thursday's 55 as the lowest point and HRV at 57ms still sitting in the \"Poor\" range after readings of 44, 46, 53, 43, 44, 46, 50 over the prior week.\n• Body battery dropped from 80 to 31 (a 49-point drain), a larger single-day swing than typical given this week's strength and running sessions.\n• Calories came in at 1291 against a 1650 target (359 short) and protein at 117g vs 140g, with roughly half the day's logged meals eaten before the 30-minute strength session.",
+  "5": "HEADLINE: Readiness rebounded to 80 today after two consecutive mid-50s days (55, 56, 80), alongside a light 15-minute yoga session following five straight days of running, cycling, or strength work.\n\n• Readiness climbed from 55 (Thu) to 56 (Fri) to 80 today, breaking a two-day stretch of suppressed scores and aligning with today's low-intensity choice (15 min Restorative Yoga, avg HR 87 bpm) after Mon–Fri included four workouts in five days.\n• Body battery drained 42 points (70 → 28) despite the easy session and 8h16m of sleep (sleep score 82), a larger swing than the light activity alone would suggest.\n• Protein intake hit 149g against a 140g target while calories landed at 1583 vs. 1650 — a 67-calorie deficit alongside intake that's consistent with continued appetite suppression during week 5 of 1mg semaglutide."
+ },
+ "generated_at": "2026-10-10T05:14:22+00:00",
+ "insights": "## Consistency\n\nTraining days per week moved from **3.3 over the last 13 weeks to 4.2 over the last 4 weeks**, and this week itself shows **5 training days against 6 the prior week** — a small pullback but still part of a pattern that's trending up over the last month. The last 90 days show **43 active training days**, averaging a session every **2 days**. This week's discipline mix (3 running, 1 cycling, 1 strength, 1 yoga) also broadened out from last week's strength-heavy split (3 strength, 2 running, 1 cycling, 1 yoga), suggesting the week-to-week mix is rotating rather than locking into a single pattern.\n\n## Running\n\nRunning has picked up recently — **9 sessions in the last 30 days** versus 15 for the full last 90, meaning more than half of the last quarter's running volume landed in the most recent month. That said, average pace slowed from **10:21/mi in the first half of the year to 13:36/mi in the second half**. Without incline or distance data for context, this is hard to read as a fitness change on its own — it may reflect a shift toward easier-effort runs, which lines up with the average heart rate of **155.8 bpm** across the last 90 days of running, a moderate-to-high aerobic zone for a 20-25 minute effort.\n\nOn form, cadence held essentially flat at **168.1 spm in the first half versus 166.9 spm in the second half** — both comfortably above the 165 spm efficiency benchmark, so turnover rate isn't drifting. Vertical oscillation and ground contact time both increased slightly (oscillation **7.9 → 8.3 cm**, GCT **253 → 261.7 ms**), moving further from the 7.5 cm and 260 ms benchmarks. Since cadence stayed steady while oscillation and GCT rose, the extra time in contact with the ground isn't coming from slower steps — it reads more like reduced spring off the ground in the second half. One cue worth trying: focus on quick, light steps off the ground on a few runs, almost like the ground is warm — that directly targets GCT without needing to change cadence, which is already in a good place.\n\n## Strength\n\nStrength training shows **16 sessions over the last year**, with Hip Thrust (11 sessions), Shoulder Press (11), and Lunge (10) as the most consistent lifters. Average loads across the board — mid-20s to mid-30s lbs — are close together across different movement patterns (squat, deadlift, press, curl), which is typical of a Peloton movement-tracker dataset rather than a free-weight progressive-overload program. The last 30 days show **6 strength sessions**, roughly on par with the 90-day rate of ~1.3/week, so this isn't a discipline that's been neglected — it's held steady alongside the running increase.\n\n## Recovery and Training Load\n\nTraining load jumped from **371.5 (prior 7 days) to 413.5 (last 7 days)**, a real increase tied directly to the uptick in training days. Recovery signals over the same window are mixed rather than uniformly moving one direction: **HRV improved slightly (46.7 → 48.0 ms)** and **body battery at wake rose (81.5 → 87.1)**, but **sleep score dropped (75.0 → 72.4)** and **readiness score declined (76.4 → 71.9)**. Garmin's own status reads **\"Recovery,\"** which together with the readiness dip suggests the recent volume increase is registering as fresh stress rather than something fully absorbed yet — worth watching over the next week or two rather than pushing training days higher immediately.\n\n## Nutrition\n\nProtein intake is close to target: **132.6g average against a 140g goal**, with **19 of 28 logged days hitting the protein target** — a reasonable fueling base for a week that includes 6 strength sessions. Calories are landing under target more often than not (**1483 avg vs. 1650 target, only 20/28 days hit**), which combined with rising training load and declining readiness is a combination worth noting — under-fueling relative to target during a volume increase is one of the more common contributors to the kind of readiness dip showing up this week. Fiber is the furthest from target (**21.6g vs. 25g, 15/28 days hit**) but logging consistency itself — **28 of 30 days tracked** — is a dependable base to build any of these adjustments on top of.",
+ "intervention_analysis": {
+  "ai_model": "claude-sonnet-5",
+  "text": "## Headline\nThe step up to 1mg semaglutide over the past four weeks coincided with meaningful body composition improvements — fat mass down 5.1% (46.92→44.52 lb) and weight down 0.8% — alongside better sleep and training readiness, but this came with a slight uptick in physiological stress markers (resting HR, HRV, Body Battery High all moved in the \"worsened\" direction), suggesting the body is still adapting to the dose increase.\n\n## What the data suggests\nThe body composition changes are the standout finding and align well with semaglutide's known mechanism: fat mass dropped 5.1% while muscle mass actually increased 0.9% (107.04→107.95 lb), a favorable pattern likely helped by concurrent creatine supplementation supporting lean mass retention during a caloric deficit. Average daily intake of 1514 kcal with 135g protein (about 0.8g/lb bodyweight) is consistent with appetite suppression plus a protein-forward eating pattern conducive to preserving muscle while losing fat. Training readiness rose 7.2% and sleep score improved 3.8%, with deep sleep up 4.2% — all positive signs that the body is recovering reasonably well despite the deficit.\n\nThe countervailing signal is a cluster of autonomic/recovery metrics moving slightly negative: resting HR up 1.5%, HRV down 2.0% (nightly) and 0.4% (weekly), Body Battery High down 3.9%, and stress average up 1.3%. These are small magnitude shifts, but their consistency suggests mild additional physiological load, plausibly from the dose increase itself (GI/appetite effects, lower intake, or the metabolic adjustment period common in the first weeks after a semaglutide titration step) rather than random noise. This pattern — good sleep architecture and readiness scores but slightly elevated resting HR/stress and depressed HRV — is a classic \"body adapting to a new stressor\" signature rather than a red flag, but it's worth monitoring rather than dismissing.\n\nNutrition comparisons before/after cannot be treated as a true intervention effect here, since the before window had 0% logging coverage. The after-window macros are informative as a standalone snapshot (1514 kcal, 135g protein, 141g carbs, 44g fat, 22g fiber) but say nothing about what changed, since there's no baseline to compare against.\n\n## Caveats and confounds\nThis is a single-subject, non-blinded, short observation window (28 days each side) with multiple concurrent interventions — creatine monohydrate started on the same day as the \"before\" window began, and semaglutide itself was already active at 0.5mg before the dose increase, meaning the \"after\" period reflects a dose escalation on top of ~8 weeks of existing drug exposure rather than a true drug-naive comparison. The 0% nutrition logging in the before window makes any food-related before/after claims unreliable; the after-window figures are only useful as absolute reference points. Natural week-to-week variation in HRV and resting HR (typically 3-5%) means the small worsening in those metrics may fall within normal noise rather than reflecting a genuine physiological cost of the dose increase. Seasonal/behavioral factors (e.g., increased step count, 9002→9450) could also be influencing recovery metrics independently of the medication.\n\n## What to watch next\n- Track whether resting HR and HRV continue trending adversely over the next 2-4 weeks — if they stabilize or reverse, this likely was a transient adaptation to the dose increase rather than a lasting cost.\n- Watch protein intake relative to the continuing weight loss trajectory (currently 135g/day) to ensure muscle mass gains hold as fat loss continues at 1mg.\n- Monitor Body Battery High and stress average specifically, since they're the most consistent \"worsened\" signals — if they continue declining alongside readiness/sleep still improving, that divergence is worth flagging to a clinician monitoring the titration."
+ },
+ "next_workout": {
+  "0": "INTENSITY: GO MODERATE\nACTIVITY: Cycling (Peloton) — 30-40 min steady endurance ride, moderate effort (HR zone similar to earlier this week's climb ride, aim RPE 6-7)\n\nREASON: Sleep score is low at 38 despite decent readiness (71) and balanced HRV, so this isn't a day to push a hard run or add fresh pounding to legs that ran yesterday. Legs got lower-body strength work three days ago and a run yesterday, so cycling lets you build aerobic fitness toward the 5K goal while being lower-impact than running on a night of poor sleep recovery. Save the next running session for a day with better sleep and consider upper body/core work for your second strength day this week instead of legs.",
+  "1": "INTENSITY: GO MODERATE\nACTIVITY: Running — 25-30 min easy-to-moderate effort (intervals or continuous jog), aiming HR 150-165, building toward 5K distance\nREASON: Readiness is solid at 84 with balanced HRV, and your last run was Sunday's Walk + Run, giving legs over 4 days to recover from running-specific impact. Friday's Lower Body strength session was light (effort 28) and is now 6 days behind you, so glutes/hamstrings/quads aren't a limiter today. This fits your 5K-focused running block better than cycling, since readiness and recovery windows both support running-specific adaptation right now.",
+  "2": "INTENSITY: GO EASY\nACTIVITY: Walking, 25-30 min at a conversational, easy pace — no intervals or hills.\nREASON: HRV is poor (46ms) and readiness sits at 66, continuing the dip from a strong week of training including Tuesday's strength and intervals sessions and Sunday's hard Walk + Run (effort 42). Your legs are still absorbing work from Tuesday's Full Body Strength and Tuesday's Intervals Run, so another run or lift would stack fatigue on the same systems. An easy walk keeps you moving toward your 5K base-building goal without taxing HRV or muscle recovery further.",
+  "3": "INTENSITY: GO EASY\nACTIVITY: Easy walk or light walk/run mix, 20-30 min, conversational pace only — no intervals today.\nREASON: Readiness sits at 55 with a 67 sleep score and an \"Unproductive\" training status, which signals your body hasn't absorbed recent work — this isn't a day to push running or lifting. Wednesday's Climb Ride and Tuesday's Intervals Run plus Full Body Strength have kept HR and effort elevated for three straight sessions, so legs and cardiovascular system both need a lighter stimulus rather than more intensity. A walk keeps you moving toward your 5K goal aerobically without adding load on top of this week's accumulated fatigue.",
+  "4": "INTENSITY: GO EASY\nACTIVITY: 20-30 min easy walk, conversational pace, no intervals or hills\nREASON: HRV is still flagged Poor and readiness sits at 56, with training status marked Recovery after yesterday's Recovery Run (yesterday) on top of the day before's harder Climb Ride (two days ago, effort 58) — your legs and cardiovascular system haven't fully rebounded. A walk keeps you moving toward your 5K goal without adding load while HRV normalizes; running or cycling today would compound fatigue, and strength is better saved until readiness climbs back toward the 70s like it was earlier this week.",
+  "5": "INTENSITY: GO MODERATE\nACTIVITY: Cycling (Climb Ride style), 30-40 min at a moderate, controlled effort — keep it conversational, avoid max climbs today.\nREASON: You just hit Lower Body strength yesterday (Friday) and Recovery Run the day before, so legs have had repeated loading this week and running again would stack impact fatigue on tired quads/glutes. Readiness is solidly in the \"Ready\" zone (80) with balanced HRV, so you can still get a real cardio stimulus — cycling lets you build aerobic fitness without adding pounding to legs that need another day before a quality run session.",
+  "6": "INTENSITY: GO EASY\nACTIVITY: 20-30 min easy walk or light mobility/core work, keeping heart rate well below recent run/ride zones.\nREASON: HRV is unbalanced at 41ms and readiness sits at just 65, while today's own Lower Body strength session (yesterday) adds fresh quad/glute/hamstring load on top of Thursday's Recovery Run and Wednesday's Climb Ride — so legs need a true low-impact day. Running or cycling would stack more fatigue on an already-loaded lower body and suppressed HRV, so a walk plus mobility work lets you recover while still moving, setting up tomorrow's planned Restorative Yoga nicely."
+ },
+ "nutrition_insights": {
+  "range": 30,
+  "text": "## What's working\n\nCalories hit target on **28 of 28 logged days**, with a 30-day average of **1,483 kcal** against a 1,650 target. Weight moved from **168.5lb to 167.6lb (-0.9lb)** over the same window, consistent with the calorie pattern. Protein logging also shows a repeatable base: cottage cheese, oatmeal, protein powder, banana, and salmon each logged **13-16 times** in 30 days, with salmon fillet averaging **40g protein** per entry — a reliable anchor for hitting the 140g target.\n\n## Where the friction is\n\nProtein target was hit **19 of 28 days** (68%), and the weekday/weekend split shows why: weekday protein averages **127g** vs **146g** on weekends, a 19g gap. Fiber tracks a similar pattern — **21g weekdays vs 24g weekends**, both under the 25g target, with the 30-day average landing at **22g** and hitting target only **15 of 28 days**. The weekday dip in both metrics suggests whatever's different about weekday logging (fewer meals, smaller portions, or just less variety) is the harder window to manage.\n\n## Specific suggestions\n\nSince protein powder is already logged **15 times** at 25g each and cottage cheese **16 times** at 12g each, adding one more serving of either on weekdays specifically would likely close most of the 19g weekday protein gap without introducing a new food. For fiber, the gap to target is small (**22g avg vs 25g target** — just 3g short), so something like adding the banana you're already eating 15x/month to a weekday slot where it's currently missing could close it without meal-prep overhead. No need to overhaul weekend eating — it's already closer to target on both metrics.\n\n## Watch list\n\nThe 1mg semaglutide dose started **33 days ago (week 5)** — worth watching whether calorie intake drifts lower from the current 1,483 average, since appetite reduction is an expected effect at higher doses for some people. With a 5K goal added to two strength days, keep an eye on whether 1,483 kcal and 133g protein stay sufficient as running volume increases."
+ },
+ "pattern_insights": "## This week's recovery picture looks like overreaching, not illness\n**What the data shows:** Earlier this week shows sleep score cratering to 65 (down from 79 the prior week — the best of the whole 60 days) while body battery peak simultaneously spiked to 95 (the highest in the dataset) and readiness dropped to 66. This is the same combination seen two weeks ago (sleep 73, body battery 89, readiness 66) — both coincide with workout-volume spikes the week before (7 workouts three weeks ago, 6 workouts two weeks ago) right before this week's dip.\n**What it might mean:** High body battery peak alongside low sleep score is unusual — it suggests body battery is charging well during the day but something is fragmenting sleep (common as running volume ramps for a new runner: DOMS, evening HR elevation, or novel training stress). This looks like accumulated load from the two heaviest training weeks of the entire log, landing as fatigue a few days later.\n**What to watch:** Check bedtime HR/respiration on this week specifically — if it's elevated versus baseline, this is training-load-driven sleep disruption, not illness or dose-related, and argues for an easier week rather than pushing volume further.\n\n## Protein threshold around 140g tracks with the muscle-mass inflection\n**What the data shows:** Through mid-September, muscle mass hovers 106–108 lb with protein frequently in the 90–125g range (e.g., four weeks ago at 125g, three weeks ago at just 89g). From late last month onward, protein consistently clears 140g (20 days ago: 174g, 19 days ago: 159g, a week ago: 170g, six days ago: 167g) and muscle mass trend shifts up to a new band of 107.5–109.3 lb, with the single highest reading (109.3 lb) two weeks ago following a run of 137–147g days.\n**What it might mean:** Creatine was already onboard since two months ago with no muscle-mass response until protein intake also rose — suggesting protein was the limiting factor, not the creatine itself. The two together may be doing more than either alone, especially with semaglutide suppressing overall intake.\n**What to watch:** Hold protein at 140g+ on strength days specifically and see if muscle-mass readings on the following 1–2 days are disproportionately higher than on days following sub-120g intake.\n\n## Weight loss is decelerating right as the dose increased, not accelerating\n**What the data shows:** From two months ago to four weeks ago (0.5mg, 28 days), weight fell 170.8→169.0 lb, about 1.8 lb in 4 weeks. From four weeks ago to today (1mg, 33 days), weight fell 169.6→167.6, roughly 2.0 lb over a longer span — a similar or slightly slower rate despite the higher dose, even as workouts roughly doubled (3-4/week to 6-7/week at the peak).\n**What it might mean:** Body recomposition (fat 28.0%→25.5%, muscle 107.0→108.6 lb) is happening instead of pure weight loss — scale weight is masking real progress. This is easy to misread as the dose \"not working.\"\n**What to watch:** Track body-fat% trend and waist/photos rather than scale weight alone when evaluating the 1mg dose's effectiveness.\n\n## Hunger is creeping up, not down, as dose duration extends\n**What the data shows:** Morning hunger rose from 4.2/10 (three weeks ago) to 5.0/10 (two weeks ago), the highest value logged, before dipping back to 4.0 (this week) — but that latest dip coincides with today's data showing only 301 kcal logged (a near-fast day), which would artificially suppress next-morning hunger readings or reflect a GI event rather than genuine appetite control.\n**What it might mean:** The two-weeks-ago hunger spike sits one week into increased training volume (7 workouts the prior week) — exercise-driven appetite may be overriding semaglutide's suppression, a classic pattern as activity increases on GLP-1s. Today's near-zero intake day is an outlier worth flagging rather than averaging in.\n**What to watch:** Compare morning hunger specifically on high-volume training weeks vs. rest weeks going forward — if hunger consistently tracks workout count rather than days-on-dose, it's activity-driven, not tolerance-driven.\n\n## Workout volume doubled right when recovery metrics were at their best — then recovery paid for it\n**What the data shows:** Readiness peaked at 83 four weeks ago and stayed strong (76, 75) through late last month, which preceded the jump to 7 workouts (three weeks ago) and 6 workouts (two weeks ago) — the two highest-volume weeks in the data. The very next week (this week), sleep score and readiness both dropped to their lowest or near-lowest points (65 and 66).\n**What it might mean:** Good readiness scores likely gave implicit \"green light\" to push volume, but the ramp (3-4 workouts/week sustained for a month, then nearly doubled) outpaced recovery capacity by about a week's lag — classic new-runner overreach pattern layered onto existing cycling/lifting load.\n**What to watch:** When readiness exceeds ~80, cap volume increases to +1-2 sessions rather than doubling, and treat the week-after as a deload check.\n\n## Highest-confidence pattern\nThe lagged relationship between the two highest-volume training weeks (three weeks ago, two weeks ago) and the subsequent recovery collapse (sleep score 65, readiness 66 this week) is the strongest and most actionable signal in the dataset.\n\n## Most worth testing\nFor the next two weeks, cap total workouts at 5/week and see whether sleep score and readiness in the following week stay above 75 — this would confirm volume (not dose or diet) is driving the recovery dips.",
+ "training_plan": {
+  "ai_model": "claude-sonnet-5",
+  "classes": {
+   "0a14fde0fd5c469c9ed0d34937bdbaf0": {
+    "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+    "difficulty_estimate": 5.507645259938838,
+    "discipline": "running",
+    "duration_seconds": 900,
+    "instructor_name": "Matty Maggiacomo",
+    "original_air_time": "2026-05-27T04:00:12+00:00",
+    "ride_id": "0a14fde0fd5c469c9ed0d34937bdbaf0",
+    "title": "15 min Beginner Run"
+   },
+   "0fbbba67d2a14287ab6c5cc86f9912a0": {
+    "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+    "difficulty_estimate": 4.645484949832776,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Adrian Williams",
+    "original_air_time": "2025-07-31T04:00:00+00:00",
+    "ride_id": "0fbbba67d2a14287ab6c5cc86f9912a0",
+    "title": "20 min Recovery Run"
+   },
+   "248a8a9241a040c98a179d33370209db": {
+    "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+    "difficulty_estimate": 5.431372549019608,
+    "discipline": "running",
+    "duration_seconds": 900,
+    "instructor_name": "Kirsten Ferguson",
+    "original_air_time": "2026-04-29T04:00:21+00:00",
+    "ride_id": "248a8a9241a040c98a179d33370209db",
+    "title": "15 min Beginner Run"
+   },
+   "262e4d78ed9b4bb0ad6c023b31c8acf2": {
+    "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+    "difficulty_estimate": 5.703488372093023,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Susie Chan",
+    "original_air_time": "2026-08-19T04:00:25+00:00",
+    "ride_id": "262e4d78ed9b4bb0ad6c023b31c8acf2",
+    "title": "20 min Beginner Run"
+   },
+   "2ba787b0805e4cdea8c118c361dca384": {
+    "class_type_id": "078171e488944d1dadf6e64069279c3e",
+    "difficulty_estimate": 5.709090909090909,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Alex Karwoski",
+    "original_air_time": "2026-09-04T04:00:31+00:00",
+    "ride_id": "2ba787b0805e4cdea8c118c361dca384",
+    "title": "20 min Walk + Run"
+   },
+   "33d528f82ad34578859522b709cf0620": {
+    "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+    "difficulty_estimate": 6.505119453924915,
+    "discipline": "running",
+    "duration_seconds": 1800,
+    "instructor_name": "Susie Chan",
+    "original_air_time": "2026-09-26T10:54:39+00:00",
+    "ride_id": "33d528f82ad34578859522b709cf0620",
+    "title": "30 min Endurance Run"
+   },
+   "3d3b006ffcc844008bf1c9cc1061ae28": {
+    "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+    "difficulty_estimate": 4.369597615499255,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Matt Wilpers",
+    "original_air_time": "2026-06-18T04:00:28+00:00",
+    "ride_id": "3d3b006ffcc844008bf1c9cc1061ae28",
+    "title": "20 min Recovery Run"
+   },
+   "45b6857609f146f2bede7f56f49aabc7": {
+    "class_type_id": "078171e488944d1dadf6e64069279c3e",
+    "difficulty_estimate": 5.677672955974843,
+    "discipline": "running",
+    "duration_seconds": 900,
+    "instructor_name": "Andy Speer",
+    "original_air_time": "2026-03-31T04:00:00+00:00",
+    "ride_id": "45b6857609f146f2bede7f56f49aabc7",
+    "title": "15 min Walk + Run"
+   },
+   "46df73f6ffac4deba6807bc7c88cd344": {
+    "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+    "difficulty_estimate": 7.285714285714286,
+    "discipline": "running",
+    "duration_seconds": 900,
+    "instructor_name": "Matty Maggiacomo",
+    "original_air_time": "2026-09-16T04:00:24+00:00",
+    "ride_id": "46df73f6ffac4deba6807bc7c88cd344",
+    "title": "15 min HIIT Run"
+   },
+   "4b5c947f7cde481e9dc960c52dd559af": {
+    "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+    "difficulty_estimate": 4.8568904593639575,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Susie Chan",
+    "original_air_time": "2025-03-20T05:00:00+00:00",
+    "ride_id": "4b5c947f7cde481e9dc960c52dd559af",
+    "title": "20 min Recovery Run"
+   },
+   "4f254e538cf14b13b00f19176e8b3ee4": {
+    "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+    "difficulty_estimate": 7.47945205479452,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Jon Hosking",
+    "original_air_time": "2026-08-31T04:00:58+00:00",
+    "ride_id": "4f254e538cf14b13b00f19176e8b3ee4",
+    "title": "20 min Intervals Run"
+   },
+   "59953a6c71b8455b969546e1d1608085": {
+    "class_type_id": "078171e488944d1dadf6e64069279c3e",
+    "difficulty_estimate": 6.259550561797753,
+    "discipline": "running",
+    "duration_seconds": 1800,
+    "instructor_name": "Robin Arzón",
+    "original_air_time": "2026-09-19T15:54:51+00:00",
+    "ride_id": "59953a6c71b8455b969546e1d1608085",
+    "title": "30 min Walk + Run"
+   },
+   "6f7954b051f54b1ca1cf74f10695aaa4": {
+    "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+    "difficulty_estimate": 8.642857142857142,
+    "discipline": "running",
+    "duration_seconds": 1800,
+    "instructor_name": "Robin Arzón",
+    "original_air_time": "2026-09-05T18:24:17+00:00",
+    "ride_id": "6f7954b051f54b1ca1cf74f10695aaa4",
+    "title": "30 min HIIT Run"
+   },
+   "7b21688f38784b14a197066296a667b1": {
+    "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+    "difficulty_estimate": 4.692913385826771,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Matt Wilpers",
+    "original_air_time": "2025-02-14T05:00:00+00:00",
+    "ride_id": "7b21688f38784b14a197066296a667b1",
+    "title": "20 min Recovery Run"
+   },
+   "855779d3e6af4149aa3319012477e6af": {
+    "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+    "difficulty_estimate": 5.407407407407407,
+    "discipline": "running",
+    "duration_seconds": 900,
+    "instructor_name": "Hannah Frankson",
+    "original_air_time": "2026-09-30T04:00:15+00:00",
+    "ride_id": "855779d3e6af4149aa3319012477e6af",
+    "title": "15 min Beginner Run"
+   },
+   "880dfae9de3e4f789d6fb23b2aaaca80": {
+    "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+    "difficulty_estimate": 7.576227390180879,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Hannah Frankson",
+    "original_air_time": "2026-08-22T12:54:56+00:00",
+    "ride_id": "880dfae9de3e4f789d6fb23b2aaaca80",
+    "title": "20 min HIIT Run"
+   },
+   "af8ad1475e164c88be28fb2ad990583c": {
+    "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+    "difficulty_estimate": 7.6521739130434785,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Jon Hosking",
+    "original_air_time": "2026-08-04T18:25:11+00:00",
+    "ride_id": "af8ad1475e164c88be28fb2ad990583c",
+    "title": "20 min HIIT Run"
+   },
+   "afb0aa4925dc4c54928ca0e256910411": {
+    "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+    "difficulty_estimate": 7.0503597122302155,
+    "discipline": "running",
+    "duration_seconds": 2700,
+    "instructor_name": "Hannah Frankson",
+    "original_air_time": "2026-09-19T12:55:21+00:00",
+    "ride_id": "afb0aa4925dc4c54928ca0e256910411",
+    "title": "45 min Endurance Run"
+   },
+   "b5b4093cd9034478ac463da4fc31b089": {
+    "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+    "difficulty_estimate": 5.6928746928746925,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Jon Hosking",
+    "original_air_time": "2026-07-15T04:00:13+00:00",
+    "ride_id": "b5b4093cd9034478ac463da4fc31b089",
+    "title": "20 min Beginner Run"
+   },
+   "b83f644ef9564766b703a9a4e10f06b2": {
+    "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+    "difficulty_estimate": 5.805860805860806,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Susie Chan",
+    "original_air_time": "2026-06-10T04:00:36+00:00",
+    "ride_id": "b83f644ef9564766b703a9a4e10f06b2",
+    "title": "20 min Beginner Run"
+   },
+   "bcdaf20f674046e09204ff5524cbddb6": {
+    "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+    "difficulty_estimate": 6.969135802469136,
+    "discipline": "running",
+    "duration_seconds": 2700,
+    "instructor_name": "Marcel Dinkins",
+    "original_air_time": "2026-10-04T11:26:13+00:00",
+    "ride_id": "bcdaf20f674046e09204ff5524cbddb6",
+    "title": "45 min Endurance Run"
+   },
+   "c9cdd205e72b4a51a83e3be7a61326f7": {
+    "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+    "difficulty_estimate": 6.522267206477733,
+    "discipline": "running",
+    "duration_seconds": 1800,
+    "instructor_name": "Hannah Frankson",
+    "original_air_time": "2026-10-02T16:25:04+00:00",
+    "ride_id": "c9cdd205e72b4a51a83e3be7a61326f7",
+    "title": "30 min Endurance Run"
+   },
+   "dabb2baf94a24627a34797fa34a5148a": {
+    "class_type_id": "078171e488944d1dadf6e64069279c3e",
+    "difficulty_estimate": 5.928571428571429,
+    "discipline": "running",
+    "duration_seconds": 1200,
+    "instructor_name": "Susie Chan",
+    "original_air_time": "2026-10-09T16:25:01+00:00",
+    "ride_id": "dabb2baf94a24627a34797fa34a5148a",
+    "title": "20 min Walk + Run"
+   }
+  },
+  "generated_at": "2026-10-10T04:57:54+00:00",
+  "inputs": {
+   "allow_doubles": false,
+   "companion_program_id": 30,
+   "days": [
+    2,
+    4,
+    7
+   ],
+   "goal": "5k",
+   "level": "beginner",
+   "level_assessment": {
+    "evidence": [
+     "0.0 runs/week over the last 8 weeks",
+     "no continuous runs in 8 weeks",
+     "0 running minutes/week over the last 4 weeks",
+     "regular running (4+ runs) in 0 of the 22 months before that",
+     "last run 56 days ago"
+    ],
+    "level": "beginner",
+    "measures": {
+     "days_since_last_run": 56,
+     "history_months_24m": 0,
+     "longest_continuous_8w": 0,
+     "minutes_per_week_4w": 0,
+     "runs_per_week_8w": 0.0
+    },
+    "profile_experience": "new"
+   },
+   "level_choice": "auto",
+   "level_overridden": false,
+   "long_day": 7,
+   "max_weekday_min": 45,
+   "max_weekend_min": 60,
+   "mobility": true,
+   "mode": "alongside",
+   "notes": "First 5K. Keep the split's strength days; runs on the other days.",
+   "pace": {
+    "detected_level": null,
+    "estimate": {
+     "from_date": "2026-08-14",
+     "from_miles": 3.07,
+     "from_seconds": 1800,
+     "seconds": 1823
+    },
+    "fastest_pace_s": 586,
+    "gap_pct": 2.9,
+    "goal_pace_s": 570,
+    "goal_zone": "Very Hard",
+    "level": 5,
+    "level_from": "",
+    "long_run_min": 45,
+    "race_level": 6,
+    "race_zone": "Hard",
+    "stretch": false,
+    "typical_pace_s": 586
+   },
+   "pace_level_choice": "5",
+   "race_date": "2026-12-05",
+   "race_week": 8,
+   "race_weekday": 6,
+   "runway": {
+    "recommended_min": 8,
+    "short": false,
+    "weeks": 8
+   },
+   "setting": "tread",
+   "start_date": "2026-10-12",
+   "strength_per_week": 0,
+   "target_time": 1770,
+   "weeks": 8
+  },
+  "name": "5K in 8 Weeks",
+  "picks": {
+   "1-2-0": {
+    "ride_id": "45b6857609f146f2bede7f56f49aabc7"
+   },
+   "1-4-0": {
+    "ride_id": "855779d3e6af4149aa3319012477e6af"
+   },
+   "1-7-0": {
+    "ride_id": "dabb2baf94a24627a34797fa34a5148a"
+   },
+   "2-2-0": {
+    "ride_id": "262e4d78ed9b4bb0ad6c023b31c8acf2"
+   },
+   "2-4-0": {
+    "ride_id": "b5b4093cd9034478ac463da4fc31b089"
+   },
+   "2-7-0": {
+    "ride_id": "59953a6c71b8455b969546e1d1608085"
+   },
+   "3-2-0": {
+    "ride_id": "0a14fde0fd5c469c9ed0d34937bdbaf0"
+   },
+   "3-4-0": {
+    "ride_id": "b83f644ef9564766b703a9a4e10f06b2"
+   },
+   "3-7-0": {
+    "ride_id": "2ba787b0805e4cdea8c118c361dca384"
+   },
+   "4-2-0": {
+    "ride_id": "4f254e538cf14b13b00f19176e8b3ee4"
+   },
+   "4-4-0": {
+    "ride_id": "4b5c947f7cde481e9dc960c52dd559af"
+   },
+   "4-7-0": {
+    "ride_id": "c9cdd205e72b4a51a83e3be7a61326f7"
+   },
+   "5-2-0": {
+    "ride_id": "880dfae9de3e4f789d6fb23b2aaaca80"
+   },
+   "5-4-0": {
+    "ride_id": "7b21688f38784b14a197066296a667b1"
+   },
+   "5-7-0": {
+    "ride_id": "bcdaf20f674046e09204ff5524cbddb6"
+   },
+   "6-2-0": {
+    "ride_id": "6f7954b051f54b1ca1cf74f10695aaa4"
+   },
+   "6-4-0": {
+    "ride_id": "3d3b006ffcc844008bf1c9cc1061ae28"
+   },
+   "6-7-0": {
+    "ride_id": "afb0aa4925dc4c54928ca0e256910411"
+   },
+   "7-2-0": {
+    "ride_id": "af8ad1475e164c88be28fb2ad990583c"
+   },
+   "7-4-0": {
+    "ride_id": "0fbbba67d2a14287ab6c5cc86f9912a0"
+   },
+   "7-7-0": {
+    "ride_id": "33d528f82ad34578859522b709cf0620"
+   },
+   "8-2-0": {
+    "ride_id": "46df73f6ffac4deba6807bc7c88cd344"
+   },
+   "8-4-0": {
+    "ride_id": "248a8a9241a040c98a179d33370209db"
+   }
+  },
+  "spec": {
+   "assumptions": [
+    "Treated as beginner per STARTING LEVEL despite prior cycling/lifting experience, since running-specific base is absent (0 runs/week, no continuous runs in 8 weeks).",
+    "Week 1 volume is set by beginner progression (rule 8) rather than matched to the near-zero 4-week running average, since that average does not reflect a sustainable starting point.",
+    "No injury or pain noted, so standard beginner intensity progression is used.",
+    "Sunday is used as the long-run day per stated preference, with Tuesday and Thursday as shorter easy/quality days.",
+    "Given the 8-week runway (the recommended minimum for a beginner), the plan targets finishing comfortably with goal pace practice layered in once continuous running is established, per rule 8e.",
+    "The 45-min weekday cap and 60-min weekend cap are respected throughout; long run reaches 45 min (the max weekend session length) by week 6, satisfying rule 13 within available durations.",
+    "Yoga is not added as extra optional recovery work since Saturday's companion yoga and the three running days already fill the available/allowed days without doubling up."
+   ],
+   "changes": [],
+   "pace_guidance": "Current pace work sits at Level 5; goal pace (9:30/mi) needs Level 6. Keep weeks 1-3 easy/walk-run only to build continuous running. From week 4, once 20-30 min continuous runs feel controlled, introduce short intervals near the top of Hard zone; from week 6 try nudging efforts into Level 6 pace during the shortest interval reps. If Hard-zone efforts still feel forced by week 6, keep racing at Level 5 Hard pace (~10:00-10:55/mi) and treat 29:30 as a stretch rather than forcing Level 6.",
+   "plan_name": "5K in 8 Weeks",
+   "summary": "Starting from 0.0 runs/week over the last 4 weeks (last run 8 weeks ago, no continuous runs in 8 weeks), this plan treats the runner as a beginner and opens with 15-20 min Walk+Run/Beginner Running sessions 3x/week on Tue/Thu/Sun, alongside the existing Mon/Wed/Fri/Sat strength-and-ride split. The long run builds gradually toward 45 min by week 6, with short quality work added from week 4 once continuous running is established, tapering in the final 10 days into race day.",
+   "weeks": [
+    {
+     "focus": "Establish continuous walk/run pattern, 3 sessions",
+     "number": 1,
+     "phase": "base",
+     "slots": [
+      {
+       "class_type": "Walk + Run (Running)",
+       "class_type_id": "078171e488944d1dadf6e64069279c3e",
+       "day": 2,
+       "discipline": "running",
+       "duration_min": 15,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy walk/run intervals to build continuous running tolerance",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Beginner Running",
+       "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+       "day": 4,
+       "discipline": "running",
+       "duration_min": 15,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "short easy run to build base",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Walk + Run (Running)",
+       "class_type_id": "078171e488944d1dadf6e64069279c3e",
+       "day": 7,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "longest session of the week, easy aerobic minutes",
+       "setting": "tread"
+      }
+     ]
+    },
+    {
+     "focus": "Extend continuous running segments",
+     "number": 2,
+     "phase": "base",
+     "slots": [
+      {
+       "class_type": "Beginner Running",
+       "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+       "day": 2,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy aerobic minutes, continuous running focus",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Beginner Running",
+       "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+       "day": 4,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy aerobic minutes, continuous running focus",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Walk + Run (Running)",
+       "class_type_id": "078171e488944d1dadf6e64069279c3e",
+       "day": 7,
+       "discipline": "running",
+       "duration_min": 30,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "long run, easy pace endurance",
+       "setting": "tread"
+      }
+     ]
+    },
+    {
+     "focus": "Recovery week, maintain frequency at lower volume",
+     "number": 3,
+     "phase": "lighter",
+     "slots": [
+      {
+       "class_type": "Beginner Running",
+       "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+       "day": 2,
+       "discipline": "running",
+       "duration_min": 15,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy aerobic minutes, lighter week",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Beginner Running",
+       "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+       "day": 4,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy aerobic minutes, lighter week",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Walk + Run (Running)",
+       "class_type_id": "078171e488944d1dadf6e64069279c3e",
+       "day": 7,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "long run held steady during recovery week",
+       "setting": "tread"
+      }
+     ]
+    },
+    {
+     "focus": "First short quality session, continue building long run",
+     "number": 4,
+     "phase": "build",
+     "slots": [
+      {
+       "class_type": "Intervals Running",
+       "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+       "day": 2,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "moderate",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Challenging",
+       "purpose": "first short quality session, controlled effort near goal pace",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Endurance",
+       "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+       "day": 4,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy aerobic minutes, recovery from quality session",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Endurance",
+       "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+       "day": 7,
+       "discipline": "running",
+       "duration_min": 30,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "long run, easy pace endurance",
+       "setting": "tread"
+      }
+     ]
+    },
+    {
+     "focus": "Build long run, second quality session at moderate effort",
+     "number": 5,
+     "phase": "build",
+     "slots": [
+      {
+       "class_type": "Intervals Running",
+       "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+       "day": 2,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "moderate",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Challenging",
+       "purpose": "goal-pace practice, intervals at and above race pace",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Endurance",
+       "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+       "day": 4,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy aerobic minutes, recovery from quality session",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Endurance",
+       "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+       "day": 7,
+       "discipline": "running",
+       "duration_min": 45,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "long run reaching 45 min, easy pace endurance",
+       "setting": "tread"
+      }
+     ]
+    },
+    {
+     "focus": "Peak volume, hold 45-min long run, sharpen intervals",
+     "number": 6,
+     "phase": "peak",
+     "slots": [
+      {
+       "class_type": "Intervals Running",
+       "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+       "day": 2,
+       "discipline": "running",
+       "duration_min": 30,
+       "intensity": "hard",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Hard",
+       "purpose": "race-pace practice, intervals at and above goal pace",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Endurance",
+       "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+       "day": 4,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy aerobic minutes, recovery from quality session",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Endurance",
+       "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+       "day": 7,
+       "discipline": "running",
+       "duration_min": 45,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "long run at peak duration, easy pace endurance",
+       "setting": "tread"
+      }
+     ]
+    },
+    {
+     "focus": "Pre-taper recovery week, one short quality touch",
+     "number": 7,
+     "phase": "lighter",
+     "slots": [
+      {
+       "class_type": "Intervals Running",
+       "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+       "day": 2,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "moderate",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Hard",
+       "purpose": "short race-pace touch, lighter week volume",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Endurance",
+       "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+       "day": 4,
+       "discipline": "running",
+       "duration_min": 20,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "easy aerobic minutes",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Endurance",
+       "class_type_id": "19efefbcf7394ff8bac0ac89a674c545",
+       "day": 7,
+       "discipline": "running",
+       "duration_min": 30,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "reduced long run, lighter week before taper",
+       "setting": "tread"
+      }
+     ]
+    },
+    {
+     "focus": "Race week taper, short sharpening then rest into race day",
+     "number": 8,
+     "phase": "taper",
+     "slots": [
+      {
+       "class_type": "Intervals Running",
+       "class_type_id": "e2a1f782a89e45abacd962f5aa105990",
+       "day": 2,
+       "discipline": "running",
+       "duration_min": 15,
+       "intensity": "moderate",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Hard",
+       "purpose": "short early-week quality session to stay sharp before taper",
+       "setting": "tread"
+      },
+      {
+       "class_type": "Beginner Running",
+       "class_type_id": "f7e3235ac4894dcb8694d2559ea43674",
+       "day": 4,
+       "discipline": "running",
+       "duration_min": 15,
+       "intensity": "easy",
+       "optional": false,
+       "order": 0,
+       "pace_zone": "Easy",
+       "purpose": "very short easy shakeout run before race day",
+       "setting": "tread"
+      }
+     ]
+    }
+   ]
+  },
+  "warnings": []
+ },
+ "weekly_reviews": [
+  {
+   "ai_model": "claude-sonnet-5",
+   "content": "## Weight & Body Composition\nWeight held essentially flat week over week (**168.3 lb avg, -0.1 lb**), continuing a plateau after the initial drop from semaglutide. Daily readings bounced between 167.7–169.2 lb, which is normal noise, not a stall signal yet — but worth watching over the next 1-2 weeks since this is now week 5 at the 1mg dose. With training volume increasing, some of this plateau could reflect muscle retention/gain offsetting fat loss, especially with creatine on board.\n\n## Nutrition\nA strong week: **7/7 days under calorie target, 7/7 days hitting protein goal, and 6/7 days hitting fiber** (only Tuesday fell short at 17g). No weekend drift — if anything, Thursday and Friday were the strongest protein days (170g, 167g). Calories stayed tight in a narrow 1539–1676 kcal band all week, showing good consistency rather than big swings. This is excellent adherence for someone on appetite-suppressing medication, where under-eating protein is the more common risk.\n\n## Training\nSolid, balanced week: two strength sessions (**Mon full body, Fri lower body**), one cycling ride, two run sessions (Thu beginner run, Sun walk+run), plus yoga. This lines up well with the 5K goal while preserving the two strength days. Running volume is still light (20 min sessions) — appropriate for a new runner building a base. Recovery metrics look healthy: **7.6h avg sleep, HRV 48ms, RHR 52bpm** — no signs of overreaching despite the mixed-modality load.\n\n## Hunger & Symptoms\nMorning hunger averaged a moderate **5.0/10**, consistent with appetite suppression working but not overly aggressive. No symptoms logged — no GI issues or soreness flags despite the increased training variety this week.\n\n## One Thing Going Well\n**Protein consistency** — hitting target every single day (even 170g on a lower-calorie day) while staying under calorie goals is a hard balance to strike, and it's being executed well.\n\n## One Focus for Next Week\nNudge the two run sessions slightly longer (e.g., 20 → 25 min) or add a third short run, since 5K prep benefits from gradually increasing time-on-feet — current volume is safe but will need to build if a race is approaching.",
+   "weeks_ago": 1
+  },
+  {
+   "ai_model": "claude-sonnet-5",
+   "content": "## Weight & Body Composition\nWeight continued its gradual downward drift: **168.3 lb avg, down 0.5 lb from last week's 168.8 lb**. Daily readings bounced between 168.0–168.9 lb, which is normal noise, not a plateau. This is consistent, controlled loss — four weeks into 1mg semaglutide, the trend line is doing exactly what's expected.\n\n## Nutrition\nCalories were well-controlled — **5/5 logged days came in at or under the 1650 kcal target**, including two days notably low (1229 and 1286 kcal) that may reflect strong appetite suppression rather than deliberate restriction. Protein is the weak spot: only **2/5 days hit 90%+ of the 140g target**, with Thursday (114g) and especially the weekend's start (109g on Sunday) falling short. Fiber is similarly inconsistent — just **2/5 days above 85% of the 25g target**, with Thursday dipping to 19g. Friday and Saturday have no logs at all, so the real adherence picture may be incomplete. Saturday-adjacent data (the 26th) shows the week's best fiber (34g) and decent protein, suggesting weekend meals aren't necessarily worse — just less consistently logged.\n\n## Training\nA full week: two runs (20 min each), two strength sessions, one cycling ride, one yoga session, and a longer walk/run — seven sessions total, directly supporting the 5K-prep-plus-two-strength-days focus. This is well-aligned with stated goals, and the balance between running volume and strength maintenance looks sustainable for a new runner avoiding overuse issues. Recovery metrics support the load: **8.0h avg sleep, HRV 45ms, RHR 59bpm** — all solid, no signs of overreaching.\n\n## Hunger & Symptoms\nMorning hunger averaged **4.2/10** — moderate and manageable, consistent with appetite suppression from semaglutide without signs of excessive restriction. No symptoms logged, which combined with good sleep and HRV suggests the current training and medication load is being tolerated well.\n\n## One Thing Going Well\n**Training consistency is excellent** — seven sessions spanning running, strength, cycling, and yoga in one week, hitting both the 5K-build and strength-maintenance goals simultaneously.\n\n## One Focus for Next Week\n**Prioritize protein on run days** — Tuesday, Thursday, and Sunday (the lower-protein days) line up with running sessions; add a protein-forward snack or shake post-run to close the gap toward 140g, which will support recovery and preserve lean mass while in a calorie deficit.",
+   "weeks_ago": 2
+  },
+  {
+   "ai_model": "claude-sonnet-5",
+   "content": "## Weight & Body Composition\nWeight held essentially flat week-over-week (168.8 lb avg vs. 168.9 lb prior, **-0.1 lb**), with daily readings bouncing between 168.3-169.3 lb. This is a plateau week, not a concern — you're 3 weeks into the 1mg semaglutide dose, and some stabilization after earlier losses is normal. Nothing here suggests a problem, but worth watching if the flat trend continues into next week.\n\n## Nutrition\nCalories were well controlled — **7/7 days under target**, including a notably low 1091 kcal on Sunday. Protein was inconsistent: strong on Tuesday-Thursday (147-174g, all above target) but fell short early week (89-121g on Sunday/Monday), landing at **4/7 days hitting the 140g goal**. Fiber followed a similar pattern — solid mid-week (22-23g) but Sunday's 11g was a notable gap. The second half of the week (Tue-Thu) was your strongest stretch for both protein and fiber; the weekend start was the weak point, likely tied to lower overall intake those days.\n\n## Training\nFour sessions logged: one cycling ride (45 min, 477 kcal), two short run sessions (15 min and a 20 min walk/run), and one restorative yoga block. This fits your 5K-prep phase — low-volume, easy running mixed with cycling as your aerobic base. **No strength sessions logged this week**, which breaks from your stated two-day lifting goal. Recovery metrics look healthy (7.2h sleep, 48ms HRV, 56bpm RHR) and would support adding a lifting day without issue.\n\n## Hunger & Symptoms\nNo hunger or symptom data logged this week — worth tracking morning hunger at least a few days to see how the dose increase is affecting appetite, especially given the very low Sunday calorie day.\n\n## One Thing Going Well\n**Perfect calorie adherence** (7/7 days at or under target) while still fitting in four workouts — strong discipline without obvious energy crashes in training logs.\n\n## One Focus for Next Week\n**Get both strength sessions back on the calendar** — none were logged this week despite good recovery numbers supporting it. Pair this with hitting protein target on run/rest days (Sun/Mon were the gaps) to support lifting performance and preserve lean mass while losing weight.",
+   "weeks_ago": 3
+  }
+ ]
+}
