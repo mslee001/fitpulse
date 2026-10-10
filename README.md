@@ -185,7 +185,7 @@ DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py changepassword de
 DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py runserver
 ```
 
-A `DATABASE_URL` given on the command line overrides the one in `.env`, so always pass it for every demo command — otherwise the command runs against your real database. `seed_demo` only ever clears and seeds the `demo` user's data (or the user named with `--user`), never anyone else's. Re-run it to reset the demo.
+A `DATABASE_URL` given on the command line overrides the one in `.env`, so always pass it for every demo command — otherwise the command runs against your real database. `seed_demo` only ever clears and seeds the `demo` user's data (or the user named with `--user`), never anyone else's. It refuses superusers and any user with Peloton, Withings or Google Health connected, and asks you to type the username before replacing an existing user's data (`--no-input` skips that question). Re-run it to reset the demo.
 
 ---
 

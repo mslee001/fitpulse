@@ -1,14 +1,17 @@
 """
 Seed a fresh database with realistic demo data.
 
-Usage (DATABASE_URL on the command line wins over the one in .env — never
-run this against the production database):
+Usage (DATABASE_URL on the command line wins over the one in .env — a
+separate demo database is the safest place for it):
     DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py migrate
     DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py seed_demo [--user USERNAME]
     DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py changepassword demo
 
 Seeds (and first clears) only the given user's data — by default a user named
-"demo", created with an unusable password if missing — never the owner's.
+"demo", created with an unusable password if missing. To keep a typo from wiping
+a real account, it refuses superusers and anyone with Peloton, Withings or Google
+Health connected, and asks you to type the username before replacing an existing
+user's data (--no-input skips that question, not the refusals).
 
 Then run the server:
     DATABASE_URL=sqlite:///demo.sqlite3 venv/bin/python3 manage.py runserver
@@ -18,7 +21,7 @@ import datetime
 import random
 import uuid
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 
@@ -43,6 +46,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--user", metavar="USERNAME", default="demo",
                             help="User to seed (default: demo, created if missing)")
+        parser.add_argument("--no-input", action="store_true", dest="no_input",
+                            help="Replace an existing user's data without asking")
 
     def handle(self, *args, **options):
         from workouts.models import (
@@ -53,6 +58,8 @@ class Command(BaseCommand):
 
         User = get_user_model()
         user = User.objects.filter(username=options["user"]).first()
+        if user is not None:
+            self._check_safe_to_seed(user, ask=not options["no_input"])
         if user is None:
             user = User(username=options["user"])
             user.set_unusable_password()
@@ -252,6 +259,43 @@ class Command(BaseCommand):
             f"\nDemo data seeded for user '{user.username}'.\n"
             f"Set its password with: manage.py changepassword {user.username}, then runserver and log in."
         ))
+
+    def _check_safe_to_seed(self, user, ask):
+        """Seeding deletes the user's data first, so never let it land on a real account."""
+        from workouts.models import (
+            PelotonAuth, WithingsAuth, GoogleHealthAuth,
+            CachedWorkout, DailyStats, FoodEntry, Intervention, BodyMeasurement,
+        )
+        name = user.username
+        if user.is_superuser:
+            raise CommandError(
+                f"Refusing to seed '{name}': it's a superuser account. "
+                f"Seed a separate test user instead, e.g. --user testuser."
+            )
+        connected = [label for label, M in (("Peloton", PelotonAuth),
+                                            ("Withings", WithingsAuth),
+                                            ("Google Health", GoogleHealthAuth))
+                     if M.objects.filter(user=user).exists()]
+        if connected:
+            raise CommandError(
+                f"Refusing to seed '{name}': it has {', '.join(connected)} connected, "
+                f"so it looks like a real account. Seeding would delete its data."
+            )
+        counts = [(n, label) for n, label in (
+            (CachedWorkout.objects.filter(user=user).count(), "workouts"),
+            (DailyStats.objects.filter(user=user).count(), "days of stats"),
+            (FoodEntry.objects.filter(user=user).count(), "food entries"),
+            (Intervention.objects.filter(user=user).count(), "interventions"),
+            (BodyMeasurement.objects.filter(user=user).count(), "weigh-ins"),
+        ) if n]
+        if not counts or not ask:
+            return
+        summary = ", ".join(f"{n} {label}" for n, label in counts)
+        self.stdout.write(self.style.WARNING(
+            f"'{name}' already has {summary}. Seeding deletes them and replaces them with demo data."
+        ))
+        if input(f"Type '{name}' to continue: ").strip() != name:
+            raise CommandError("Cancelled — nothing was changed.")
 
 
 # ── Workout seeding ──────────────────────────────────────────────────────────
