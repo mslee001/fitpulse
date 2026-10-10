@@ -46,7 +46,7 @@ sqlite_backup.json
 client_secret_*.apps.googleusercontent.com.json
 
 # Claude Code Prompts
-fitpulse-chat-sidebar-prompts/
-fitpulse-google-health-prompts/
+claude-prompts/
+
 # Tailwind standalone binary (downloaded by scripts/css.sh install)
 bin/

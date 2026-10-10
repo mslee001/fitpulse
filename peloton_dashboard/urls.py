@@ -2,12 +2,13 @@ from django.contrib.auth import views as auth_views
 from django.urls import path, include
 
 from workouts.admin_views import PasswordChangeDoneView, PasswordChangeView, WelcomeSetPasswordView
+from workouts.onboarding import LOGIN_TOUR
 from workouts.views import health
 
 urlpatterns = [
     path("healthz/", health, name="health"),
     path("accounts/login/", auth_views.LoginView.as_view(
-        template_name="registration/login.html",
+        template_name="registration/login.html", extra_context={"tour": LOGIN_TOUR},
     ), name="login"),
     path("accounts/logout/", auth_views.LogoutView.as_view(
         next_page="/accounts/login/",
