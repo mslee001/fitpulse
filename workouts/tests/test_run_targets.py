@@ -210,6 +210,17 @@ class RunPagesTests(TwoUserTestCase):
         self.assertFalse(stats["real"]["run"]["estimated"])
         self.assertEqual(stats["real"]["run"]["miles"], 1.09)
 
+    def test_circuit_next_to_a_tread_run_compares_run_numbers(self):
+        CachedWorkout.objects.create(user=self.a, workout_id="tread", ride_id="r2", title="20 min Run",
+                                     discipline="running", source="peloton", created_at=timezone.now(),
+                                     duration_seconds=1200, distance_miles=1.194, avg_pace_seconds=1005)
+        resp = self.client_a.get(reverse("compare") + "?ids=est,tread")
+        self.assertEqual(resp.context["compare_mode"], "strength")    # not the bike-stats "mixed" table
+        stats = json.loads(resp.context["workout_stats"])
+        self.assertEqual(stats["tread"]["run"], {"seconds": 1200, "miles": 1.19, "pace_s": 1005,
+                                                 "estimated": False, "level": None})
+        self.assertTrue(stats["est"]["run"]["estimated"])
+
     def test_class_history_uses_running_layout_and_skips_estimates_in_stats(self):
         resp = self.client_a.get(reverse("class_history", args=["r1"]))
         self.assertEqual(resp.context["discipline"], "running")

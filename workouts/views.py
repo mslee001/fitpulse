@@ -1138,8 +1138,16 @@ def garmin_activity_history(request, discipline):
 # Compare
 # ---------------------------------------------------------------------------
 
-def _run_compare(run):
-    """A class's Tread run for the Compare table (no chart data)."""
+def _run_compare(workout):
+    """Run time / distance / pace for Compare's Run rows: a "+ Run" class's Tread
+    portion (measured or estimated, see run_summary) or a plain run's own numbers."""
+    if workout.discipline == "running":
+        if not (workout.distance_miles or workout.avg_pace_seconds):
+            return None
+        return {"seconds": workout.duration_seconds,
+                "miles": round(workout.distance_miles, 2) if workout.distance_miles else None,
+                "pace_s": workout.avg_pace_seconds, "estimated": False, "level": None}
+    run = workout.run_summary
     if not run:
         return None
     return {k: run[k] for k in ("seconds", "miles", "pace_s", "estimated", "level")}
@@ -1166,7 +1174,9 @@ def compare(request):
     disciplines = {w.discipline for w in workouts}
     if disciplines == {"running"}:
         compare_mode = "run"
-    elif disciplines <= {"strength", "circuit"}:
+    elif disciplines <= {"strength", "circuit"} or ("circuit" in disciplines
+                                                  and disciplines <= {"strength", "circuit", "running"}):
+        # a "+ Run" circuit next to runs compares on calories/HR/effort + the Run rows
         compare_mode = "strength"
     elif disciplines <= {"cycling", "bike_bootcamp"}:
         compare_mode = "cycling"
@@ -1231,7 +1241,7 @@ def compare(request):
             "total_sets": len([s for s in (w.exercise_sets_json or []) if s.get("reps") is not None or s.get("duration_seconds")]),
             "unique_exercises": len({s.get("exercise") for s in (w.exercise_sets_json or []) if s.get("exercise")}),
             "manual_log": w.manual_log_summary,
-            "run": _run_compare(w.run_summary),
+            "run": _run_compare(w),
         }
         for w in workouts
     }
