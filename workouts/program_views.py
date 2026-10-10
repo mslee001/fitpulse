@@ -53,6 +53,7 @@ def _run_grid(run):
     ranker = DifficultyRanker()
     planned = ranker.for_rides(ProgramSlot.objects.filter(week__program=run.program)
                                .exclude(peloton_ride_id="").values_list("peloton_ride_id", flat=True))
+    taken = ranker.for_rides(e.workout.ride_id for e in entries)   # the classes actually done
     def local_day(e):
         return timezone.localtime(e.workout.created_at).date()
 
@@ -99,7 +100,9 @@ def _run_grid(run):
             cells.append({"slot": slot, "entry": e, "recoveries": recoveries, "day_label": day_label,
                           "swappable": run.end_date is None and slot_swappable(slot, e),
                           "cls": None if e else planned.get(slot.peloton_ride_id),
-                          "difficulty": None if e else ranker.rank(planned.get(slot.peloton_ride_id))})
+                          # done: the class actually taken (any-class slots vary); to do: the planned one
+                          "difficulty": (ranker.rank(taken.get(e.workout.ride_id), e.workout.difficulty_estimate)
+                                         if e else ranker.rank(planned.get(slot.peloton_ride_id)))})
         if overview:
             # A dated plan reads best in calendar order.
             cells.sort(key=lambda c: (c["slot"].day or 8, c["slot"].order))

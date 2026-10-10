@@ -52,3 +52,10 @@ class GridDayLabelTests(TestCase):
         # 03:00 UTC Sep 21 is still Sunday evening Sep 20 in Los Angeles
         CachedWorkout.objects.filter(workout_id="p1").update(created_at=datetime(2026, 9, 21, 3, 0, tzinfo=dt_tz.utc))
         self.assertEqual(self.labels(date(2026, 9, 21))[self.pilates.pk], "Sun")
+
+    def test_done_cell_shows_the_taken_class_difficulty(self):
+        CachedWorkout.objects.filter(workout_id="p1").update(ride_id="taken", difficulty_estimate=6.2)
+        with patch("workouts.program_views.timezone.localdate", return_value=date(2026, 9, 17)):
+            rows, _ = _run_grid(self.run)
+        cell = next(c for c in rows[0]["cells"] if c["entry"])
+        self.assertEqual(cell["difficulty"]["difficulty"], 6.2)
