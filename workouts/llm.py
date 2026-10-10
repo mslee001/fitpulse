@@ -71,6 +71,10 @@ class AIFeatureDenied(Exception):
     """This AI feature isn't turned on for this user."""
 
 
+class AIDemoOff(AIFeatureDenied):
+    """The read-only demo user never calls the AI live (workouts/demo.py)."""
+
+
 def _monthly_budget(user):
     """The user's monthly cap in USD, or None for no cap."""
     from .access import access_for
@@ -95,6 +99,9 @@ def guard(user, feature):
     """Raise before any API call if this user may not use this feature now.
     Superusers are never capped (their usage is still logged)."""
     from .access import has_feature
+    from .demo import ai_generation_allowed, is_demo
+    if is_demo(user) and not ai_generation_allowed():
+        raise AIDemoOff(feature)
     if not has_feature(user, feature):
         raise AIFeatureDenied(feature)
     if user.is_superuser:

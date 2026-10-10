@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import redirect, render
 from django.urls import Resolver404, resolve, reverse
@@ -7,6 +8,7 @@ PUBLIC_PATHS = (
     "/accounts/login/",
     "/accounts/logout/",
     "/accounts/welcome/",   # welcome email set-password links (token-checked)
+    "/demo/",               # "Explore the demo" sign-in (POST, CSRF-checked)
     "/static/",
     "/api/withings/webhook/",
     "/webhooks/google-health/",
@@ -52,6 +54,21 @@ class LoginRequiredMiddleware:
         denied = self._check_access(request)
         if denied is not None:
             return denied
+
+        from .demo import blocked, is_demo, readonly_response
+        if is_demo(request.user):
+            try:
+                name = resolve(request.path_info).url_name
+            except Resolver404:
+                name = None
+            if blocked(request, name):
+                return readonly_response(request)
+            if name != "logout":   # signing out must really end the session
+                # Read-only: whatever this page view writes is undone.
+                with transaction.atomic():
+                    response = self.get_response(request)
+                    transaction.set_rollback(True)
+                return response
         return self.get_response(request)
 
     def _check_access(self, request):

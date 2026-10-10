@@ -132,7 +132,8 @@ ADMIN_URL_NAMES = {      # superusers only: /settings/users/
     "admin_user_welcome",
 }
 PUBLIC_URL_NAMES = {"health", "login", "withings_webhook", "google_health_webhook",
-                    "welcome_set_password"}   # the welcome email's link — the user isn't logged in yet
+                    "welcome_set_password",   # the welcome email's link — the user isn't logged in yet
+                    "demo_login"}             # "Explore the demo" (workouts/demo.py)
 
 _URL_TO_FEATURE = {name: slug for slug, f in FEATURES.items() for name in f["url_names"]}
 

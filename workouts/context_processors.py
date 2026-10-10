@@ -61,15 +61,23 @@ class _LazyTabs:
         return self._load()[1]
 
 
+class _LazyDemoAvailable:
+    """Signed out: whether to offer "Explore the demo" (one query, only if used)."""
+    def __bool__(self):
+        from .demo import demo_user
+        return demo_user() is not None
+
+
 def access(request):
     u = getattr(request, "user", None)
     if not u or not u.is_authenticated:
-        return {}
+        return {"demo_available": _LazyDemoAvailable()}
+    from .demo import is_demo
     from .navigation import group_for_url_name
     can = _Can(u)
     match = getattr(request, "resolver_match", None)
     url_name = match.url_name if match else None
-    return {"can": can, "is_owner": u.is_superuser, "setup_pending": _LazyPending(u),
+    return {"can": can, "is_owner": u.is_superuser, "is_demo": is_demo(u), "setup_pending": _LazyPending(u),
             "peloton_reconnect": _LazyPelotonReconnect(u), "plan_nudges": _LazyPlanNudges(u),
             "nav": _LazyNav(u, can), "nav_current_url_name": url_name,
             "nav_current_group": group_for_url_name(url_name),
