@@ -79,8 +79,13 @@ def _run_grid(run):
                     recovery_seconds += sum(r.workout.duration_seconds or 0 for r in recoveries)
             elif slot.optional and not is_open_pass:
                 continue   # never-filled optional slot in a closed pass — hide it
+            # A completed session shows the day it was actually done; one still to do
+            # shows its planned day (with the planned date in a dated plan).
             day_label = ""
-            if slot.day:
+            if e:
+                d = timezone.localtime(e.workout.created_at).date()
+                day_label = f"{d:%a} · {d:%b} {d.day}" if overview else f"{d:%a}"
+            elif slot.day:
                 day_label = DAY_NAMES.get(slot.day, "")
                 if overview and rw.program_week.number in overview["weeks"]:
                     d = overview["weeks"][rw.program_week.number]["start"] + timedelta(days=slot.day - 1)
