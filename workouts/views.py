@@ -1156,7 +1156,9 @@ def _run_compare(workout):
 def compare(request):
     ids_param  = request.GET.get("ids", "")
     workout_ids = [i.strip() for i in ids_param.split(",") if i.strip()][:4]
-    workouts   = list(CachedWorkout.objects.for_user(request.user).filter(workout_id__in=workout_ids))
+    # Oldest on the left, newest on the right (W1 = the earliest)
+    workouts   = list(CachedWorkout.objects.for_user(request.user).filter(workout_id__in=workout_ids)
+                      .order_by("created_at"))
 
     perf_data = {}
     client = _peloton_client_or_none(request.user)

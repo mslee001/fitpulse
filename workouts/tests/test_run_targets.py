@@ -210,6 +210,10 @@ class RunPagesTests(TwoUserTestCase):
         self.assertFalse(stats["real"]["run"]["estimated"])
         self.assertEqual(stats["real"]["run"]["miles"], 1.09)
 
+    def test_compare_orders_oldest_first(self):
+        resp = self.client_a.get(reverse("compare") + "?ids=est,real")
+        self.assertEqual(resp.context["workout_ids"], ["real", "est"])   # real is a week older
+
     def test_circuit_next_to_a_tread_run_compares_run_numbers(self):
         CachedWorkout.objects.create(user=self.a, workout_id="tread", ride_id="r2", title="20 min Run",
                                      discipline="running", source="peloton", created_at=timezone.now(),
