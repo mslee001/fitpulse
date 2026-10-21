@@ -88,16 +88,18 @@ def _run_grid(run):
             # A completed session shows the day it was actually done; one still to do
             # shows its planned day (with the planned date in a dated plan) — in an
             # open split/collection pass that's projected forward below.
-            day_label = ""
+            day_label, cell_date = "", None
             if e:
-                d = local_day(e)
+                cell_date = local_day(e)
+                d = cell_date
                 day_label = f"{d:%a} · {d:%b} {d.day}" if overview else f"{d:%a}"
             elif slot.day:
                 day_label = DAY_NAMES.get(slot.day, "")
                 if overview and rw.program_week.number in overview["weeks"]:
-                    d = overview["weeks"][rw.program_week.number]["start"] + timedelta(days=slot.day - 1)
+                    cell_date = d = overview["weeks"][rw.program_week.number]["start"] + timedelta(days=slot.day - 1)
                     day_label = f"{day_label} · {d:%b} {d.day}"
             cells.append({"slot": slot, "entry": e, "recoveries": recoveries, "day_label": day_label,
+                          "date": cell_date,
                           "swappable": run.end_date is None and slot_swappable(slot, e),
                           "cls": None if e else planned.get(slot.peloton_ride_id),
                           # done: the class actually taken (any-class slots vary); to do: the planned one
@@ -119,7 +121,7 @@ def _run_grid(run):
                 day = max(anchor + timedelta(days=1), today) if anchor else today
                 for c in cells:
                     if not c["entry"]:
-                        c["day_label"] = f"{day:%a}"
+                        c["day_label"], c["date"] = f"{day:%a}", day
                         day += timedelta(days=1)
         # entries in this run-week with no slot (matched week, not a specific class)
         loose = sorted(
@@ -664,6 +666,64 @@ def _run_progress(run, rows, overview=None):
                          "pct": round(done / total * 100) if total else 0})
     return {"open": False, "current": current, "weeks": len(weeks), "segments": segments,
             "done": done_all, "total": total_all}
+
+
+def _plan_item(slot=None, workout=None, cls=None):
+    """One Today's-plan row: a session done today (`workout`) or still to do (`slot`)."""
+    spec = (slot.spec_json or {}) if slot else {}
+    return {
+        "slot": slot, "workout": workout, "done": workout is not None, "cls": cls,
+        "title": (slot.title if slot else "") or (workout.title if workout else "") or "Session",
+        "discipline": (workout.discipline if workout else "")
+                      or (slot and (slot.discipline or slot.match_discipline or spec.get("discipline"))) or "",
+        "minutes": (workout.duration_minutes if workout else None)
+                   or (slot and slot.duration_min) or (cls.duration_min if cls else None),
+        "optional": bool(slot and slot.optional),
+        "pace_zone": spec.get("pace_zone", ""),
+    }
+
+
+def todays_plan(user, today=None):
+    """Today page: each current program's sessions for today, dated exactly as its run
+    page dates them (_run_grid) — a dated AI plan's calendar, or a pass's open sessions
+    projected one a day from the last one done. Sessions done today count wherever they
+    landed. A split whose latest pass is complete offers its first session again (the
+    next pass starts when you take one). [{"program", "run", "progress", "items"}] for
+    every current program, including ones with nothing today."""
+    today = today or timezone.localdate()
+    out = []
+    runs = (ProgramRun.objects.filter(program__user=user, end_date__isnull=True)
+            .select_related("program").order_by("program__name", "-start_date"))
+    for run in runs:
+        rows, totals = _run_grid(run)
+        overview = totals["overview"]
+        progress = _run_progress(run, rows, overview)
+        items = []
+        for r in rows:
+            items += [_plan_item(c["slot"], c["entry"].workout) for c in r["cells"]
+                      if c["entry"] and c["date"] == today]
+            items += [_plan_item(workout=e.workout) for e in r["loose"]
+                      if timezone.localtime(e.workout.created_at).date() == today]
+        # Still to do: a dated plan's cells are dated outright; otherwise only the current
+        # pass is projected onto real days (an undated plan projects every week ahead).
+        if overview or not rows:
+            current = rows
+        elif run.program.kind == "plan":
+            week = progress["current"] if progress else None
+            passes = [r for r in rows if r["run_week"].program_week.number == week]
+            current = [max(passes, key=lambda r: r["run_week"].sequence)] if passes else []
+        else:
+            current = [max(rows, key=lambda r: r["run_week"].sequence)]
+        todo = [_plan_item(c["slot"], cls=c["cls"]) for r in current for c in r["cells"]
+                if not c["entry"] and c["date"] == today]
+        if (not items and not todo and run.program.kind == "split" and current
+                and all(c["entry"] for c in current[0]["cells"] if not c["slot"].optional)):
+            first = min((c for c in current[0]["cells"] if not c["slot"].optional),
+                        key=lambda c: (c["slot"].day or 8, c["slot"].order), default=None)
+            if first:
+                todo = [_plan_item(first["slot"])]
+        out.append({"program": run.program, "run": run, "progress": progress, "items": items + todo})
+    return out
 
 
 def program_run(request, pk):

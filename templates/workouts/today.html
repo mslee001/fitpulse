@@ -61,6 +61,52 @@
   {% endif %}
 </section>
 
+<!-- Today's plan: each current program's sessions for today, dated as on its run page (program_views.todays_plan) -->
+{% if plan_today %}
+<section class="ui-section ui-panel">
+  <div class="ui-panel-header">
+    <h2 class="ui-panel-title">Today's plan</h2>
+    <a href="{% url 'program_list' %}" class="text-sm">Programs →</a>
+  </div>
+  {% if plan_today_any %}
+  <div class="flex flex-col gap-4">
+    {% for p in plan_today %}{% if p.items %}
+    <div>
+      <div class="mb-2 flex flex-wrap items-baseline gap-x-2 text-sm">
+        <a href="{% url 'program_run' p.run.pk %}" class="font-medium">{{ p.program.name }}</a>
+        {% if p.progress %}<span class="text-muted">{% if p.progress.open %}Pass {{ p.progress.pass }}{% else %}Week {{ p.progress.current }} of {{ p.progress.weeks }}{% endif %}</span>{% endif %}
+      </div>
+      <ul class="flex flex-col gap-2">
+        {% for it in p.items %}
+        {% with color=it.discipline|discipline_color %}
+        <li class="flex items-center gap-3 rounded-xl bg-inset p-3">
+          <span class="flex size-11 shrink-0 items-center justify-center rounded-xl text-xs font-semibold" style="color: {{ color }}; background: color-mix(in oklab, {{ color }} 15%, transparent)" aria-hidden="true">{% if it.discipline %}{{ it.discipline|slice:":3"|upper }}{% else %}{% include "workouts/partials/icon.html" with name="calendar" class="size-5" %}{% endif %}</span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-semibold">
+              {% if it.done %}<a href="{% url 'workout_detail' it.workout.workout_id %}">{{ it.workout.title|default:it.title }}</a>
+              {% elif it.slot.peloton_ride_id %}<a href="{{ it.slot.peloton_ride_id|peloton_class_url }}" target="_blank" rel="noopener" title="Open on Peloton to add it to your Stack">{{ it.title }}</a>
+              {% else %}{{ it.title }}{% endif %}
+            </span>
+            <span class="block truncate text-sm text-muted">
+              {% if it.minutes %}{{ it.minutes }} min{% endif %}{% if it.done %}{% if it.workout.instructor_name %} · {{ it.workout.instructor_name }}{% endif %}{% elif it.cls.instructor_name %} · {{ it.cls.instructor_name }}{% endif %}{% if it.pace_zone and not it.done %} · {{ it.pace_zone }} zone{% endif %}
+            </span>
+          </span>
+          {% if it.done %}<span class="badge badge-sm badge-success badge-soft shrink-0">✓ Done</span>{% elif it.optional %}<span class="badge badge-sm badge-ghost shrink-0">Optional</span>{% endif %}
+        </li>
+        {% endwith %}
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+  {% if plan_today_rest %}
+  <p class="text-sm text-muted{% if plan_today_any %} mt-4{% endif %}">{% if plan_today_any %}Nothing today in{% else %}Rest day: nothing scheduled today in{% endif %}
+    {% for p in plan_today_rest %}<a href="{% url 'program_run' p.run.pk %}">{{ p.program.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}.</p>
+  {% endif %}
+</section>
+{% endif %}
+
 <!-- Wellness -->
 {% if daily %}
 <section class="ui-section">

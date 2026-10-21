@@ -3743,6 +3743,12 @@ def today_page(request):
     if nutrition_progress and nutrition_progress["cal"]["target"]:
         cal_left = round(nutrition_progress["cal"]["target"] - nutrition_progress["cal"]["now"])
 
+    # Today's plan: what each current program has scheduled today
+    plan_today = None
+    if has_feature(request.user, "programs"):
+        from .program_views import todays_plan
+        plan_today = todays_plan(request.user)
+
     # Active interventions
     active_interventions = [i for i in Intervention.objects.for_user(request.user).all() if i.is_active]
 
@@ -3773,6 +3779,9 @@ def today_page(request):
         "cal_over": -cal_left if cal_left is not None and cal_left < 0 else None,
         "week": week_summary(request.user, today_date, targets=nutrition_targets),
         "active_interventions": active_interventions,
+        "plan_today": plan_today,
+        "plan_today_any": any(p["items"] for p in plan_today or []),
+        "plan_today_rest": [p for p in plan_today or [] if not p["items"]],
         "next_workout_text": next_workout_text,
         "day_analysis_text": day_analysis_text,
         "discipline_colors": DISCIPLINE_COLORS,
